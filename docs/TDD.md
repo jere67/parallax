@@ -396,6 +396,7 @@ The Orchestrator talks only to the agent layers; Alpaca sees nothing until the r
 
 The scheduler evaluates cron expressions in UTC with day 0 as Monday ([scheduler reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/jac-scale-scheduler.md)), so each job is registered at both its EDT and EST offsets (for example `cron="30 11,12 * * 0-4"`) and proceeds only if New York time matches.
 Static jobs take a Postgres lease so that a multi-replica deploy fires each tick once ([release notes, 0.37.5](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/community/release_notes/jaclang.md)); the run-date idempotency key still stops a second firing if the lease check fails.
+The morning job lives in `run/jobs.jac`, imported by `main.jac` so the server registers it at startup; it runs as the system user, which reaches `root.shared`, and only a firing between 7:30 and 7:45 a.m. New York time on a weekday starts a run.
 
 | Time | Phase | Owner | Output |
 | --- | --- | --- | --- |
@@ -417,6 +418,8 @@ Static jobs take a Postgres lease so that a multi-replica deploy fires each tick
 The Orchestrator is a `by orchestrator_llm(tools=[...])` function running on the same free model as every other agent, through its own model instance (Section 3).
 It can only act through these tools.
 Tools take ticker lists, so a 20-ticker run fits inside the iteration cap: covering each ticker one tool call at a time would need more than 40 iterations.
+The tools are the run session's own methods (`run/guard.jac`), handed to the loop in `agents/orchestrator.jac` by `run/orchestration.jac`; the loop is capped at 12 iterations, and its `on_iteration` hook stops it with a summary when the run's request budget is down to two requests or its 90-minute deadline has passed.
+The Macro sub-agent runs before the loop starts, so the run context already carries the macro brief.
 
 | Tool | What it does | Limits |
 | --- | --- | --- |
@@ -437,6 +440,8 @@ Tools take ticker lists, so a 20-ticker run fits inside the iteration cap: cover
 - **Coverage.** Every shortlisted ticker and every open position ends the run with a `Decision`; a ticker lacking market, fundamentals, and news reports defaults to HOLD with reason "insufficient data."
 - **Fallback.** If the Orchestrator errors, times out, or aborts, the Run Guard executes the same phases in fixed order with no follow-ups.
   The dashboard marks the run as "fallback."
+  The Orchestrator's tools and the fallback both act on one `RunSession` (`run/guard.jac`), which holds the run's state and enforces every limit, so a refused move changes nothing and says why; a run counts as normal only when the Orchestrator itself submitted the decisions within the deadline.
+- **Run budget.** Each run may spend 600 model requests, enough for the standard run's 460 with retries, or fewer when the day has fewer left; a ticker whose panel no longer fits holds.
 - **Idempotency.** The run ID is the trading date, and the job claims its `Run` node before doing any work, so a second firing of the scheduler exits at once.
   Every order's `client_order_id` is derived from the run ID, ticker, and action (Section 8), so a job that fires twice cannot double-trade.
 - **Staleness.** Collectors stamp every datum with its fetch time; data older than its freshness limit is excluded and listed in the report's `data_gaps`.
@@ -579,6 +584,9 @@ Votes flow one way into code; only an ambiguous result loops back for more sampl
 Flow data has different delays: Form 4 arrives within [two business days](https://www.sec.gov/files/forms-3-4-5.pdf) of an insider trade, while 13F holdings are quarterly and filed up to [45 days after quarter end](https://www.sec.gov/rules-regulations/staff-guidance/division-investment-management-frequently-asked-questions/frequently-asked-questions-about-form-13f), so the Flow specialist treats institutional data as weeks to months old.
 EDGAR has no per-issuer 13F endpoint: holdings sit in each manager's own filing, so a per-stock view needs SEC's quarterly [13F data sets](https://www.sec.gov/data-research/sec-markets-data/form-13f-data-sets) joined to tickers, which is a stretch goal (#52); until then the Flow specialist reads Form 4 only.
 
+Each specialist reads a packet built in code from its primary reports (`agents/specialists.jac`): every report's summary, risks, and data gaps, and their evidence as one numbered list, but not the research sub-agents' own views or confidences, so the panel does not anchor on them.
+The Macro and Sector specialist reads the run's macro report and the ticker's market report, which carries its strength against its sector fund.
+
 A Critic role that writes the strongest opposing case for the Arbiter is a stretch goal (Section 16).
 
 ### Where the randomness comes from
@@ -593,7 +601,7 @@ A result counts as near a threshold when moving C and its interval, or A, by up 
 
 Each sample returns a typed `Vote`: a stance from STRONG\_SELL to STRONG\_BUY, a confidence from 0 to 1, a horizon in trading days, a rationale, and the indices of the evidence it relied on.
 The stance is a string enum that code maps to a score from −2 to +2 (Section 3).
-A vote that cites no evidence is discarded.
+A vote that cites no evidence fails the parse and is retried with feedback; code then maps the numbers a sample was shown back to the packet's own order, and a vote that still cites nothing in range is discarded.
 
 ### Aggregation
 
@@ -626,6 +634,7 @@ The bootstrap is seeded from the ticker and run date, so the same votes always g
 | Anything else | NO ACTION (a held position stays unchanged) |
 
 Conviction is |C| × A.
+In code, a held position's exit condition triggers when its time stop has passed; price exits are the stop orders the Action layer places (Section 8), and an event exit is the Arbiter's text for the next run's research to test.
 The thresholds, the ambiguity band, and the 60% minimum share of valid samples live in `ConsensusConfig` (`analysis/consensus.jac`), versioned with `CONSENSUS_VERSION`, which each run records.
 The Action layer turns conviction into position size (Section 8).
 
@@ -636,7 +645,10 @@ Its authority is deliberately one-sided:
 
 - It may **confirm** the draft action or **downgrade** it (BUY to NO ACTION, or ADD to HOLD), with a written reason.
 - It may **not upgrade** a result, so one model cannot override the ensemble into a trade.
-- It must write the thesis, the two biggest risks, a time stop, and a price- or event-based exit condition, all stored on the `Decision` node.
+- It must write the thesis, the two biggest risks, and a price- or event-based exit condition, all stored on the `Decision` node with a time stop that code sets: the trading date the median horizon of the votes behind the action points to (Section 3, rule 11).
+
+Code applies the verdict (`agents/arbiter.jac`): a downgrade asked of a SELL, TRIM, HOLD, or NO ACTION is recorded as not applied, and a verdict outside CONFIRM and DOWNGRADE fails the parse.
+If the Arbiter cannot rule, a BUY becomes NO ACTION and an ADD becomes HOLD, since no reviewed trade beats an unreviewed one, and any other draft stands.
 
 ### Scoring and calibration
 
@@ -782,6 +794,7 @@ Raw API responses live outside the graph in `store()`, referenced by key, becaus
 root.shared (written by the scheduled job; READ granted on each node)
   └─ Portfolio(team)
        ├─ Position* ──[opened_by]──> Decision
+       ├─ RequestCount(UTC day)*
        └─ Run(date)*
             ├─ MacroReport
             └─ Coverage(ticker)*
@@ -882,6 +895,7 @@ A local model through Ollama is fine for manual prompt work, but local models ar
 | Parse and transient-error retries | About 20 | `max_output_retries = 1` and up to two retries on timeouts; every retry is a request |
 | **Total** | **About 460** | **At 18 requests a minute, at least 26 minutes of model time** |
 
+The Analysis exit run measured 530 requests and 44 minutes for this configuration: retries took about 150 requests, not 20, and the loop and follow-ups fewer than planned, so the 600-request run budget holds about 22 tickers ([exit run](runs/2026-10-16-analysis-exit-run.md)).
 An on-demand report on a ticker not already covered that day uses about 22 requests: 3 research, 15 specialist samples, 1 Arbiter, and a few Orchestrator steps.
 A global cap of 15 new reports a day bounds reports at about 330 requests, so the daily total stays under about 790 of the 1,000 allowed, leaving room for further retries.
 
@@ -889,7 +903,7 @@ A global cap of 15 new reports a day bounds reports at about 330 requests, so th
 
 - **One shared limiter.** Every model request in the app passes the `LimitedModel` limiter, set to 18 requests a minute (Section 3).
   It sits at the provider-request level, so parse retries, transient-error retries, 429 retries, fallback calls, and ReAct iterations are all counted; a test against a fake OpenRouter server confirms the count.
-- **Count requests ourselves, and check against OpenRouter.** The limiter increments a per-UTC-day counter stored in the graph, and preflight also reads `free_model_daily_requests` (`used`, `limit`, `remaining`) from `GET /api/v1/key` ([limits](https://openrouter.ai/docs/api_reference/limits)), using whichever shows fewer requests left; the per-minute limit is not reported there.
+- **Count requests ourselves, and check against OpenRouter.** The limiter increments a per-UTC-day counter, which each run adds to a `RequestCount` node in the graph so it survives a restart, and preflight also reads `free_model_daily_requests` (`used`, `limit`, `remaining`) from `GET /api/v1/key` ([limits](https://openrouter.ai/docs/api_reference/limits)), using whichever shows fewer requests left; the per-minute limit is not reported there.
 - **Check before running.** Preflight switches to reduced mode (K = 1, shortlist of 10) if fewer than 500 requests remain for the UTC day.
 - **Protect the morning run.** On-demand reports become cache-only when fewer than 150 requests remain.
 - **Back off on 429.** byLLM does not retry rate-limit errors, so `LimitedModel` retries with exponential backoff, as OpenRouter [advises](https://openrouter.ai/docs/api_reference/limits); OpenRouter's own free-model 429s carry `X-RateLimit-Reset`, and `Retry-After` arrives only when every provider sent a hint, so reading those headers is a planned refinement.

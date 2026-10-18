@@ -3,6 +3,7 @@
     root.shared
       └─ Portfolio
            ├─ Holds ──> Position ──OpenedBy──> Decision
+           ├─ Counted ──> RequestCount(day)
            └─ Ran ──> Run(run_date)
                 ├─ HasMacro ──> MacroRecord
                 └─ Covers ──> Coverage(ticker)
@@ -101,6 +102,13 @@ node Run {
         completion_tokens: int = 0;
 }
 
+"""Free-model requests the app made on one UTC day (TDD §12, request controls), kept in the
+graph so the count survives a restart. `day` is "YYYY-MM-DD" in UTC."""
+node RequestCount {
+    has day: str,
+        used: int;
+}
+
 node MacroRecord {
     has as_of: str,
         model: str,
@@ -159,7 +167,9 @@ node Decision {
         exit_condition: str = "",
         time_stop: str = "",
         downgrade_reason: str = "",
-        forced_hold_reason: str = "";
+        forced_hold_reason: str = "",
+        arbiter_verdict: str = "",
+        model: str = "";
 }
 
 obj RuleResult {
@@ -208,6 +218,7 @@ node InsightCard {
 edge Holds: Portfolio --> Position {}
 edge OpenedBy: Position --> Decision {}
 edge Ran: Portfolio --> Run {}
+edge Counted: Portfolio --> RequestCount {}
 edge HasMacro: Run --> MacroRecord {}
 edge Covers: Run --> Coverage {}
 edge Researched: Coverage --> ResearchRecord {}
