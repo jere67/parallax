@@ -13,9 +13,11 @@ paper account (docs/spikes/2026-10-21-alpaca-order-rules.md):
   finds the first order;
 - a canceled or filled order cannot be canceled again (422).
 
-Nothing fills on its own: a test fills orders with `fill`, moves prices with `set_price`
-(which triggers stops at or above the new price), and ends a session with `close_session`,
-which cancels unfilled DAY orders. `script` queues error responses, to inject outages.
+Nothing fills on its own unless `auto_fill` is set, which fills a marketable limit or market
+order in full when it arrives: a test fills orders with `fill`, moves prices with `set_price`
+(which fills any working sell stop at or above the new price), and ends a session with
+`close_session`, which cancels unfilled DAY orders. `script` queues error responses, to
+inject outages.
 """
 import json;
 import threading;
@@ -93,7 +95,8 @@ obj FakeBroker {
         is_open: bool = True,
         holidays: set[str] = set(),
         early_closes: set[str] = set(),
-        untradable: set[str] = set();
+        untradable: set[str] = set(),
+        auto_fill: bool = False;
     has prices: dict[str, float] = {},
         trade_times: dict[str, str] = {},
         bars: dict[str, list[dict[str, str | float | int]]] = {},
@@ -332,6 +335,10 @@ obj FakeBroker {
             status="accepted" if kind == "stop" else "new"
         );
         self.orders.append(o);
+        last = self.prices.get(symbol);
+        if self.auto_fill and last is not None and (kind == "market" or (kind == "limit" and limit is not None and (limit >= last if side == "buy" else limit <= last))) {
+            self._fill(o, qty, last);
+        }
         return (200, json.dumps(o.to_json()));
     }
 
