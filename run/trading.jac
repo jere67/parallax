@@ -10,10 +10,12 @@ afternoon steps with it, and does whatever step is due and not yet done:
 - ten minutes before the close (3:50 p.m., or 12:50 on an early close): cancel the run's
   unfilled DAY orders and place stops for what filled;
 - thirty minutes after the close (4:30 p.m., or 1:30): reconcile with Alpaca and mark the
-  portfolio, once a day.
+  portfolio, once a day, then score the panel's votes whose windows have closed.
 
-Every step records that it ran, so a second firing does nothing, and nothing trades unless
-the team portfolio is in auto mode. What each tick did goes on the day's run, in
+Every step records that it ran, so a second firing does nothing. Nothing trades unless the
+team portfolio is in auto mode, but votes are scored in both modes. A daily bar is final
+only in the evening (research/alpaca.jac, BARS_FINAL_AT), so a window ending today is scored
+after tomorrow's close. What each tick did goes on the day's run, in
 `action_log`, and in the server log.
 """
 import logging;
@@ -22,6 +24,8 @@ import from datetime { date, datetime, time, timedelta }
 import from action.broker { Broker }
 import from action.executor { MarketView, close_day_orders, decisions_of, execute_run, keep_stops, market_view, open_positions, sync_orders }
 import from action.reconcile { marks_of, reconcile }
+import from analysis.history { History }
+import from analysis.scoring { score_votes }
 import from models.graph { DailyMark, Portfolio, PortfolioMode, Ran, Run, RunStatus }
 import from research.alpaca { MarketDay, market_calendar }
 import from research.collector { run_budget }
@@ -39,11 +43,13 @@ glob LOG: logging.Logger = logging.getLogger("trading_agent.action");
 glob _TICK_LOCK: threading.Lock = threading.Lock();
 
 """What a tick reads from outside: the broker, the latest trades and assets, and the market
-calendar. Tests pass fakes; the defaults call Alpaca."""
+calendar, and the daily bars and sessions read after the close. Tests pass fakes; the defaults call
+Alpaca."""
 obj TradingDeps {
     has broker: Broker | None = None,
         view: Callable[[list[str]], MarketView] | None = None,
-        calendar: Callable[[str], MarketDay | None] | None = None;
+        calendar: Callable[[str], MarketDay | None] | None = None,
+        history: History | None = None;
 
     def broker_client -> Broker {
         if self.broker is None {
@@ -88,22 +94,8 @@ def session_times(session: MarketDay) -> SessionTimes {
     return SessionTimes(execute_at=datetime.combine(day, EXECUTION_START, NEW_YORK), cancel_at=close - CANCEL_BEFORE_CLOSE, reconcile_at=close + RECONCILE_AFTER_CLOSE);
 }
 
-"""Do whatever step of `portfolio`'s trading day is due at `now`, and return what it did."""
-def trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = TradingDeps()) -> list[str] {
-    if portfolio.mode != PortfolioMode.AUTO {
-        return [];
-    }
-    local = now.astimezone(NEW_YORK);
-    day = local.date().isoformat();
-    if local.weekday() >= 5 or local.time() < EXECUTION_START {
-        return [];
-    }
-    session = deps.session(day);
-    if session is None {
-        return [];
-    }
-    times = session_times(session);
-    run = run_for(portfolio, day);
+"""The trading step due at `local`: execute, poll, close the day's orders, or reconcile."""
+def trading_step(portfolio: Portfolio, run: Run | None, day: str, local: datetime, now: datetime, times: SessionTimes, deps: TradingDeps) -> list[str] {
     lines: list[str] = [];
     if local < times.cancel_at {
         broker = deps.broker_client();
@@ -129,6 +121,35 @@ def trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = Tradin
         if run is not None {
             run.reconciled_at = now.isoformat();
         }
+    }
+    return lines;
+}
+
+"""Do whatever step of `portfolio`'s trading day is due at `now`, and return what it did."""
+def trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = TradingDeps()) -> list[str] {
+    local = now.astimezone(NEW_YORK);
+    day = local.date().isoformat();
+    if local.weekday() >= 5 or local.time() < EXECUTION_START {
+        return [];
+    }
+    run = run_for(portfolio, day);
+    trading = portfolio.mode == PortfolioMode.AUTO;
+    if not trading and (run is None or run.votes_scored_at) {
+        return [];
+    }
+    session = deps.session(day);
+    if session is None {
+        return [];
+    }
+    times = session_times(session);
+    lines: list[str] = [];
+    if trading {
+        lines.extend(trading_step(portfolio, run, day, local, now, times, deps));
+    }
+    if local >= times.reconcile_at and run is not None and not run.votes_scored_at {
+        found = score_votes(portfolio, now, deps.history or History());
+        run.votes_scored_at = now.isoformat();
+        lines.append(f"score: {found.line()}");
     }
     if lines and run is not None {
         stamp = local.strftime("%H:%M");

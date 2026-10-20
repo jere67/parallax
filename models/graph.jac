@@ -112,6 +112,7 @@ node Run {
         execution_note: str = "",
         day_orders_closed_at: str = "",
         reconciled_at: str = "",
+        votes_scored_at: str = "",
         action_log: list[str] = [],
         summary: str = "",
         model_versions: dict[str, str] = {},

@@ -1,13 +1,15 @@
 """The trading day (run/trading.jac), ticked through a session on a fake clock against the fake
-broker: execution at 9:45, fills and stops, the cancel window, and reconciliation, including
-an early close, drift, and a gate bypass."""
+broker: execution at 9:45, fills and stops, the cancel window, reconciliation, and vote
+scoring, including an early close, drift, a gate bypass, and insight mode."""
 import from datetime { datetime, timedelta, timezone }
 import from action.executor { MarketView, open_positions }
 import from action.fixtures { Call, broker_for, finished_run, market, team }
 import from action.reconcile { marks_of }
-import from models.graph { Portfolio, PortfolioMode, RunStatus, TradeAction }
+import from analysis.history { History, bar }
+import from research.alpaca { Bar, MarketDay }
+import from models.agents { Specialist, Stance, Vote }
+import from models.graph { Coverage, Covers, Portfolio, PortfolioMode, RunStatus, TradeAction, VoteRecord, Voted }
 import from models.research { Stamp }
-import from research.alpaca { MarketDay }
 import from run.guard { NEW_YORK }
 import from run.trading { TradingDeps, team_trading_tick, trading_tick }
 import from tests.fakes.broker_server { FakeBroker, FakeOrder, Scripted }
@@ -22,18 +24,27 @@ def session(day: str, close: str = "16:00") -> MarketDay {
     return MarketDay(day=day, open="09:30", close=close, early_close=close != "16:00", stamp=Stamp(source="alpaca_trading", dataset="alpaca.calendar", source_url="u", published_at=day, fetched_at=day));
 }
 
-"""Deps on the fake: its prices as the latest trades at the fake's clock, and a calendar of
-regular sessions except the `early` ones."""
-def deps_for(fake: FakeBroker, early: set[str] | None = None, holidays: set[str] | None = None) -> TradingDeps {
-    closes = early or set();
+"""Deps on the fake: its prices as the latest trades at the fake's clock, a calendar of
+regular sessions except the `early` ones, and vote scoring over weekday sessions and
+`closes`."""
+def deps_for(fake: FakeBroker, early: set[str] | None = None, holidays: set[str] | None = None, closes: dict[str, dict[str, float]] | None = None) -> TradingDeps {
+    shortened = early or set();
     shut = holidays or set();
+    prices = closes or {};
     def read(_tickers: list[str]) -> MarketView {
         return market(dict(fake.prices), datetime.fromisoformat(fake.now));
     }
     def calendar(day: str) -> MarketDay | None {
-        return None if day in shut else session(day, "13:00" if day in closes else "16:00");
+        return None if day in shut else session(day, "13:00" if day in shortened else "16:00");
     }
-    return TradingDeps(broker=broker_for(fake), view=read, calendar=calendar);
+    def sessions(start: str, end: str) -> list[str] {
+        days = [datetime.fromisoformat(start).date() + timedelta(days=i) for i in range((datetime.fromisoformat(end) - datetime.fromisoformat(start)).days + 1)];
+        return [d.isoformat() for d in days if d.weekday() < 5 and d.isoformat() not in shut];
+    }
+    def read_bars(symbols: list[str], _start: str, _end: str) -> dict[str, dict[str, Bar]] {
+        return {s: {d: bar(d, c) for (d, c) in prices[s].items()} for s in symbols if s in prices};
+    }
+    return TradingDeps(broker=broker_for(fake), view=read, calendar=calendar, history=History(bars=read_bars, sessions=sessions));
 }
 
 """Tick at New York time `hhmm`, with the fake's clock set to the same moment."""
@@ -69,6 +80,7 @@ test "a trading day: execute at 9:45, stop each fill, cancel the rest at 3:50, r
         fake.set_price("AAA", 101.0);
         lines = tick_at(fake, portfolio, deps, "16:30");
         assert lines[0].startswith("reconcile:") and "0 drift, 0 bypasses" in lines[0];
+        assert lines[-1] == "score: 0 votes scored, 0 without prices, 0 still open" and run.votes_scored_at;
         mark = marks_of(portfolio)[DAY];
         assert mark.open_positions == 2 and mark.drift == [] and mark.bypasses == [];
         assert abs(mark.equity - (100000.0 - 40 * 100.2 - 30 * 50.1 + 40 * 101.0 + 30 * 50.0)) < 0.01;
@@ -161,6 +173,25 @@ test "a failing tick is logged on the run and the next tick tries again" {
         assert lines[0].startswith("error: BrokerError") and "forbidden" in run.action_log[-1];
         # The claim was taken before the failure, so execution does not retry blindly.
         assert run.executed_at and fake.orders == [];
+    } finally {
+        fake.stop();
+    }
+}
+
+test "insight mode trades nothing but scores the panel's votes after the close, once a day" {
+    fake = FakeBroker();
+    try {
+        deps = deps_for(fake, closes={"AAA": {"2026-10-20": 100.0, "2026-10-21": 103.0}, "SPY": {"2026-10-20": 500.0, "2026-10-21": 500.0}});
+        portfolio = team(PortfolioMode.INSIGHT);
+        yesterday = finished_run(portfolio, "2026-10-21", [Call(ticker="AAA", action=TradeAction.BUY)]);
+        cov = [c for c in [yesterday ->:Covers:->[?:Coverage]]][0];
+        cast = VoteRecord(ticker="AAA", specialist=Specialist.TECHNICAL, sample=0, model="m", body=Vote(stance=Stance.BUY, confidence=0.7, horizon_days=1, rationale="r", cited_evidence=[1]));
+        cov +>:Voted():+> cast;
+        today = finished_run(portfolio, "2026-10-22", [Call(ticker="AAA", action=TradeAction.BUY)]);
+        assert tick_at(fake, portfolio, deps, "09:45", "2026-10-22") == [] and tick_at(fake, portfolio, deps, "16:29", "2026-10-22") == [];
+        assert tick_at(fake, portfolio, deps, "16:30", "2026-10-22") == ["score: 1 votes scored, 0 without prices, 0 still open"];
+        assert cast.excess_return is not None and abs(cast.excess_return - 0.03) < 1e-12 and today.votes_scored_at and not yesterday.votes_scored_at;
+        assert tick_at(fake, portfolio, deps, "16:31", "2026-10-22") == [] and fake.orders == [];
     } finally {
         fake.stop();
     }
