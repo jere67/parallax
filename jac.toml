@@ -9,6 +9,10 @@ jac-version = "==0.37.12"
 [dependencies]
 # Collectors call data sources directly (research/collector.jac).
 httpx = ">=0.28,<1"
+# The risk gate's property tests (action/gate_tests.jac, TDD §14). A regular dependency, since
+# a plain `jac install` skips [dev-dependencies] and `jac install --dev` fails to build
+# watchdog on macOS with Python 3.14.
+hypothesis = ">=6.100,<7"
 
 [dependencies.npm]
 react = "^19.2.0"
