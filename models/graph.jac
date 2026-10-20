@@ -6,6 +6,9 @@
            │              └─ StoppedBy ──> Order (its protective stops)
            ├─ Sent ──> Order (every order, for reconciliation)
            ├─ Marked ──> DailyMark(day) (the 4:30 p.m. mark and reconciliation)
+           ├─ Benchmarks ──> Baseline(kind) (simulated forward-test baselines)
+           │    ├─ SimHolds ──> Position
+           │    └─ SimMarked ──> DailyMark(day)
            ├─ Counted ──> RequestCount(day)
            └─ Ran ──> Run(run_date)
                 ├─ HasMacro ──> MacroRecord
@@ -66,6 +69,11 @@ enum OrderSide: str {
     SELL = "sell"
 }
 
+enum BaselineKind: str {
+    EQUAL_WEIGHT = "equal_weight",
+    SPY = "spy"
+}
+
 enum OrderPurpose: str {
     ENTRY = "entry",
     ADD = "add",
@@ -84,7 +92,9 @@ node Portfolio {
 
 """A position the team portfolio holds or held. `stop_price` is where its protective stop
 sits; `stops_placed` numbers its stop orders, so each gets a fresh client order ID. A closed
-position keeps its node, with `closed_at` set, so the dashboard can show its history."""
+position keeps its node, with `closed_at` set, so the dashboard can show its history. A
+baseline's simulated position carries its own `time_stop`; the team's comes from the
+decision that opened it."""
 node Position {
     has ticker: str,
         sector: str,
@@ -95,7 +105,8 @@ node Position {
         stop_order_id: str = "",
         stops_placed: int = 0,
         closed_at: str = "",
-        exit_price: float = 0.0;
+        exit_price: float = 0.0,
+        time_stop: str = "";
 
     def open -> bool {
         return not self.closed_at;
@@ -113,6 +124,7 @@ node Run {
         day_orders_closed_at: str = "",
         reconciled_at: str = "",
         votes_scored_at: str = "",
+        baselines_at: str = "",
         action_log: list[str] = [],
         summary: str = "",
         model_versions: dict[str, str] = {},
@@ -264,6 +276,20 @@ node DailyMark {
         bypasses: list[str] = [];
 }
 
+"""A forward-test baseline simulated from daily bars beside the team account (TDD §13, forward
+paper test): the equal-weight shortlist or SPY buy-and-hold. It starts on `start_day` with
+the team account's starting balance, and `simulated_through` is the last session it has
+traded and marked."""
+node Baseline {
+    has kind: BaselineKind,
+        starting_cash: float,
+        start_day: str,
+        cash: float;
+    has peak_equity: float = 0.0,
+        simulated_through: str = "",
+        trade_log: list[str] = [];
+}
+
 node Fill {
     has qty: int,
         price: float,
@@ -314,6 +340,9 @@ node InsightCard {
 edge Holds: Portfolio --> Position {}
 edge Sent: Portfolio --> Order {}
 edge Marked: Portfolio --> DailyMark {}
+edge Benchmarks: Portfolio --> Baseline {}
+edge SimHolds: Baseline --> Position {}
+edge SimMarked: Baseline --> DailyMark {}
 edge OpenedBy: Position --> Decision {}
 edge StoppedBy: Position --> Order {}
 edge Ran: Portfolio --> Run {}

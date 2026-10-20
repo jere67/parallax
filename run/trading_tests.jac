@@ -1,7 +1,10 @@
 """The trading day (run/trading.jac), ticked through a session on a fake clock against the fake
 broker: execution at 9:45, fills and stops, the cancel window, reconciliation, and vote
-scoring, including an early close, drift, a gate bypass, and insight mode."""
+scoring, including an early close, drift, a gate bypass, insight mode, and the forward-test
+start and baselines."""
+import os;
 import from datetime { datetime, timedelta, timezone }
+import from action.baselines { FORWARD_TEST_ENV, baselines_of }
 import from action.executor { MarketView, open_positions }
 import from action.fixtures { Call, broker_for, finished_run, market, team }
 import from action.reconcile { marks_of }
@@ -193,6 +196,33 @@ test "insight mode trades nothing but scores the panel's votes after the close, 
         assert cast.excess_return is not None and abs(cast.excess_return - 0.03) < 1e-12 and today.votes_scored_at and not yesterday.votes_scored_at;
         assert tick_at(fake, portfolio, deps, "16:31", "2026-10-22") == [] and fake.orders == [];
     } finally {
+        fake.stop();
+    }
+}
+
+test "the forward test starts before 9:45 on the operator's date, and its baselines are simulated after the close" {
+    fake = FakeBroker();
+    os.environ[FORWARD_TEST_ENV] = DAY;
+    try {
+        deps = deps_for(fake, closes={"AAA": {DAY: 100.0}, "SPY": {DAY: 500.0}});
+        portfolio = team(PortfolioMode.INSIGHT);
+        assert tick_at(fake, portfolio, deps, "09:30", "2026-10-20") == [];
+        lines = tick_at(fake, portfolio, deps, "09:30");
+        assert lines == ["start: forward test started on 2026-10-21: starting balance 100,000.00, team portfolio in auto mode, baselines equal_weight and spy created"];
+        assert portfolio.mode == PortfolioMode.AUTO and len(baselines_of(portfolio)) == 2;
+        assert tick_at(fake, portfolio, deps, "09:31") == [];
+        fake.set_price("AAA", 100.0);
+        first = finished_run(portfolio, DAY, [Call(ticker="AAA", action=TradeAction.BUY)]);
+        assert tick_at(fake, portfolio, deps, "09:45")[0].startswith("execute: 1 checks, 1 approved");
+        # Wednesday's bars are not final at 4:30, so the baselines wait for Thursday evening.
+        evening = tick_at(fake, portfolio, deps, "16:30");
+        assert not any(l.startswith("baseline:") for l in evening) and first.baselines_at;
+        second = finished_run(portfolio, "2026-10-22", []);
+        lines = tick_at(fake, portfolio, deps, "16:30", "2026-10-22");
+        assert "baseline: equal_weight 2026-10-21 AAA bought 80 at 100.00, stop 96.00" in lines and "baseline: spy 2026-10-21 SPY bought 200 at 500.00" in lines;
+        assert second.baselines_at and tick_at(fake, portfolio, deps, "16:31", "2026-10-22") == [];
+    } finally {
+        os.environ.pop(FORWARD_TEST_ENV, None);
         fake.stop();
     }
 }

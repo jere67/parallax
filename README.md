@@ -34,6 +34,18 @@ jac run                    # serves the app with hot reload at http://localhost:
 
 `GET /healthz` and `POST /function/health` answer once the server is up, and `/docs` lists every endpoint.
 
+## Trading switches
+
+The server trades only the team's Alpaca paper account, and only when the team portfolio is in auto mode.
+Two environment variables control it:
+
+- `TRADING_AGENT_FORWARD_TEST_START=YYYY-MM-DD` starts the forward test on that trading date, before 9:45 a.m. New York time.
+  The paper account must be flat.
+  Its equity becomes the starting balance of the team portfolio and both baselines (equal-weight shortlist and SPY buy-and-hold), and the team portfolio switches to auto mode.
+  Set it only with the team's go-ahead.
+- `TRADING_AGENT_DISABLE_ORDERS=1` stops every order.
+  The executor still sizes and gates each morning's decisions and records the checks, but sends nothing.
+
 ## Checks
 
 ```bash
@@ -55,9 +67,9 @@ main.jac        server entry; imports every endpoint by name
 models/         node, edge, obj, and enum definitions; no server-only imports
 agents/         role model instances, Orchestrator, research sub-agents, specialists, Arbiter
 research/       data collectors and the S&P 500 screener
-analysis/       indicators and the consensus engine
-action/         sizing, risk gate, executor
-run/            daily run walker, Run Guard, scheduled jobs, health
+analysis/       indicators, the consensus engine, and vote scoring
+action/         broker client, sizing, risk gate, executor, reconciliation, insight cards, baselines
+run/            daily run walker, Run Guard, trading day, scheduled jobs, health
 dashboard/      client pages and components
 assets/         static files served at /static/assets/
 tests/          integration and smoke tests, fixtures, fakes

@@ -10,7 +10,10 @@ afternoon steps with it, and does whatever step is due and not yet done:
 - ten minutes before the close (3:50 p.m., or 12:50 on an early close): cancel the run's
   unfilled DAY orders and place stops for what filled;
 - thirty minutes after the close (4:30 p.m., or 1:30): reconcile with Alpaca and mark the
-  portfolio, once a day, then score the panel's votes whose windows have closed.
+  portfolio, once a day, then score the panel's votes whose windows have closed and simulate
+  the forward-test baselines;
+- before 9:45 a.m. on or after the date the operator set in FORWARD_TEST_ENV, start the
+  forward test (action/baselines.jac), once.
 
 Every step records that it ran, so a second firing does nothing. Nothing trades unless the
 team portfolio is in auto mode, but votes are scored in both modes. A daily bar is final
@@ -21,6 +24,7 @@ after tomorrow's close. What each tick did goes on the day's run, in
 import logging;
 import threading;
 import from datetime { date, datetime, time, timedelta }
+import from action.baselines { advance_baselines, baselines_of, forward_test_day, start_forward_test }
 import from action.broker { Broker }
 import from action.executor { MarketView, close_day_orders, decisions_of, execute_run, keep_stops, market_view, open_positions, sync_orders }
 import from action.reconcile { marks_of, reconcile }
@@ -125,16 +129,35 @@ def trading_step(portfolio: Portfolio, run: Run | None, day: str, local: datetim
     return lines;
 }
 
+"""Whether the evening steps (vote scoring, the baselines) still have work for `run`."""
+def evening_due(portfolio: Portfolio, run: Run) -> bool {
+    return not run.votes_scored_at or (not run.baselines_at and bool(baselines_of(portfolio)));
+}
+
+"""Start the forward test on a session morning once the operator has set its date."""
+def start_due(portfolio: Portfolio, now: datetime, day: str, deps: TradingDeps) -> list[str] {
+    wanted = forward_test_day();
+    if not wanted or wanted > day or baselines_of(portfolio) or deps.session(day) is None {
+        return [];
+    }
+    line = f"start: {start_forward_test(portfolio, deps.broker_client(), now, day)}";
+    LOG.info("%s %s", day, line);
+    return [line];
+}
+
 """Do whatever step of `portfolio`'s trading day is due at `now`, and return what it did."""
 def trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = TradingDeps()) -> list[str] {
     local = now.astimezone(NEW_YORK);
     day = local.date().isoformat();
-    if local.weekday() >= 5 or local.time() < EXECUTION_START {
+    if local.weekday() >= 5 {
         return [];
+    }
+    if local.time() < EXECUTION_START {
+        return start_due(portfolio, now, day, deps);
     }
     run = run_for(portfolio, day);
     trading = portfolio.mode == PortfolioMode.AUTO;
-    if not trading and (run is None or run.votes_scored_at) {
+    if not trading and (run is None or not evening_due(portfolio, run)) {
         return [];
     }
     session = deps.session(day);
@@ -150,6 +173,10 @@ def trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = Tradin
         found = score_votes(portfolio, now, deps.history or History());
         run.votes_scored_at = now.isoformat();
         lines.append(f"score: {found.line()}");
+    }
+    if local >= times.reconcile_at and run is not None and not run.baselines_at and baselines_of(portfolio) {
+        lines.extend(f"baseline: {line}" for line in advance_baselines(portfolio, now, deps.history or History()));
+        run.baselines_at = now.isoformat();
     }
     if lines and run is not None {
         stamp = local.strftime("%H:%M");
