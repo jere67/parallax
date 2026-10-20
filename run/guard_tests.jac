@@ -80,6 +80,8 @@ test "with no Orchestrator the run finishes in fixed order, marked fallback, and
     assert {t: d.action for (t, d) in decided.items()} == {"AAPL": TradeAction.BUY, "MSFT": TradeAction.BUY};
     covered = [run ->:Covers:->];
     assert all(len([c ->:Researched:->]) == 3 for c in covered);
+    # The market figures the Action layer sizes and gates with are stored with the run.
+    assert all(c.last_close == 200.0 and c.atr_14 == 4.0 and c.realized_vol_20 == 0.25 and c.volume_20 == 5e7 and c.sessions_to_earnings == 7 for c in covered);
     assert len([run ->:HasMacro:->]) == 1;
     assert len([portfolio ->:Counted:->]) == 1;
 }
@@ -255,4 +257,11 @@ test "with no request budget, nothing runs and every ticker still holds" {
     assert s.submitted;
     assert {t: a.forced_hold_reason for (t, a) in s.analyses.items()} == {"AAPL": "the run could not finish its research or panel", "MSFT": "the run could not finish its research or panel"};
     assert stubs.research_llm is not None and stubs.research_llm.seen_prompts == [];
+}
+
+test "closed positions are not holdings" {
+    portfolio = team();
+    portfolio +>:Holds():+> Position(ticker="XOM", sector="Energy", qty=10, avg_entry_price=100.0, opened_at="2026-10-01T15:00:00+00:00");
+    portfolio +>:Holds():+> Position(ticker="CVX", sector="Energy", qty=0, avg_entry_price=100.0, opened_at="2026-10-01T15:00:00+00:00", closed_at="2026-10-02T15:00:00+00:00");
+    assert list(holdings_of(portfolio)) == ["XOM"];
 }

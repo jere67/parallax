@@ -3,6 +3,8 @@
     root.shared
       └─ Portfolio
            ├─ Holds ──> Position ──OpenedBy──> Decision
+           │              └─ StoppedBy ──> Order (its protective stops)
+           ├─ Sent ──> Order (every order, for reconciliation)
            ├─ Counted ──> RequestCount(day)
            └─ Ran ──> Run(run_date)
                 ├─ HasMacro ──> MacroRecord
@@ -79,6 +81,9 @@ node Portfolio {
     has peak_equity: float = 0.0;
 }
 
+"""A position the team portfolio holds or held. `stop_price` is where its protective stop
+sits; `stops_placed` numbers its stop orders, so each gets a fresh client order ID. A closed
+position keeps its node, with `closed_at` set, so the dashboard can show its history."""
 node Position {
     has ticker: str,
         sector: str,
@@ -86,7 +91,14 @@ node Position {
         avg_entry_price: float,
         opened_at: str;
     has stop_price: float = 0.0,
-        stop_order_id: str = "";
+        stop_order_id: str = "",
+        stops_placed: int = 0,
+        closed_at: str = "",
+        exit_price: float = 0.0;
+
+    def open -> bool {
+        return not self.closed_at;
+    }
 }
 
 node Run {
@@ -95,6 +107,10 @@ node Run {
     has status: RunStatus = RunStatus.RUNNING,
         reduced_mode: bool = False,
         finished_at: str = "",
+        executed_at: str = "",
+        execution_note: str = "",
+        day_orders_closed_at: str = "",
+        reconciled_at: str = "",
         summary: str = "",
         model_versions: dict[str, str] = {},
         model_requests: int = 0,
@@ -116,6 +132,10 @@ node MacroRecord {
     has inputs: RegimeInputs | None = None;
 }
 
+"""One ticker in one run. The market figures at the end are what the Action layer sizes and
+gates with (TDD §8), stored with the run because execution runs as a later job: the last
+close, ATR(14), 20-day realized volatility, 20-day average volume in shares, and trading
+sessions to the next earnings release (None when none is known within the calendar)."""
 node Coverage {
     has ticker: str,
         sector: str,
@@ -123,7 +143,12 @@ node Coverage {
     has screen_score: float = 0.0,
         reason_note: str = "",
         fetch_errors: list[str] = [],
-        flag_reason: str = "";
+        flag_reason: str = "",
+        last_close: float = 0.0,
+        atr_14: float | None = None,
+        realized_vol_20: float | None = None,
+        volume_20: float | None = None,
+        sessions_to_earnings: int | None = None;
 }
 
 node ResearchRecord {
@@ -180,13 +205,25 @@ obj RuleResult {
         qty_after: int = 0;
 }
 
+"""The risk gate's ruling on one sized order (TDD §8, risk gate). `price` is the latest trade
+it was judged at, and `stop_distance` how far below the fill a buy's protective stop goes."""
 node RiskCheck {
     has outcome: RiskOutcome,
         approved_qty: int,
         checked_at: str;
-    has rules: list[RuleResult] = [];
+    has rules: list[RuleResult] = [],
+        ticker: str = "",
+        side: OrderSide | None = None,
+        purpose: OrderPurpose | None = None,
+        requested_qty: int = 0,
+        price: float = 0.0,
+        stop_distance: float = 0.0,
+        gate_version: str = "";
 }
 
+"""One order sent to Alpaca, or refused by it (`status` "rejected" with the reason).
+`filled_qty` and `filled_avg_price` are the cumulative fill Alpaca last reported; each
+increase adds a Fill."""
 node Order {
     has client_order_id: str,
         purpose: OrderPurpose,
@@ -199,7 +236,11 @@ node Order {
         limit_price: float = 0.0,
         stop_price: float = 0.0,
         status: str = "new",
-        reject_reason: str = "";
+        reject_reason: str = "",
+        ticker: str = "",
+        filled_qty: int = 0,
+        filled_avg_price: float = 0.0,
+        updated_at: str = "";
 }
 
 node Fill {
@@ -216,7 +257,9 @@ node InsightCard {
 }
 
 edge Holds: Portfolio --> Position {}
+edge Sent: Portfolio --> Order {}
 edge OpenedBy: Position --> Decision {}
+edge StoppedBy: Position --> Order {}
 edge Ran: Portfolio --> Run {}
 edge Counted: Portfolio --> RequestCount {}
 edge HasMacro: Run --> MacroRecord {}

@@ -128,6 +128,7 @@ test "the summary uses what the history allows" {
     assert summary.rs_spy_20 is not None and summary.rs_spy_60 is None and summary.rs_sector_20 is None;
     assert summary.range_52w_position is not None and 0 <= summary.range_52w_position <= 1;
     assert summary.dollar_volume_20 is not None and summary.dollar_volume_20 > 1e9;
+    assert summary.volume_20 is not None and abs(summary.volume_20 * summary.close - summary.dollar_volume_20) < 0.1 * summary.dollar_volume_20;
     assert summary.stamp.dataset == "alpaca.bars";
 }
 

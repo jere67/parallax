@@ -138,10 +138,14 @@ def claim_run(portfolio: Portfolio, run_day: str) -> Run | None {
     }
 }
 
-"""The portfolio's open positions by ticker, each with the time stop its opening decision set."""
+"""The portfolio's open positions by ticker, each with the time stop its opening decision set.
+Closed positions keep their nodes and are skipped."""
 def holdings_of(portfolio: Portfolio) -> dict[str, Holding] {
     found: dict[str, Holding] = {};
     for p in [portfolio ->:Holds:->[?:Position]] {
+        if not p.open() {
+            continue;
+        }
         opened = [p ->:OpenedBy:->[?:Decision]];
         found[p.ticker] = Holding(ticker=p.ticker, time_stop=opened[0].time_stop if opened else "");
     }
@@ -551,6 +555,7 @@ def record_run(portfolio: Portfolio, run: Run, s: RunSession, status: RunStatus)
     }
     for pick in s.collection.shortlist.picks {
         inputs = s.collection.inputs_for(pick.symbol);
+        stock = inputs.market.stock if inputs is not None else None;
         cov = public(run +>:Covers():+> Coverage(
             ticker=pick.symbol,
             sector=pick.sector,
@@ -558,7 +563,12 @@ def record_run(portfolio: Portfolio, run: Run, s: RunSession, status: RunStatus)
             screen_score=pick.score or 0.0,
             reason_note=pick.note,
             fetch_errors=inputs.fetch_errors if inputs is not None else [],
-            flag_reason=s.flags.get(pick.symbol, "")
+            flag_reason=s.flags.get(pick.symbol, ""),
+            last_close=stock.close if stock is not None else 0.0,
+            atr_14=stock.atr_14 if stock is not None else None,
+            realized_vol_20=stock.realized_vol_20 if stock is not None else None,
+            volume_20=stock.volume_20 if stock is not None else None,
+            sessions_to_earnings=inputs.news.sessions_until if inputs is not None else None
         ));
         for (r, question) in s.history.get(pick.symbol, []) {
             public(cov +>:Researched():+> ResearchRecord(ticker=r.ticker, domain=r.domain, as_of=finished, model=r.model, body=r.body, followup_question=question));

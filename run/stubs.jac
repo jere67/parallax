@@ -18,6 +18,7 @@ import from models.agents { Domain }
 import from models.research { Stamp }
 import from research.alpaca { MarketDay }
 import from research.briefs { Brief, FundamentalsInputs, MacroInputs, MarketInputs, NewsInputs }
+import from research.indicators { Technicals }
 import from research.screener { Pick, PickReason, Shortlist }
 import from run.research { Collection, PassConfig, TickerInputs }
 
@@ -52,10 +53,16 @@ def collection(symbols: list[str], held: list[str]) -> Collection {
         run_day=RUN_DAY,
         started_at="2026-10-16T11:30:00+00:00",
         shortlist=Shortlist(picks=picks, scores=[], excluded={}),
-        tickers=[TickerInputs(pick=p, market=MarketInputs(), fundamentals=FundamentalsInputs(), news=NewsInputs()) for p in picks],
+        tickers=[TickerInputs(pick=p, market=MarketInputs(stock=technicals(p.symbol)), fundamentals=FundamentalsInputs(), news=NewsInputs(sessions_until=7)) for p in picks],
         macro_inputs=MacroInputs(),
         sessions=SESSIONS
     );
+}
+
+"""Indicators for `symbol` as of the session before RUN_DAY: what the Action layer sizes and
+gates with."""
+def technicals(symbol: str) -> Technicals {
+    return Technicals(symbol=symbol, as_of="2026-10-15", bars=252, close=200.0, atr_14=4.0, realized_vol_20=0.25, volume_20=5e7, stamp=Stamp(source="alpaca_data", dataset="alpaca.bars", source_url="u", published_at="2026-10-15", fetched_at="2026-10-16"));
 }
 
 def calendar_day(day: str) -> MarketDay {
