@@ -5,6 +5,7 @@
            ├─ Holds ──> Position ──OpenedBy──> Decision
            │              └─ StoppedBy ──> Order (its protective stops)
            ├─ Sent ──> Order (every order, for reconciliation)
+           ├─ Marked ──> DailyMark(day) (the 4:30 p.m. mark and reconciliation)
            ├─ Counted ──> RequestCount(day)
            └─ Ran ──> Run(run_date)
                 ├─ HasMacro ──> MacroRecord
@@ -111,6 +112,7 @@ node Run {
         execution_note: str = "",
         day_orders_closed_at: str = "",
         reconciled_at: str = "",
+        action_log: list[str] = [],
         summary: str = "",
         model_versions: dict[str, str] = {},
         model_requests: int = 0,
@@ -243,6 +245,24 @@ node Order {
         updated_at: str = "";
 }
 
+"""The portfolio after one trading day's close (TDD §8, reconciliation): equity, cash, and
+positions as Alpaca reports them, the peak equity the drawdown breaker measures from, and
+anything reconciliation found wrong. `drift` lists positions whose shares differ from the
+record; `bypasses` lists orders not traced to a risk-gate approval or a position's stop,
+which must stay empty (TDD §13, risk-gate bypasses)."""
+node DailyMark {
+    has day: str,
+        equity: float,
+        cash: float,
+        positions_value: float,
+        peak_equity: float,
+        marked_at: str;
+    has drawdown: float = 0.0,
+        open_positions: int = 0,
+        drift: list[str] = [],
+        bypasses: list[str] = [];
+}
+
 node Fill {
     has qty: int,
         price: float,
@@ -258,6 +278,7 @@ node InsightCard {
 
 edge Holds: Portfolio --> Position {}
 edge Sent: Portfolio --> Order {}
+edge Marked: Portfolio --> DailyMark {}
 edge OpenedBy: Position --> Decision {}
 edge StoppedBy: Position --> Order {}
 edge Ran: Portfolio --> Run {}

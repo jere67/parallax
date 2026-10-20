@@ -4,12 +4,16 @@ The scheduler reads cron expressions in UTC with day 0 as Monday, so the 7:30 a.
 morning run is registered at both its EDT and EST offsets (11:30 and 12:30 UTC) and proceeds
 only when it is 7:30 in New York. The run claims its date before any work, so a second firing
 does nothing (TDD §4, idempotency). A static job runs as the system user, which reaches
-root.shared (checked by firing a probe job under `jac run`). The post-close job belongs to the
-Action phase (#29).
+root.shared (checked by firing a probe job under `jac run`).
+
+The trading job ticks every minute through the trading day's UTC hours at both offsets, and
+the tick decides from New York time and the market calendar which Action step is due
+(run/trading.jac). It trades only when the team portfolio is in auto mode.
 """
-import from datetime { datetime }
-import from run.guard { NEW_YORK }
+import from datetime { datetime, timezone }
+import from run.guard { NEW_YORK, team_portfolio }
 import from run.orchestration { morning_run }
+import from run.trading { team_trading_tick }
 
 # How late after 7:30 a.m. New York time a firing may start, in minutes; the scheduler can
 # fire a few seconds late, never 55 minutes late.
@@ -27,4 +31,11 @@ def morning_job {
     if morning_slot(datetime.now(NEW_YORK)) {
         morning_run();
     }
+}
+
+"""Fires every minute from 13:00 to 21:59 UTC on weekdays, which spans 9:45 a.m. to 4:30 p.m.
+in New York in daylight and standard time alike."""
+@schedule(trigger=ScheduleTrigger.STATIC, cron="* 13-21 * * 0-4")
+def trading_job {
+    team_trading_tick(team_portfolio(), datetime.now(timezone.utc));
 }

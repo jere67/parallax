@@ -358,10 +358,11 @@ obj FakeBroker {
     def _listed(params: dict[str, str]) -> list[FakeOrder] {
         status = params.get("status", "open");
         symbols = {s for s in params.get("symbols", "").split(",") if s};
+        after = params.get("after", "");
         found = [
             o
             for o in reversed(self.orders)
-            if (not symbols or o.symbol in symbols) and (status == "all" or (status == "open") == o.working())
+            if (not symbols or o.symbol in symbols) and (status == "all" or (status == "open") == o.working()) and (not after or o.submitted_at > after)
         ];
         return found[:int(params.get("limit", "500"))];
     }
