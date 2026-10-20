@@ -269,11 +269,45 @@ node Fill {
         filled_at: str;
 }
 
+"""One specialist's samples on a card: each sample's stance and confidence, and the mean
+signed score (stance / 2 x confidence) the consensus used."""
+obj SpecialistTally {
+    has specialist: str,
+        score: float;
+    has stances: list[str] = [],
+        confidences: list[float] = [];
+}
+
+"""A source a card links to: the claim it supports and where it was published."""
+obj SourceLink {
+    has label: str,
+        url: str;
+    has published: str = "",
+        domain: str = "";
+}
+
+"""A decision as a reader sees it (TDD §8, insight mode), rendered from the stored Decision,
+votes, consensus, and research with no model request. `note` says why a decision is a
+forced HOLD or a downgrade. Every card carries the disclaimer (TDD §9)."""
 node InsightCard {
     has ticker: str,
         action: TradeAction,
         conviction: float,
         published_at: str;
+    has run_date: str = "",
+        mode: str = "",
+        thesis: str = "",
+        risks: list[str] = [],
+        exit_condition: str = "",
+        time_stop: str = "",
+        score: float | None = None,
+        agreement: float | None = None,
+        ci_low: float | None = None,
+        ci_high: float | None = None,
+        specialists: list[SpecialistTally] = [],
+        sources: list[SourceLink] = [],
+        note: str = "",
+        disclaimer: str = "";
 }
 
 edge Holds: Portfolio --> Position {}
