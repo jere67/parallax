@@ -715,8 +715,9 @@ Every step rounds down to whole shares, and a property test checks over 3,000 ge
     - An exit or trim cancels the stop first, because an open stop reserves its shares, then sells and re-places a stop for any shares that remain.
 - **Stop expiry.** Alpaca cancels GTC orders 90 days after creation ([orders at Alpaca](https://docs.alpaca.markets/us/docs/orders-at-alpaca)), so the stop keeper, which holds exactly one stop for every open position at each poll, re-places any stop that expired; if the price is already below the stop, it sells with a marketable limit instead.
 - **Exits.** Time stops and thesis invalidations are checked each morning and become SELL decisions.
-- **Order-rule spike.** Before the Action phase, a week-1 spike on the paper account confirms the stop and add sequences above, and whether Alpaca's [one-triggers-other orders](https://docs.alpaca.markets/us/docs/orders-at-alpaca) can attach the stop to the entry instead.
-  Its first part, with the market closed, confirmed wash-trade protection and the reused-ID refusal, and found that a one-triggers-other entry is accepted but its stop leg is a DAY order, so the separate GTC stop stays ([findings](spikes/2026-10-20-alpaca-order-rules.md)); the part that needs fills runs during market hours.
+- **Order-rule spike.** A spike on the paper account, run on October 20 and 21, 2026, confirmed the stop, add, trim, and exit sequences above ([findings](spikes/2026-10-20-alpaca-order-rules.md)).
+  Alpaca refuses a buy beside a working stop as a wash trade and a sell of shares a stop reserves, so each sequence cancels the stop first; marketable limits filled in under a second; and a same-day sell is allowed.
+  A [one-triggers-other entry](https://docs.alpaca.markets/us/docs/orders-at-alpaca) is accepted, but its stop leg stays a DAY order after the fill, so the separate GTC stop stays.
 
 ### Insight mode
 
@@ -1119,7 +1120,7 @@ Each has a mitigation, and a cut line defines what to drop first if the team fal
 | Look-ahead bias in historical replays | Medium | Medium | Replay only dates after the model's training cutoff, with point-in-time data |
 | The Kubernetes cluster for `jac scale deploy` costs money or takes time to set up | Medium | High | Choose and test the hosting in week 1, including the single-VM option in the open questions; deploy the MVP before Pitch Week |
 | Alpaca order rules reject exits, adds, or stops (shares held by stops, wash-trade protection) | Medium | High | Stop placed after the entry fills; cancel the stop before an add or exit; whole-share sizing; week-1 order-rule spike (Section 8) |
-| Alpaca's margin rules limit same-day exits | Low | Medium | FINRA replaced the pattern-day-trader rule with intraday margin standards ([Regulatory Notice 26-10](https://www.finra.org/sites/default/files/2026-04/Regulatory-Notice-26-10.pdf), effective June 4, 2026), and Alpaca's docs say its $25,000 minimum is gone ([intraday margin rule](https://docs.alpaca.markets/us/docs/the-intraday-margin-rule)); the order-rule spike confirms the paper account behaves that way |
+| Alpaca's margin rules limit same-day exits | Low | Medium | FINRA replaced the pattern-day-trader rule with intraday margin standards ([Regulatory Notice 26-10](https://www.finra.org/sites/default/files/2026-04/Regulatory-Notice-26-10.pdf), effective June 4, 2026), and Alpaca's docs say its $25,000 minimum is gone ([intraday margin rule](https://docs.alpaca.markets/us/docs/the-intraday-margin-rule)); in the order-rule spike the paper account allowed three same-day round trips and reported no pattern-day-trader fields, though at $100,000 it was above the old minimum anyway |
 | The public app is down during Pitch or Launch Week | Low | High | Health checks, alerting, a rehearsed redeploy |
 
 ### Cut line if behind schedule
