@@ -129,7 +129,11 @@ test "cancel reports whether the order could still be canceled, and cancel_and_w
         placed = broker.submit(limit_buy("F", 1, "run-F-buy"));
         closed = broker.cancel_and_wait(placed.id);
         assert closed.status == "canceled" and not closed.working();
-        assert not broker.cancel(placed.id);
+        # Alpaca accepts a second cancel of a canceled order, and refuses one of a filled order.
+        assert broker.cancel(placed.id);
+        filled = broker.submit(limit_buy("F", 1, "run-F-buy-2"));
+        fake.fill(filled.id);
+        assert not broker.cancel(filled.id);
     } finally {
         fake.stop();
     }

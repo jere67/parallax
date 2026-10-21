@@ -8,8 +8,13 @@ open orders; it closes everything it opened before it ends:
     set -a && source .env && set +a
     TRADING_AGENT_RUN_ORDER_SPIKE=1 SPIKE_OUT=/tmp/order-spike.json jac run --no-takeover tests/spikes/order_rules_spike.jac
 
+With SPIKE_PART=closed it runs, while the market is closed, only the checks Alpaca makes when
+an order is submitted: a reused client order ID, an opposite-side order while a buy is
+working, a stop with no shares, and a one-triggers-other entry. Nothing can fill, and it
+cancels every order it placed before it ends.
+
 Every step records what was sent and what Alpaca answered. Findings:
-docs/spikes/2026-10-21-alpaca-order-rules.md.
+docs/spikes/2026-10-20-alpaca-order-rules.md.
 """
 import json;
 import os;
@@ -171,6 +176,47 @@ obj Spike {
         self.note(f"{name}-check", "Is the account flat on the spike's symbol?", f"open orders: {len(self.broker.orders('open', [SYMBOL]))}; positions: {list(self.broker.positions())}");
     }
 
+    """The checks Alpaca makes at submission, on a flat account while the market is closed, so
+    nothing fills. Every order placed is canceled before it returns."""
+    def run_closed {
+        account = self.broker.account();
+        if self.broker.clock().is_open {
+            self.note("preflight", "Is the market closed?", "open; run the full spike instead");
+            return;
+        }
+        if self.broker.positions() or self.broker.orders("open") {
+            self.note("preflight", "Is the account untouched?", "the account has positions or open orders; the spike does not touch an account in use");
+            return;
+        }
+        self.note("preflight", "Account and market", f"paper account {account.number[:4]}..., equity {account.equity:.2f}, market closed, last trade {self.price():.2f}");
+        try {
+            queued = self.place("closed-entry", "Q7: is a DAY limit buy accepted while the market is closed, and in what status?", self.buy(1, "closed-entry"));
+            step = Step(name="closed-reuse-id", question="Q5: what does a reused client_order_id return while the first order is queued?");
+            try {
+                self.broker._object("POST", "/v2/orders", payload=self.buy(1, "closed-entry").body(), retry=False);
+                step.note = "accepted: a reused ID was NOT refused";
+            } except BrokerError as e {
+                (step.status, step.message) = (e.status, e.detail);
+            }
+            found = self.broker.order_by_client_id(self.cid("closed-entry"));
+            step.orders = [snap(found)] if found is not None else [];
+            step.position = self.position();
+            self.steps.append(step);
+            self.save();
+            self.place("closed-opposite-sell", "Q2: is a sell refused while a buy on the same stock is working (wash-trade protection)?", self.sell(1, "closed-opposite-sell"));
+            self.place("closed-stop-no-shares", "Q3: is a GTC stop sell refused when the account holds no shares?", self.stop(1, "closed-stop-no-shares"));
+            oto = OrderRequest(symbol=SYMBOL, side="buy", qty=1, order_type="limit", time_in_force="day", client_order_id=self.cid("closed-oto"), limit_price=round(self.price() * (1 + OFFSET), 2), stop_loss_price=round(self.price() * 0.9, 2));
+            self.place("closed-oto", "Q4: is a one-triggers-other entry with a stop leg accepted, and with what time in force?", oto);
+            canceled = self.cancel("closed-cancel", "Q8: how fast does a queued order cancel?", queued);
+            if canceled is not None {
+                self.note("cancel-twice", "What does canceling a closed order return?", f"cancel accepted: {self.broker.cancel(canceled.id)}");
+            }
+        } finally {
+            self.flatten("closed-final");
+        }
+        self.note("account-after", "Account after the spike", f"equity {self.broker.account().equity:.2f}");
+    }
+
     def run {
         account = self.broker.account();
         if not self.broker.clock().is_open {
@@ -263,7 +309,11 @@ with entry {
         now = datetime.now(timezone.utc);
         spike = Spike(broker=Broker(), tag=now.strftime("%Y%m%d%H%M%S"), out=Path(os.environ.get("SPIKE_OUT", "order-spike.json")), started=now.isoformat());
         try {
-            spike.run();
+            if os.environ.get("SPIKE_PART") == "closed" {
+                spike.run_closed();
+            } else {
+                spike.run();
+            }
         } except Exception as e {
             spike.note("error", "The spike stopped", f"{type(e).__name__}: {e}");
             spike.flatten("cleanup");

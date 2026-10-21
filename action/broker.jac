@@ -311,8 +311,9 @@ obj Broker {
         raise BrokerError(path="/v2/orders", detail="unreachable");
     }
 
-    """Ask Alpaca to cancel an order. True when the request was accepted; False when the order
-    can no longer be canceled (it filled or was already canceled), which Alpaca answers 422."""
+    """Ask Alpaca to cancel an order. True when the request was accepted, which includes an
+    order already canceled; False when the order can no longer be canceled (it filled), which
+    Alpaca answers 422."""
     def cancel(order_id: str) -> bool {
         try {
             self._request("DELETE", f"/v2/orders/{order_id}");

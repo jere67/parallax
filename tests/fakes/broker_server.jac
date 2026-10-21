@@ -3,7 +3,7 @@ tests (TDD §14, testing).
 
 Point ALPACA_BASE_URL and ALPACA_DATA_URL at `start()`'s URL. The fake keeps an account,
 positions, and orders, and enforces the order rules the order-rule spike observed on the
-paper account (docs/spikes/2026-10-21-alpaca-order-rules.md):
+paper account (docs/spikes/2026-10-20-alpaca-order-rules.md):
 
 - a new order is rejected while an order on the opposite side of the same symbol is working
   (wash-trade protection), with Alpaca's 403;
@@ -11,7 +11,12 @@ paper account (docs/spikes/2026-10-21-alpaca-order-rules.md):
   included (403 "insufficient qty available");
 - a reused client order ID is refused with 422, and `GET /v2/orders:by_client_order_id`
   finds the first order;
-- a canceled or filled order cannot be canceled again (422).
+- canceling an order that is already canceled succeeds again, while a filled order cannot be
+  canceled (422);
+- while the market is closed, a new order waits as "accepted".
+
+One rule differs on purpose: Alpaca accepts a one-triggers-other entry, but its stop leg is a
+DAY order, so the executor never sends one, and the fake refuses order classes with 422.
 
 Nothing fills on its own unless `auto_fill` is set, which fills a marketable limit or market
 order in full when it arrives: a test fills orders with `fill`, moves prices with `set_price`
@@ -259,6 +264,9 @@ obj FakeBroker {
                 if found is None {
                     return (404, _error("order not found"));
                 }
+                if found.status == "canceled" {
+                    return (204, "");
+                }
                 if not found.working() {
                     return (422, _error(f"order is already in \"{found.status}\" state"));
                 }
@@ -291,7 +299,7 @@ obj FakeBroker {
         cid = str(payload.get("client_order_id") or uuid.uuid4());
         kind = str(payload.get("type", ""));
         if "order_class" in payload {
-            return self._reject(422, f"{symbol}: the fake broker does not support order classes");
+            return self._reject(422, f"{symbol}: the fake broker does not model order classes");
         }
         if any(o.client_order_id == cid for o in self.orders) {
             return self._reject(422, "client_order_id must be unique");
@@ -332,7 +340,7 @@ obj FakeBroker {
             submitted_at=self.now,
             limit_price=limit,
             stop_price=stop,
-            status="accepted" if kind == "stop" else "new"
+            status="accepted" if kind == "stop" or not self.is_open else "new"
         );
         self.orders.append(o);
         last = self.prices.get(symbol);
