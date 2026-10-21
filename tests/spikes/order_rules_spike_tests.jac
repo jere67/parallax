@@ -25,7 +25,7 @@ test "the spike runs every step on a fake account and leaves it flat" {
         steps = {s.name: s for s in spike.steps};
         assert steps["entry"].orders[0]["status"] == "filled";
         assert steps["reuse-id"].status == 422;
-        assert steps["stop-after-fill"].status == 200;
+        assert steps["stop-after-fill"].status == 200 and steps["stop-after-fill"].orders[0]["status"] == "pending_new";
         assert steps["add-with-stop"].status == 403 and "wash trade" in steps["add-with-stop"].message;
         assert steps["exit-with-stop"].status == 403 and "insufficient qty" in steps["exit-with-stop"].message;
         assert steps["add"].orders[0]["status"] == "filled" and steps["add-restop"].sent["qty"] == "3";

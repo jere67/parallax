@@ -13,7 +13,8 @@ paper account (docs/spikes/2026-10-20-alpaca-order-rules.md):
   finds the first order;
 - canceling an order that is already canceled succeeds again, while a filled order cannot be
   canceled (422);
-- while the market is closed, a new order waits as "accepted".
+- while the market is closed, a new order waits as "accepted";
+- while it is open, a new stop reads "pending_new" until it triggers.
 
 One rule differs on purpose: Alpaca accepts a one-triggers-other entry, but its stop leg is a
 DAY order, so the executor never sends one, and the fake refuses order classes with 422.
@@ -31,7 +32,7 @@ import from datetime { date, datetime, timedelta, timezone }
 import from http.server { BaseHTTPRequestHandler, ThreadingHTTPServer }
 import from urllib.parse { parse_qsl, urlsplit }
 
-glob WORKING: set[str] = {"new", "accepted", "partially_filled", "pending_cancel", "held"};
+glob WORKING: set[str] = {"new", "accepted", "pending_new", "partially_filled", "pending_cancel", "held"};
 
 obj FakeOrder {
     has id: str,
@@ -340,7 +341,7 @@ obj FakeBroker {
             submitted_at=self.now,
             limit_price=limit,
             stop_price=stop,
-            status="accepted" if kind == "stop" or not self.is_open else "new"
+            status="accepted" if not self.is_open else "pending_new" if kind == "stop" else "new"
         );
         self.orders.append(o);
         last = self.prices.get(symbol);
