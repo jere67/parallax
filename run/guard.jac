@@ -15,6 +15,7 @@ import time;
 import from concurrent.futures { Future }
 import from datetime { date, datetime }
 import from zoneinfo { ZoneInfo }
+import from action.insights { publish_card }
 import from agents.models { FALLBACK_MODEL, FREE_REQUESTS_PER_DAY, LIMITER, PRIMARY_MODEL, provider_requests_left }
 import from agents.research { MacroResult, ResearchResult, macro_research, research }
 import from analysis.consensus { CONSENSUS_VERSION, ConsensusConfig }
@@ -138,10 +139,14 @@ def claim_run(portfolio: Portfolio, run_day: str) -> Run | None {
     }
 }
 
-"""The portfolio's open positions by ticker, each with the time stop its opening decision set."""
+"""The portfolio's open positions by ticker, each with the time stop its opening decision set.
+Closed positions keep their nodes and are skipped."""
 def holdings_of(portfolio: Portfolio) -> dict[str, Holding] {
     found: dict[str, Holding] = {};
     for p in [portfolio ->:Holds:->[?:Position]] {
+        if not p.open() {
+            continue;
+        }
         opened = [p ->:OpenedBy:->[?:Decision]];
         found[p.ticker] = Holding(ticker=p.ticker, time_stop=opened[0].time_stop if opened else "");
     }
@@ -505,7 +510,7 @@ def daily_run(
         collection = collect_pass(run_day, sorted(holdings), pass_config);
     } except Exception as e {
         reason = f"collection failed: {type(e).__name__}: {str(e)[:300]}";
-        hold_positions(run, holdings, reason);
+        hold_positions(run, holdings, reason, portfolio.mode.value);
         _close(run, RunStatus.FAILED, f"Failed: {reason}. Every open position holds.");
         return RunOutcome(run_day=run_day, status=RunStatus.FAILED, run=run, preflight=checked, note=reason);
     }
@@ -551,6 +556,7 @@ def record_run(portfolio: Portfolio, run: Run, s: RunSession, status: RunStatus)
     }
     for pick in s.collection.shortlist.picks {
         inputs = s.collection.inputs_for(pick.symbol);
+        stock = inputs.market.stock if inputs is not None else None;
         cov = public(run +>:Covers():+> Coverage(
             ticker=pick.symbol,
             sector=pick.sector,
@@ -558,12 +564,18 @@ def record_run(portfolio: Portfolio, run: Run, s: RunSession, status: RunStatus)
             screen_score=pick.score or 0.0,
             reason_note=pick.note,
             fetch_errors=inputs.fetch_errors if inputs is not None else [],
-            flag_reason=s.flags.get(pick.symbol, "")
+            flag_reason=s.flags.get(pick.symbol, ""),
+            last_close=stock.close if stock is not None else 0.0,
+            atr_14=stock.atr_14 if stock is not None else None,
+            realized_vol_20=stock.realized_vol_20 if stock is not None else None,
+            volume_20=stock.volume_20 if stock is not None else None,
+            sessions_to_earnings=inputs.news.sessions_until if inputs is not None else None
         ));
         for (r, question) in s.history.get(pick.symbol, []) {
             public(cov +>:Researched():+> ResearchRecord(ticker=r.ticker, domain=r.domain, as_of=finished, model=r.model, body=r.body, followup_question=question));
         }
         record_analysis(cov, s.analyses[pick.symbol]);
+        publish_card(cov, s.run_day, portfolio.mode.value, finished);
     }
     run.model_versions = {"primary": PRIMARY_MODEL, "fallback": FALLBACK_MODEL, "sources": SOURCES_VERSION, "screen": s.collection.shortlist.version, "consensus": CONSENSUS_VERSION};
     run.model_requests = s.requests_used();
@@ -573,10 +585,11 @@ def record_run(portfolio: Portfolio, run: Run, s: RunSession, status: RunStatus)
 
 """Decide HOLD for every open position when the run cannot research, so none is left without
 a decision (FR-01)."""
-def hold_positions(run: Run, holdings: dict[str, Holding], reason: str) {
+def hold_positions(run: Run, holdings: dict[str, Holding], reason: str, mode: str = "") {
     for ticker in sorted(holdings) {
         cov = public(run +>:Covers():+> Coverage(ticker=ticker, sector="", reason=CoverageReason.HELD, reason_note="open position"));
         public(cov +>:Decided():+> Decision(ticker=ticker, action=TradeAction.HOLD, conviction=0.0, thesis=f"No panel decision: {reason}.", forced_hold_reason=reason));
+        publish_card(cov, run.run_date, mode, utc_now().isoformat());
     }
 }
 

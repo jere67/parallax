@@ -653,6 +653,10 @@ If the Arbiter cannot rule, a BUY becomes NO ACTION and an ADD becomes HOLD, sin
 ### Scoring and calibration
 
 After each close, every vote whose horizon has elapsed is scored against the ticker's excess return.
+A vote made on run date D with a horizon of H trading days is scored from the close of the last session before D, the last price the panel could know, to the close of the H-th session counting D (GAP-14, decided October 20, 2026).
+Its excess return is the stock's return over that window minus SPY's over the same sessions.
+A BUY-side or SELL-side vote is a hit when its sign matches the excess return's; a HOLD vote keeps its excess return but is never a hit or a miss.
+A daily bar is final only in the evening, so a window that ends today is scored after tomorrow's close; a vote missing either close is marked scored with no excess return and is never retried (`analysis/scoring.jac`).
 The dashboard shows each specialist's hit rate and calibration (does 0.8 confidence win about 80% of the time?), which makes the ensemble's behavior inspectable.
 
 ## 8. Action Agent: sizing, risk gate, execution, insights
@@ -669,7 +673,8 @@ w_i = \min\!\left(w_{\max},\; \lambda \cdot \frac{|C_i| \cdot A_i}{\sigma_i / \b
 $$
 
 Here σ is the stock's 20-day realized volatility, σ̄ is the shortlist's median, λ is a scaling constant (starting at 0.08), and w\_max is the per-position cap.
-Weights are then scaled down together if the total would exceed the gross exposure limit.
+A BUY or ADD buys only the shares between the current holding and the target; a HOLD keeps its exact shares, a TRIM sells half, and a SELL sells all.
+If the total would exceed the gross exposure limit, only the buys are scaled down, so making room never sells a held stock.
 Quantities are rounded down to whole shares, because each entry carries a GTC stop and Alpaca accepts fractional orders only with time in force DAY ([fractional trading](https://docs.alpaca.markets/us/docs/fractional-trading)).
 The MVP is long only: SELL means exit or trim, never short.
 
@@ -683,35 +688,42 @@ The MVP is long only: SELL means exit or trim, never short.
 | New positions per day | 3 | Keep the highest-conviction 3 |
 | Daily turnover | 25% of portfolio value | Scale down, exits first |
 | Drawdown breaker | Halt new buys after a 10% drawdown from peak | Exits and stops still run |
-| Regime filter | If SPY is below its 200-day average and its 20-day realized volatility, annualized, is above 30%, gross exposure is capped at 50% | Scale buys down |
+| Regime filter | If SPY is below its 200-day average and its 20-day realized volatility, annualized, is above 30%, gross exposure is capped at 50%; if either figure is missing, the cap applies too | Scale buys down |
 | Earnings blackout | No new entry within 2 trading days before earnings | Reject the entry; log it as insight only |
 | Liquidity | Order no larger than 1% of 20-day average daily volume | Resize down |
 | Instrument checks | Active, tradable, not halted, price above $5 | Reject |
 | Protective stop | Every entry gets a stop at entry price minus 2 × ATR(14) | Placed as a GTC stop order once the entry fills (see Execution) |
 
 The gate records every approval, resize, and rejection with the rule that triggered it, and the dashboard shows them next to the decision.
+It checks sells first and never blocks one unless the stock cannot trade, then applies the rules to buys in this order: instrument checks, earnings blackout, drawdown breaker, protective stop (a buy with no ATR is rejected), per-position cap, liquidity, new positions per day (by conviction), sector cap (in conviction order), gross exposure, and daily turnover (`action/gate.jac`).
+Every step rounds down to whole shares, and a property test checks over 3,000 generated books that no approved set of orders breaks a cap.
 
 ### Execution on Alpaca
 
 - **Environment.** Paper trading only ([`paper-api.alpaca.markets`](https://docs.alpaca.markets/us/docs/paper-trading)); live endpoints are disabled in configuration and rejected in code.
 - **Order type.** Marketable limit orders at the latest trade price ±0.3%, time in force DAY, submitted in the 9:45 a.m. window; on the free plan the latest trade comes from the IEX feed ([latest trades](https://docs.alpaca.markets/us/reference/stocklatesttrades-1)).
   Unfilled orders are canceled at 3:50 p.m. and re-evaluated the next morning; a DAY order Alpaca still holds after the closing auction is canceled automatically ([orders at Alpaca](https://docs.alpaca.markets/us/docs/orders-at-alpaca)).
-- **Idempotency.** `client_order_id` = run date + ticker + action, plus a suffix for stop re-placements, so retries never duplicate orders.
+- **Idempotency.** `client_order_id` = run date + ticker + purpose (entry, add, exit, trim), and a stop's ID is the ticker, the position's opening time, and a stop number, so retries never duplicate orders.
   Alpaca rejects a reused ID with a 422 while the first order is open ([common errors](https://alpaca.markets/learn/how-to-fix-common-trading-api-errors-at-alpaca)), so before resubmitting, the executor looks the ID up with [`GET /v2/orders:by_client_order_id`](https://docs.alpaca.markets/us/reference/getorderbyclientorderid).
-- **Reconciliation.** A scheduled interval job polls order status from 9:45 to 10:00 a.m. and again at 3:50 p.m. to record fills; the 4:30 p.m. job reconciles positions against Alpaca's [`/v2/positions`](https://docs.alpaca.markets/us/reference/getallopenpositions) and flags any drift.
+- **Reconciliation.** One scheduled tick a minute runs the trading day (`run/trading.jac`): it executes the morning's decisions from 9:45 a.m., polls fills and keeps stops every minute until 10:00 and every five minutes after, cancels unfilled DAY orders ten minutes before the close, and reconciles positions against Alpaca's [`/v2/positions`](https://docs.alpaca.markets/us/reference/getallopenpositions) thirty minutes after it, flagging any drift; early closes come from the market calendar.
+  Reconciliation also lists every order not traced to a risk-gate approval or a position's stop, which must stay empty, and writes the day's mark: equity, cash, peak, and drawdown.
+  `TRADING_AGENT_DISABLE_ORDERS=1` stops every order while the gate still records its checks.
   Alpaca offers a [`trade_updates` stream](https://docs.alpaca.markets/us/docs/websocket-streaming), but the Jac docs describe no server-startup hook for a long-lived client connection, so the design polls instead.
 - **Stops and adds.** Alpaca's wash-trade protection always rejects a new order whose opposite side is already open ([user protection](https://docs.alpaca.markets/us/docs/user-protection)), which shapes three rules:
     - The stop is placed only after the entry buy fills, and a partial fill gets its stop after the 3:50 p.m. cancel ([paper trading fills partially](https://docs.alpaca.markets/us/docs/paper-trading) about 10% of the time).
     - Adding to a held position first cancels its stop sell, then buys, then re-places the stop.
     - An exit or trim cancels the stop first, because an open stop reserves its shares, then sells and re-places a stop for any shares that remain.
-- **Stop expiry.** Alpaca cancels GTC orders 90 days after creation ([orders at Alpaca](https://docs.alpaca.markets/us/docs/orders-at-alpaca)), so the morning run re-places any stop that expired.
+- **Stop expiry.** Alpaca cancels GTC orders 90 days after creation ([orders at Alpaca](https://docs.alpaca.markets/us/docs/orders-at-alpaca)), so the stop keeper, which holds exactly one stop for every open position at each poll, re-places any stop that expired; if the price is already below the stop, it sells with a marketable limit instead.
 - **Exits.** Time stops and thesis invalidations are checked each morning and become SELL decisions.
-- **Order-rule spike.** Before the Action phase, a week-1 spike on the paper account confirms the stop and add sequences above, and whether Alpaca's [one-triggers-other orders](https://docs.alpaca.markets/us/docs/orders-at-alpaca) can attach the stop to the entry instead.
+- **Order-rule spike.** A spike on the paper account, run on October 20 and 21, 2026, confirmed the stop, add, trim, and exit sequences above ([findings](spikes/2026-10-20-alpaca-order-rules.md)).
+  Alpaca refuses a buy beside a working stop as a wash trade and a sell of shares a stop reserves, so each sequence cancels the stop first; marketable limits filled in under a second; and a same-day sell is allowed.
+  A [one-triggers-other entry](https://docs.alpaca.markets/us/docs/orders-at-alpaca) is accepted, but its stop leg stays a DAY order after the fill, so the separate GTC stop stays.
 
 ### Insight mode
 
-In insight mode the same decision becomes an insight card instead of an order: ticker, action, conviction, the specialist vote breakdown, the Arbiter's thesis, the two key risks, the exit condition, and linked sources.
-The card is rendered from the stored `Decision`, so it makes no extra model request.
+In insight mode the same decision becomes an insight card instead of an order: ticker, action, conviction, the specialist vote breakdown, the consensus and its interval, the Arbiter's thesis, the two key risks, the exit condition and time stop, linked sources, and the disclaimer.
+The card is rendered from the stored `Decision`, votes, consensus, and research, so it makes no extra model request.
+Every run publishes a card for each covered ticker in both modes; in auto mode it sits beside the orders (`action/insights.jac`).
 
 ### Modes by portfolio
 
@@ -934,6 +946,16 @@ Three portfolios start on the same day with the same starting balance, run on th
 
 A single-agent baseline with the same tools is a stretch goal (Section 16).
 
+The two baselines are simulated from daily bars (`action/baselines.jac`):
+
+- **Equal-weight shortlist.** Every stock the screen shortlists is a BUY at conviction 1 (an ADD when held), through the same sizing and risk gate.
+  Orders fill at the session's open, a buy's stop fires when a session's low reaches it, and a position is sold at the open of the session its time stop reaches, ten sessions after the buy, unless the screen picks it again.
+- **SPY buy-and-hold.** The whole balance buys SPY at the first open and holds.
+  It stays outside the gate, since a fully invested index is the benchmark, not a strategy.
+
+Both mark at each close, one session behind the team portfolio, because a daily bar is final only in the evening.
+The forward test starts on the morning of the date set in `TRADING_AGENT_FORWARD_TEST_START`, only from a flat paper account: its equity becomes the starting balance of all three portfolios, and the team portfolio switches to auto mode (GAP-09).
+
 ### Metrics
 
 | Metric | Definition | Target for the full system |
@@ -1018,6 +1040,7 @@ The forward test starts as soon as the Action agent works, which gives about sev
    - Exit: a full dry run produces valid decisions for every covered ticker within the request budget; fallback mode passes its drill.
 4. **Action (Oct 21–30).** Sizing, risk gate, executor, reconciliation job, insight cards.
    - Exit: the team portfolio trades on Alpaca paper for three consecutive days with zero gate bypasses.
+     A simulated three-day run against a fake broker passed first ([action exit run](runs/2026-10-20-action-exit-run.md)); the live run waits for the team's go-ahead and hosting.
 5. **Dashboard MVP and first deploy (Oct 26–Nov 1).** Portfolio, Today, and Decision detail pages, public and mobile-friendly, deployed with `jac scale deploy`.
    - Exit: classmates can open the public link and follow a trade from order back to evidence.
 6. **Launch features (Nov 3–15).** Sign-in, on-demand reports, the Specialists page, landing page, and demo video.
@@ -1097,7 +1120,7 @@ Each has a mitigation, and a cut line defines what to drop first if the team fal
 | Look-ahead bias in historical replays | Medium | Medium | Replay only dates after the model's training cutoff, with point-in-time data |
 | The Kubernetes cluster for `jac scale deploy` costs money or takes time to set up | Medium | High | Choose and test the hosting in week 1, including the single-VM option in the open questions; deploy the MVP before Pitch Week |
 | Alpaca order rules reject exits, adds, or stops (shares held by stops, wash-trade protection) | Medium | High | Stop placed after the entry fills; cancel the stop before an add or exit; whole-share sizing; week-1 order-rule spike (Section 8) |
-| Alpaca's margin rules limit same-day exits | Low | Medium | FINRA replaced the pattern-day-trader rule with intraday margin standards ([Regulatory Notice 26-10](https://www.finra.org/sites/default/files/2026-04/Regulatory-Notice-26-10.pdf), effective June 4, 2026), and Alpaca's docs say its $25,000 minimum is gone ([intraday margin rule](https://docs.alpaca.markets/us/docs/the-intraday-margin-rule)); the order-rule spike confirms the paper account behaves that way |
+| Alpaca's margin rules limit same-day exits | Low | Medium | FINRA replaced the pattern-day-trader rule with intraday margin standards ([Regulatory Notice 26-10](https://www.finra.org/sites/default/files/2026-04/Regulatory-Notice-26-10.pdf), effective June 4, 2026), and Alpaca's docs say its $25,000 minimum is gone ([intraday margin rule](https://docs.alpaca.markets/us/docs/the-intraday-margin-rule)); in the order-rule spike the paper account allowed three same-day round trips and reported no pattern-day-trader fields, though at $100,000 it was above the old minimum anyway |
 | The public app is down during Pitch or Launch Week | Low | High | Health checks, alerting, a rehearsed redeploy |
 
 ### Cut line if behind schedule

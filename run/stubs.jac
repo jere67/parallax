@@ -18,6 +18,7 @@ import from models.agents { Domain }
 import from models.research { Stamp }
 import from research.alpaca { MarketDay }
 import from research.briefs { Brief, FundamentalsInputs, MacroInputs, MarketInputs, NewsInputs }
+import from research.indicators { Technicals }
 import from research.screener { Pick, PickReason, Shortlist }
 import from run.research { Collection, PassConfig, TickerInputs }
 
@@ -45,17 +46,23 @@ def stub_macro_brief(as_of: str, _inputs: MacroInputs) -> Brief {
     return brief("MARKET", Domain.MACRO, as_of);
 }
 
-def collection(symbols: list[str], held: list[str]) -> Collection {
+def collection(symbols: list[str], held: list[str], run_day: str = RUN_DAY) -> Collection {
     picks = [Pick(symbol=s, sector="Information Technology", reason=PickReason.SCORE, score=1.0) for s in symbols];
     picks.extend(Pick(symbol=s, sector="Energy", reason=PickReason.OPEN_POSITION, note="open position") for s in held if s not in symbols);
     return Collection(
-        run_day=RUN_DAY,
-        started_at="2026-10-16T11:30:00+00:00",
+        run_day=run_day,
+        started_at=f"{run_day}T11:30:00+00:00",
         shortlist=Shortlist(picks=picks, scores=[], excluded={}),
-        tickers=[TickerInputs(pick=p, market=MarketInputs(), fundamentals=FundamentalsInputs(), news=NewsInputs()) for p in picks],
+        tickers=[TickerInputs(pick=p, market=MarketInputs(stock=technicals(p.symbol)), fundamentals=FundamentalsInputs(), news=NewsInputs(sessions_until=7)) for p in picks],
         macro_inputs=MacroInputs(),
         sessions=SESSIONS
     );
+}
+
+"""Indicators for `symbol` as of the session before RUN_DAY: what the Action layer sizes and
+gates with."""
+def technicals(symbol: str) -> Technicals {
+    return Technicals(symbol=symbol, as_of="2026-10-15", bars=252, close=200.0, atr_14=4.0, realized_vol_20=0.25, volume_20=5e7, stamp=Stamp(source="alpaca_data", dataset="alpaca.bars", source_url="u", published_at="2026-10-15", fetched_at="2026-10-16"));
 }
 
 def calendar_day(day: str) -> MarketDay {
@@ -66,6 +73,7 @@ def calendar_day(day: str) -> MarketDay {
 by `restore`."""
 obj Stubs {
     has symbols: list[str] = ["AAPL", "MSFT"],
+        vote: str = VOTE_JSON,
         provider_left: int | None = 900,
         trading: bool = True,
         collect_error: str = "",
@@ -77,16 +85,16 @@ obj Stubs {
 
     def install {
         self.research_llm = MockLLM(model_name="mock-research", config={"outputs": [MockRawResponse(content=REPORT_JSON)] * 40});
-        self.specialist_llm = MockLLM(model_name="mock-specialist", config={"outputs": [MockRawResponse(content=VOTE_JSON)] * 200});
+        self.specialist_llm = MockLLM(model_name="mock-specialist", config={"outputs": [MockRawResponse(content=self.vote)] * 200});
         self.arbiter_llm = MockLLM(model_name="mock-arbiter", config={"outputs": [MockRawResponse(content=REVIEW_JSON)] * 10});
         macro_llm = MockLLM(model_name="mock-macro", config={"outputs": [MockRawResponse(content=MACRO_JSON)]});
         stubs = self;
-        def collect(_run_day: str, open_positions: list[str], config: PassConfig) -> Collection {
+        def collect(run_day: str, open_positions: list[str], config: PassConfig) -> Collection {
             stubs.shortlist_sizes.append(config.screen.shortlist_size);
             if stubs.collect_error {
                 raise RuntimeError(stubs.collect_error);
             }
-            return collection(stubs.symbols, open_positions);
+            return collection(stubs.symbols, open_positions, run_day);
         }
         def calendar(start: str, _end: str, _budget: object) -> list[MarketDay] {
             return [calendar_day(start)] if stubs.trading else [];

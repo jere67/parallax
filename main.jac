@@ -5,7 +5,7 @@ Scheduled jobs are imported here too, so the server registers them at startup.
 """
 import from models.health { Health }
 import from run.health { health }
-import from run.jobs { morning_job }
+import from run.jobs { morning_job, trading_job }
 
 import from .dashboard.HomePage { HomePage }
 

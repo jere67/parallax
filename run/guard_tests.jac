@@ -10,10 +10,12 @@ import from models.graph {
     Decision,
     HasMacro,
     Holds,
+    InsightCard,
     OpenedBy,
     Portfolio,
     PortfolioMode,
     Position,
+    Published,
     Ran,
     Researched,
     Run,
@@ -80,6 +82,11 @@ test "with no Orchestrator the run finishes in fixed order, marked fallback, and
     assert {t: d.action for (t, d) in decided.items()} == {"AAPL": TradeAction.BUY, "MSFT": TradeAction.BUY};
     covered = [run ->:Covers:->];
     assert all(len([c ->:Researched:->]) == 3 for c in covered);
+    # The market figures the Action layer sizes and gates with are stored with the run.
+    assert all(c.last_close == 200.0 and c.atr_14 == 4.0 and c.realized_vol_20 == 0.25 and c.volume_20 == 5e7 and c.sessions_to_earnings == 7 for c in covered);
+    # Each covered ticker gets one insight card, rendered from what the run stored.
+    cards = [card for c in covered for card in [c ->:Published:->[?:InsightCard]]];
+    assert len(cards) == 2 and all(card.action == TradeAction.BUY and card.mode == "insight" and card.disclaimer and card.specialists for card in cards);
     assert len([run ->:HasMacro:->]) == 1;
     assert len([portfolio ->:Counted:->]) == 1;
 }
@@ -131,6 +138,8 @@ test "a failed collection fails the run and holds every open position" {
     decided = decisions_of(outcome.run);
     assert list(decided) == ["XOM"] and decided["XOM"].action == TradeAction.HOLD;
     assert decided["XOM"].forced_hold_reason == "collection failed: RuntimeError: Wikipedia is down";
+    held_cards = [card for c in [outcome.run ->:Covers:->] for card in [c ->:Published:->[?:InsightCard]]];
+    assert len(held_cards) == 1 and held_cards[0].note.startswith("collection failed");
 }
 
 test "preflight takes the lower of the app's count and OpenRouter's, and runs reduced under 500" {
@@ -255,4 +264,11 @@ test "with no request budget, nothing runs and every ticker still holds" {
     assert s.submitted;
     assert {t: a.forced_hold_reason for (t, a) in s.analyses.items()} == {"AAPL": "the run could not finish its research or panel", "MSFT": "the run could not finish its research or panel"};
     assert stubs.research_llm is not None and stubs.research_llm.seen_prompts == [];
+}
+
+test "closed positions are not holdings" {
+    portfolio = team();
+    portfolio +>:Holds():+> Position(ticker="XOM", sector="Energy", qty=10, avg_entry_price=100.0, opened_at="2026-10-01T15:00:00+00:00");
+    portfolio +>:Holds():+> Position(ticker="CVX", sector="Energy", qty=0, avg_entry_price=100.0, opened_at="2026-10-01T15:00:00+00:00", closed_at="2026-10-02T15:00:00+00:00");
+    assert list(holdings_of(portfolio)) == ["XOM"];
 }
