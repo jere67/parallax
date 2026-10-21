@@ -716,6 +716,7 @@ Every step rounds down to whole shares, and a property test checks over 3,000 ge
 - **Stop expiry.** Alpaca cancels GTC orders 90 days after creation ([orders at Alpaca](https://docs.alpaca.markets/us/docs/orders-at-alpaca)), so the stop keeper, which holds exactly one stop for every open position at each poll, re-places any stop that expired; if the price is already below the stop, it sells with a marketable limit instead.
 - **Exits.** Time stops and thesis invalidations are checked each morning and become SELL decisions.
 - **Order-rule spike.** Before the Action phase, a week-1 spike on the paper account confirms the stop and add sequences above, and whether Alpaca's [one-triggers-other orders](https://docs.alpaca.markets/us/docs/orders-at-alpaca) can attach the stop to the entry instead.
+  Its first part, with the market closed, confirmed wash-trade protection and the reused-ID refusal, and found that a one-triggers-other entry is accepted but its stop leg is a DAY order, so the separate GTC stop stays ([findings](spikes/2026-10-20-alpaca-order-rules.md)); the part that needs fills runs during market hours.
 
 ### Insight mode
 
