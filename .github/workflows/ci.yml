@@ -77,7 +77,12 @@ jobs:
       - name: Build
         run: jac build
 
+      # The demo history gives the end-to-end check pages with data. This server is this job's
+      # alone; TRADING_AGENT_DEMO is never set on a deployed one.
       - name: Boot the production build
+        env:
+          TRADING_AGENT_DEMO: "1"
+          TRADING_AGENT_DISABLE_ORDERS: "1"
         run: |
           jac run dist/trading-agent.jab < /dev/null > server.log 2>&1 &
           for _ in $(seq 1 120); do
@@ -89,6 +94,33 @@ jobs:
             -H 'Content-Type: application/json' -d '{}' | grep -q '"status": "ok"'
           curl -sf http://localhost:8000/ | grep -q '<title>Trading Agent</title>'
           echo "Server booted and answered."
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Cache the Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
+
+      - name: Check every page on each device
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium webkit
+          npx playwright test
+
+      - name: Keep the browser report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: e2e/playwright-report
+          retention-days: 7
 
       - name: Server log
         if: always()
