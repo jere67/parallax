@@ -30,6 +30,7 @@ import from agents.models { FALLBACK_MODEL, PRIMARY_MODEL }
 import from agents.specialists { packet }
 import from analysis.consensus { CONSENSUS_VERSION, consensus, draft_action }
 import from analysis.history { bar }
+import from dashboard.ui.format { count }
 import from analysis.scoring { BENCHMARK, excess_return, vote_window }
 import from models.agents { Domain, Evidence, MacroReport, ResearchReport, RiskRegime, Specialist, Stance, Vote }
 import from models.graph {
@@ -373,10 +374,10 @@ obj DemoSim {
         sells = len([c for c in covered if self.action_of(c) in (TradeAction.SELL, TradeAction.TRIM)]);
         lead = ordered[0].ticker if ordered else "";
         if fallback {
-            run.summary = f"Fallback run. The Orchestrator stopped at iteration 9 with the request budget spent, and the Run Guard finished research and the panel in fixed order. {len(covered)} tickers covered: {buys} buys or adds, {sells} sells or trims.";
+            run.summary = f"Fallback run. The Orchestrator stopped at iteration 9 with the request budget spent, and the Run Guard finished research and the panel in fixed order. {count(len(covered), 'ticker')} covered: {count(buys, 'buy or add', 'buys or adds')}, {count(sells, 'sell or trim', 'sells or trims')}.";
             run.reduced_mode = False;
         } else {
-            run.summary = f"Covered {len(covered)} tickers ({len(picks)} from the screen, {len(held)} held). The panel was strongest on {lead}. {buys} buys or adds and {sells} sells or trims went to the risk gate; the rest hold.";
+            run.summary = f"Covered {count(len(covered), 'ticker')} ({len(picks)} from the screen, {len(held)} held). The panel was strongest on {lead}. {count(buys, 'buy or add', 'buys or adds')} and {count(sells, 'sell or trim', 'sells or trims')} went to the risk gate; the rest hold.";
         }
         return run;
     }
