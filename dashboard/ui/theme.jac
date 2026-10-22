@@ -2,7 +2,7 @@
 is saved in this browser and set as data-theme on <html> (dashboard/theme.css)."""
 
 glob THEME_KEY: str = "trading-agent-theme";
-glob THEME_EVENT: str = "trading-agent-theme";
+glob:pub THEME_EVENT: str = "trading-agent-theme";
 
 def:pub saved_theme -> str {
     try {
