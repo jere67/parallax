@@ -82,19 +82,23 @@ enum OrderPurpose: str {
     STOP = "stop"
 }
 
+"""The team portfolio (or a test's). `demo` marks one filled by the local demo history
+(dashboard/demo.jac), so the dashboard can say its numbers are made up."""
 node Portfolio {
     has name: str,
         mode: PortfolioMode,
         starting_cash: float,
         opened_at: str;
-    has peak_equity: float = 0.0;
+    has peak_equity: float = 0.0,
+        demo: bool = False;
 }
 
 """A position the team portfolio holds or held. `stop_price` is where its protective stop
 sits; `stops_placed` numbers its stop orders, so each gets a fresh client order ID. A closed
 position keeps its node, with `closed_at` set, so the dashboard can show its history. A
 baseline's simulated position carries its own `time_stop`; the team's comes from the
-decision that opened it."""
+decision that opened it. `last_price` is the price it was last marked at (`priced_at`), so
+the dashboard can show unrealized P&L without asking Alpaca."""
 node Position {
     has ticker: str,
         sector: str,
@@ -106,7 +110,9 @@ node Position {
         stops_placed: int = 0,
         closed_at: str = "",
         exit_price: float = 0.0,
-        time_stop: str = "";
+        time_stop: str = "",
+        last_price: float = 0.0,
+        priced_at: str = "";
 
     def open -> bool {
         return not self.closed_at;

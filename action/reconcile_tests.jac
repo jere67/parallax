@@ -62,6 +62,8 @@ test "peak equity only moves up, and the mark measures drawdown from it" {
         second = reconcile(portfolio, broker, datetime(2026, 10, 22, 20, 30, tzinfo=timezone.utc), "2026-10-22");
         assert portfolio.peak_equity == peak and second.equity == peak - 120.0;
         assert abs(second.drawdown - 120.0 / peak) < 1e-12 and second.open_positions == 1;
+        held = open_positions(portfolio)["AAA"];
+        assert held.last_price == 97.0 and held.priced_at == "2026-10-22T20:30:00+00:00";
         again = reconcile(portfolio, broker, datetime(2026, 10, 22, 20, 45, tzinfo=timezone.utc), "2026-10-22");
         assert again is second;
     } finally {
