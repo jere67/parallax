@@ -120,6 +120,14 @@ test "an Orchestrator that raises, or ends without submitting, hands the run to 
     assert quiet.run is not None and quiet.run.summary == "nothing to do";
 }
 
+test "the demo history is never run" {
+    portfolio = team();
+    portfolio.demo = True;
+    outcome = run_day(Stubs(), portfolio);
+    assert outcome.status == RunStatus.SKIPPED and outcome.run is None and outcome.preflight is None;
+    assert outcome.note == "the portfolio holds the demo history" and [portfolio ->:Ran:->] == [];
+}
+
 test "a holiday is skipped, and a second firing for the same date does nothing" {
     portfolio = team();
     skipped = run_day(Stubs(trading=False), portfolio);

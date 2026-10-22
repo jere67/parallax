@@ -8,7 +8,8 @@ root.shared (checked by firing a probe job under `jac run`).
 
 The trading job ticks every minute through the trading day's UTC hours at both offsets, and
 the tick decides from New York time and the market calendar which Action step is due
-(run/trading.jac). It trades only when the team portfolio is in auto mode.
+(run/trading.jac). It trades only when the team portfolio is in auto mode. Neither job touches
+a team portfolio that holds the local demo history (dashboard/demo.jac).
 """
 import from datetime { datetime, timezone }
 import from run.guard { NEW_YORK, team_portfolio }
