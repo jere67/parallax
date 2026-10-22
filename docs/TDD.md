@@ -786,6 +786,7 @@ A Live committee page (real-time run progress through polling or a [streaming en
 
 ### Design notes
 
+- **UI method (issue #106).** Use plain Jac JSX with the app stylesheet in `assets/dashboard.css`, not Tailwind or jac-shadcn. `dashboard/HomePage.jac` owns the manual client-side route table so route components and the shared shell stay under `dashboard/`; the shared layout provides light and dark themes, responsive navigation, reusable page states, formatting helpers, and the disclaimer.
 - **Decision detail is the hero page.** It is the product's hook, so it gets the most design effort: a left-to-right trail from evidence to order, with each stage expandable.
 - **Disagreement is visible.** Vote distributions are shown as dot plots per specialist, so users see dissent rather than a single number.
 - **Mobile-first reading.** Portfolio, Today, and Decision detail must work on a phone, since most classmates will open the link from a shared message.
