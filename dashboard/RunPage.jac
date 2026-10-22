@@ -8,6 +8,7 @@ import from dashboard.ui.IntervalBar { IntervalBar }
 import from dashboard.ui.format {
     MISSING,
     compact,
+    count,
     day_long,
     day_short,
     money,
@@ -305,7 +306,7 @@ def RunList(runs: list[RunSummaryData], current: str) -> JsxElement {
                         <span className="num flex items-center gap-2 text-[12px]">
                             <span className={"w-5 text-right " + ("text-up" if buys > 0 else "text-faint")}>{("+" if buys > 0 else "") + str(buys)}</span>
                             <span className={"w-5 text-right " + ("text-down" if sells > 0 else "text-faint")}>{("-" if sells > 0 else "") + str(sells)}</span>
-                            <span className="w-14 text-right text-faint">{str(r.trades) + " fills"}</span>
+                            <span className="w-14 text-right text-faint">{count(r.trades, "fill")}</span>
                         </span>
                     </Link>
                 </li>
