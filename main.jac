@@ -6,6 +6,8 @@ Scheduled jobs are imported here too, so the server registers them at startup.
 import from models.health { Health }
 import from run.health { health }
 import from run.jobs { morning_job, trading_job }
+import from dashboard.api { get_decision_trail, get_performance, get_portfolio, get_run, list_runs }
+import from models.views { PerformanceView, PortfolioView, RunSummary, RunView, TrailView }
 
 import from .dashboard.HomePage { HomePage }
 

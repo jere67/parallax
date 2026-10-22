@@ -423,7 +423,9 @@ def _apply_fill(portfolio: Portfolio, order: Order, qty: int, price: float, now:
                 qty=qty,
                 avg_entry_price=price,
                 opened_at=now.isoformat(),
-                stop_price=round(price - distance, 2) if distance > 0 else 0.0
+                stop_price=round(price - distance, 2) if distance > 0 else 0.0,
+                last_price=price,
+                priced_at=now.isoformat()
             ));
             if decided {
                 position +>:OpenedBy():+> decided[0];
