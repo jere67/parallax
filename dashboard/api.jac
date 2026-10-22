@@ -6,6 +6,10 @@ returns a view from models/views.jac. Nothing here writes, calls a model, or rea
 so a page loads from what the pipeline already stored and cannot spend the request budget
 (TDD §10, design notes). The builders take the portfolio as an argument, so tests can run
 them on any graph; the endpoints only pick the team's.
+
+Views come through the read cache in dashboard/cache.jac, and refresh_job rebuilds the
+portfolio, performance, and run list every minute, so a page shows the graph as of at most
+a minute or two ago.
 """
 import math;
 import statistics;
@@ -13,6 +17,7 @@ import from urllib.parse { urlsplit }
 import from action.baselines { baselines_of, sim_marks }
 import from action.insights { DISCLAIMER }
 import from action.reconcile { marks_of }
+import from dashboard.cache { VIEWS }
 import from analysis.consensus { signed_score }
 import from analysis.scoring { hit }
 import from models.agents { Domain, Specialist }
@@ -89,37 +94,68 @@ def find_team -> Portfolio | None {
     return None;
 }
 
-"""The team portfolio at its last mark, with its positions and recent orders."""
+"""A cache key for one of the team portfolio's views; the portfolio's id keeps graphs apart."""
+def view_key(team: Portfolio, *parts: str) -> str {
+    return ":".join([jid(team)] + list(parts));
+}
+
+"""The team portfolio at its last mark, with its positions and its most recently submitted orders."""
 def:pub get_portfolio -> PortfolioView {
     team = find_team();
     if team is None {
         return PortfolioView(name=TEAM_PORTFOLIO, mode="insight", started=False);
     }
-    return portfolio_view(team);
+    return VIEWS.get(view_key(team, "portfolio"), portfolio_view, team);
 }
 
 """The team portfolio's daily equity beside both forward-test baselines."""
 def:pub get_performance -> PerformanceView {
     team = find_team();
-    return performance_view(team) if team is not None else PerformanceView(started=False);
+    if team is None {
+        return PerformanceView(started=False);
+    }
+    return VIEWS.get(view_key(team, "performance"), performance_view, team);
 }
 
 """The team's runs, newest first."""
 def:pub list_runs -> list[RunSummary] {
     team = find_team();
-    return run_summaries(team) if team is not None else [];
+    if team is None {
+        return [];
+    }
+    return VIEWS.get(view_key(team, "runs"), run_summaries, team);
 }
 
 """The run for `run_date`, or the newest run when it is empty; None when there is none."""
 def:pub get_run(run_date: str = "") -> RunView | None {
     team = find_team();
-    return run_view(team, run_date) if team is not None else None;
+    if team is None {
+        return None;
+    }
+    return VIEWS.get(view_key(team, "run", run_date), run_view, team, run_date);
 }
 
 """One ticker's trail in the run for `run_date`, or None when the run did not cover it."""
 def:pub get_decision_trail(run_date: str, ticker: str) -> TrailView | None {
     team = find_team();
-    return trail_view(team, run_date, ticker.strip().upper()) if team is not None else None;
+    if team is None {
+        return None;
+    }
+    symbol = ticker.strip().upper();
+    return VIEWS.get(view_key(team, "trail", run_date, symbol), trail_view, team, run_date, symbol);
+}
+
+"""Rebuild the views every page opens with, so no reader waits for them (dashboard/cache.jac).
+A static job runs as the system user, which reaches root.shared."""
+@schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * *")
+def refresh_job {
+    team = find_team();
+    if team is not None {
+        VIEWS.put(view_key(team, "portfolio"), portfolio_view(team));
+        VIEWS.put(view_key(team, "performance"), performance_view(team));
+        VIEWS.put(view_key(team, "runs"), run_summaries(team));
+        VIEWS.put(view_key(team, "run", ""), run_view(team, ""));
+    }
 }
 
 # --- Portfolio --------------------------------------------------------------------------
@@ -166,7 +202,7 @@ def portfolio_view(portfolio: Portfolio) -> PortfolioView {
     );
     closed = sorted([p for p in held if not p.open()], key=lambda (p: Position) { p.closed_at; }, reverse=True);
     view.closed = [position_view(p, equity, sent) for p in closed[:RECENT_CLOSED]];
-    recent = sorted(sent, key=lambda (o: Order) { o.updated_at or o.submitted_at; }, reverse=True);
+    recent = sorted(sent, key=lambda (o: Order) { (o.submitted_at, o.client_order_id); }, reverse=True);
     view.orders = [order_view(o) for o in recent[:RECENT_ORDERS]];
     return view;
 }
