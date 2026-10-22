@@ -85,11 +85,11 @@ def Header(run: RunData) -> JsxElement {
             </div>
             <DayLink day={run.next_day} label="Next run" forward={True}/>
         </div>
-        <dl className="num grid grid-cols-2 gap-x-6 gap-y-1 text-[12px] sm:flex sm:gap-x-6">
-            <div className="flex gap-1.5"><dt className="text-faint">Analysis</dt><dd>{time_range_et(run.started_at, run.finished_at)}</dd></div>
-            <div className="flex gap-1.5"><dt className="text-faint">Executed</dt><dd>{time_et(run.executed_at)}</dd></div>
-            <div className="flex gap-1.5"><dt className="text-faint">Reconciled</dt><dd>{time_et(run.reconciled_at)}</dd></div>
-            <div className="flex gap-1.5"><dt className="text-faint">Model</dt><dd>{str(run.model_requests) + " calls, " + compact(float(tokens)) + " tokens"}</dd></div>
+        <dl className="num flex flex-wrap gap-x-6 gap-y-1 text-[12px]">
+            <div className="flex gap-1.5 whitespace-nowrap"><dt className="text-faint">Analysis</dt><dd>{time_range_et(run.started_at, run.finished_at)}</dd></div>
+            <div className="flex gap-1.5 whitespace-nowrap"><dt className="text-faint">Executed</dt><dd>{time_et(run.executed_at)}</dd></div>
+            <div className="flex gap-1.5 whitespace-nowrap"><dt className="text-faint">Reconciled</dt><dd>{time_et(run.reconciled_at)}</dd></div>
+            <div className="flex gap-1.5 whitespace-nowrap"><dt className="text-faint">Model</dt><dd>{count(run.model_requests, "call") + ", " + compact(float(tokens)) + " tokens"}</dd></div>
         </dl>
     </div>
 }
@@ -139,7 +139,7 @@ def Summary(run: RunData) -> JsxElement {
     <Panel title="Summary" className="h-full">
         <p className="text-[13px] leading-relaxed">{run.summary or "No summary was recorded."}</p>
         <div className="mt-3 border-t border-line pt-2">
-            <Field label="Covered">{str(len(run.rows)) + " tickers"}</Field>
+            <Field label="Covered">{count(len(run.rows), "ticker")}</Field>
             <Field label="Risk gate">{run.execution_note or MISSING}</Field>
         </div>
     </Panel>
@@ -209,52 +209,52 @@ def CoverageTable(run: RunData) -> JsxElement {
     <Panel title="Shortlist" aside={<span className="text-[11px] text-faint">By conviction</span>} pad={False}>
         {if len(run.rows) == 0 {
             <p className="px-4 py-6 text-[13px] text-muted">This run covered no tickers.</p>
-            skip;
-        }}
-        <div className="scroll-x">
-            <table className="w-full min-w-[960px]">
-                <thead>
-                    <tr>
-                        <th className={TH}>Ticker</th>
-                        <th className={TH}>Decision</th>
-                        <th className={TH_NUM}>Conviction</th>
-                        <th className={TH}>Consensus</th>
-                        <th className={TH_NUM}>Agreement</th>
-                        <th className={TH}>Risk gate</th>
-                        <th className={TH}>Order</th>
-                        <th className={TH}>Covered</th>
-                        <th className={TH_NUM}>Close</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {for row in run.rows {
-                        <tr
-                            key={row.ticker}
-                            className={ROW + " cursor-pointer"}
-                            onClick={lambda { nav("/runs/" + run.run_date + "/" + row.ticker); }}
-                        >
-                            <td className={TD}>
-                                <Link to={"/runs/" + run.run_date + "/" + row.ticker} className="font-semibold hover:text-accent">{row.ticker}</Link>
-                                <div className="max-w-[160px] truncate text-[11px] text-faint">{row.sector}</div>
-                            </td>
-                            <td className={TD}><DecisionCell row={row}/></td>
-                            <td className={TD_NUM}>{num(row.conviction)}</td>
-                            <td className={TD}>
-                                <div className="flex items-center gap-2.5">
-                                    <IntervalBar score={row.score} low={row.ci_low} high={row.ci_high}/>
-                                    <span className="num w-11 text-right text-[12px]">{signed(row.score)}</span>
-                                </div>
-                            </td>
-                            <td className={TD_NUM}>{pct(row.agreement, 0)}</td>
-                            <td className={TD}><GateCell row={row}/></td>
-                            <td className={TD}><OrderCell row={row}/></td>
-                            <td className={TD}><CoveredCell row={row}/></td>
-                            <td className={TD_NUM}>{money(row.last_close)}</td>
+        } else {
+            <div className="scroll-x">
+                <table className="w-full min-w-[960px]">
+                    <thead>
+                        <tr>
+                            <th className={TH}>Ticker</th>
+                            <th className={TH}>Decision</th>
+                            <th className={TH_NUM}>Conviction</th>
+                            <th className={TH}>Consensus</th>
+                            <th className={TH_NUM}>Agreement</th>
+                            <th className={TH}>Risk gate</th>
+                            <th className={TH}>Order</th>
+                            <th className={TH}>Covered</th>
+                            <th className={TH_NUM}>Close</th>
                         </tr>
-                    }}
-                </tbody>
-            </table>
-        </div>
+                    </thead>
+                    <tbody>
+                        {for row in run.rows {
+                            <tr
+                                key={row.ticker}
+                                className={ROW + " cursor-pointer"}
+                                onClick={lambda { nav("/runs/" + run.run_date + "/" + row.ticker); }}
+                            >
+                                <td className={TD}>
+                                    <Link to={"/runs/" + run.run_date + "/" + row.ticker} className="font-semibold hover:text-accent">{row.ticker}</Link>
+                                    <div className="max-w-[160px] truncate text-[11px] text-faint">{row.sector}</div>
+                                </td>
+                                <td className={TD}><DecisionCell row={row}/></td>
+                                <td className={TD_NUM}>{num(row.conviction)}</td>
+                                <td className={TD}>
+                                    <div className="flex items-center gap-2.5">
+                                        <IntervalBar score={row.score} low={row.ci_low} high={row.ci_high}/>
+                                        <span className="num w-11 text-right text-[12px]">{signed(row.score)}</span>
+                                    </div>
+                                </td>
+                                <td className={TD_NUM}>{pct(row.agreement, 0)}</td>
+                                <td className={TD}><GateCell row={row}/></td>
+                                <td className={TD}><OrderCell row={row}/></td>
+                                <td className={TD}><CoveredCell row={row}/></td>
+                                <td className={TD_NUM}>{money(row.last_close)}</td>
+                            </tr>
+                        }}
+                    </tbody>
+                </table>
+            </div>
+        }}
     </Panel>
 }
 
@@ -273,13 +273,13 @@ def ActionLog(lines: list[str]) -> JsxElement {
     <Panel title="Action log" aside={toggle if more > 0 else None} pad={False}>
         {if len(lines) == 0 {
             <p className="px-4 py-6 text-[13px] text-muted">Nothing was logged.</p>
-            skip;
+        } else {
+            <ol className="font-mono text-[12px] leading-6">
+                {for (i, line) in enumerate(shown) {
+                    <li key={str(i)} className="border-b border-line px-4 py-0.5 text-muted last:border-b-0">{line}</li>
+                }}
+            </ol>
         }}
-        <ol className="font-mono text-[12px] leading-6">
-            {for (i, line) in enumerate(shown) {
-                <li key={str(i)} className="border-b border-line px-4 py-0.5 text-muted last:border-b-0">{line}</li>
-            }}
-        </ol>
     </Panel>
 }
 
