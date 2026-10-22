@@ -29,16 +29,22 @@ glob STATUS_TONES: dict[str, str] = {
 };
 
 """A bordered section with a small header and an optional control on its right. `fill` lets
-the body grow to the panel's height, for a chart beside a taller column."""
+the body grow to the panel's height, for a chart beside a taller column; `anchor` is an id to
+link to, which lands below the sticky top bar."""
 def:pub Panel(
     title: str = "",
     aside: any = None,
     children: any = None,
     pad: bool = True,
     fill: bool = False,
+    anchor: str = "",
     className: str = ""
 ) -> JsxElement {
-    <section className={"rounded-lg border border-line bg-panel " + ("flex flex-col " if fill else "") + className}>
+    target: dict[str, str] = {"id": anchor} if anchor else {};
+    <section
+        {**target}
+        className={"scroll-mt-16 rounded-lg border border-line bg-panel " + ("flex flex-col " if fill else "") + className}
+    >
         {if title or aside {
             <header className="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-2">
                 <h2 className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted">{title}</h2>
@@ -110,5 +116,7 @@ scrolling table."""
 glob TH: str = "sticky top-0 z-[1] bg-panel whitespace-nowrap border-b border-line px-3 py-2 text-left text-[11px] font-medium uppercase tracking-[0.06em] text-faint first:pl-4 last:pr-4";
 glob TH_NUM: str = "sticky top-0 z-[1] bg-panel whitespace-nowrap border-b border-line px-3 py-2 text-right text-[11px] font-medium uppercase tracking-[0.06em] text-faint first:pl-4 last:pr-4";
 glob TD: str = "whitespace-nowrap border-b border-line px-3 py-2 text-[13px] first:pl-4 last:pr-4";
+# A cell for prose, which wraps rather than widening the table.
+glob TD_TEXT: str = "min-w-[180px] border-b border-line px-3 py-2 text-[13px] first:pl-4 last:pr-4";
 glob TD_NUM: str = "num whitespace-nowrap border-b border-line px-3 py-2 text-right text-[13px] first:pl-4 last:pr-4";
 glob ROW: str = "transition-colors hover:bg-hover [&:last-child>td]:border-b-0";
