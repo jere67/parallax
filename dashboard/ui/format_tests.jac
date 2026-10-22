@@ -12,6 +12,7 @@ import from dashboard.ui.format {
     signed_pct,
     stamp_et,
     time_et,
+    time_range_et,
     tone
 }
 
@@ -34,4 +35,7 @@ test "dates and times read in New York time, across daylight saving" {
     assert stamp_et("2026-10-22T02:15:00+00:00") == "Oct 21, 10:15 PM ET";
     assert stamp_et("2026-01-01T03:00:00+00:00") == "Dec 31, 10:00 PM ET";
     assert time_et("2026-03-08T07:30:00+00:00") == "3:30 AM ET" and time_et("2026-03-08T06:30:00+00:00") == "1:30 AM ET";
+    assert time_range_et("2026-10-21T11:30:00+00:00", "2026-10-21T12:40:00+00:00") == "7:30 - 8:40 AM ET";
+    assert time_range_et("2026-10-21T15:30:00+00:00", "2026-10-21T16:10:00+00:00") == "11:30 AM - 12:10 PM ET";
+    assert time_range_et("2026-10-21T11:30:00+00:00", "") == "7:30 AM ET" and time_range_et("", "") == "-";
 }

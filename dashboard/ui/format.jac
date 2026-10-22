@@ -185,6 +185,21 @@ def time_et(iso: str) -> str {
     return clock(hour, minute) + " ET";
 }
 
+"""7:30 - 8:40 AM ET, or 11:30 AM - 12:10 PM ET across noon; one side alone when the other
+is missing."""
+def time_range_et(start: str, end: str) -> str {
+    if len(start) < 16 or len(end) < 16 {
+        return time_et(start if len(start) >= 16 else end);
+    }
+    (_, h1, m1) = new_york(start);
+    (_, h2, m2) = new_york(end);
+    first = clock(h1, m1);
+    if (h1 < 12) == (h2 < 12) {
+        first = first[0:len(first) - 3];
+    }
+    return first + " - " + clock(h2, m2) + " ET";
+}
+
 """Oct 21, 4:30 PM ET."""
 def stamp_et(iso: str) -> str {
     if len(iso) < 16 {
