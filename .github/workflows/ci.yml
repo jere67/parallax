@@ -37,13 +37,17 @@ jobs:
       - name: Show Jac version
         run: jac --version
 
-      - name: Cache the Jac runtime and embedded Postgres
+      # Only the embedded Postgres binaries are cached, never its data directory (pg/main):
+      # a cached postmaster.pid names a process from the job that saved the cache, and when a
+      # live process in a later job has that PID, Jac takes Postgres for running, never
+      # starts it, and the first test fails after waiting 60 seconds for its socket (#103).
+      - name: Cache the Jac runtime and embedded Postgres binaries
         uses: actions/cache@v6
         with:
           path: |
             ~/.cache/jac/rt
-            ~/.cache/jac/pg
-          key: jac-runtime-${{ runner.os }}-${{ env.JAC_VERSION }}
+            ~/.cache/jac/pg/dist
+          key: jac-runtime-pgdist-${{ runner.os }}-${{ env.JAC_VERSION }}
 
       - name: Cache project dependencies
         uses: actions/cache@v6
