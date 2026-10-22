@@ -324,7 +324,7 @@ def SampleRow(s: SampleData) -> JsxElement {
             <span>
                 <span className="num text-faint">{"#" + str(s.sample + 1) + "  "}</span>
                 <StanceText stance={s.stance}/>
-                <span className="num text-faint">{" · " + pct(s.confidence, 0) + " sure · " + str(s.horizon_days) + " sessions · signed " + signed(s.signed)}</span>
+                <span className="num text-faint">{" · " + pct(s.confidence, 0) + " sure · " + count(s.horizon_days, "session") + " · signed " + signed(s.signed)}</span>
             </span>
             <Outcome s={s}/>
         </div>
