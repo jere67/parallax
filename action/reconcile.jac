@@ -6,7 +6,7 @@ shares and cash:
 - every working order is refreshed and its fills recorded;
 - a position on record that Alpaca no longer holds is closed, one Alpaca holds that the
   record lacks is adopted with a protective stop, and a share count that differs is
-  corrected, each listed as drift;
+  corrected, each listed as drift; every held position records Alpaca's current price;
 - every order Alpaca saw since the last mark is traced to an Order the executor sent, and
   every Order the executor sent to a risk-gate approval or a position's stop; anything
   else is a gate bypass;
@@ -104,9 +104,13 @@ def reconcile(portfolio: Portfolio, broker: Broker, now: datetime, day: str) -> 
             drift.append(f"{ticker}: {p.qty} shares on record, none at Alpaca; closed on the record");
             p.qty = 0;
             p.closed_at = now.isoformat();
-        } elif at.qty != p.qty {
-            drift.append(f"{ticker}: {p.qty} shares on record, {at.qty} at Alpaca; record corrected");
-            p.qty = at.qty;
+        } else {
+            if at.qty != p.qty {
+                drift.append(f"{ticker}: {p.qty} shares on record, {at.qty} at Alpaca; record corrected");
+                p.qty = at.qty;
+            }
+            p.last_price = at.current_price;
+            p.priced_at = now.isoformat();
         }
     }
     for (ticker, at) in sorted(held.items()) {
@@ -115,7 +119,7 @@ def reconcile(portfolio: Portfolio, broker: Broker, now: datetime, day: str) -> 
         }
         atr = latest_atr(portfolio, ticker);
         stop = at.avg_entry_price - STOP_ATR_MULTIPLE * atr if atr else at.avg_entry_price * (1.0 - FALLBACK_STOP_FRACTION);
-        public(portfolio +>:Holds():+> Position(ticker=ticker, sector="", qty=at.qty, avg_entry_price=at.avg_entry_price, opened_at=now.isoformat(), stop_price=round(max(0.01, stop), 2)));
+        public(portfolio +>:Holds():+> Position(ticker=ticker, sector="", qty=at.qty, avg_entry_price=at.avg_entry_price, opened_at=now.isoformat(), stop_price=round(max(0.01, stop), 2), last_price=at.current_price, priced_at=now.isoformat()));
         drift.append(f"{ticker}: {at.qty} shares at Alpaca not on record; adopted with a stop at {stop:.2f}");
     }
 

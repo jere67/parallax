@@ -323,7 +323,11 @@ def sell(baseline: Baseline, position: Position, qty: int, price: float, day: st
 def mark(baseline: Baseline, at: SimDay) -> str {
     day = at.day;
     held = sim_positions(baseline);
-    value = sum(p.qty * at.last_close(t, p.avg_entry_price) for (t, p) in held.items());
+    for (t, p) in held.items() {
+        p.last_price = at.last_close(t, p.avg_entry_price);
+        p.priced_at = at.now.isoformat();
+    }
+    value = sum(p.qty * p.last_price for p in held.values());
     equity = baseline.cash + value;
     baseline.peak_equity = max(baseline.peak_equity, equity);
     drawdown = 1.0 - equity / baseline.peak_equity if baseline.peak_equity > 0.0 else 0.0;
