@@ -19,6 +19,7 @@ import math;
 import os;
 import random;
 import statistics;
+import threading;
 import from datetime { date, datetime, time, timedelta, timezone }
 import from action.baselines { SimDay, baselines_of, simulate_equal_weight, simulate_spy }
 import from action.executor { limit_price, order_id_for, run_regime, stop_id_for }
@@ -26,6 +27,7 @@ import from action.gate { Book, BookPosition, GATE_VERSION, GateConfig, GateResu
 import from action.insights { publish_card }
 import from action.sizing { SizingCandidate, size_positions }
 import from agents.models { FALLBACK_MODEL, PRIMARY_MODEL }
+import from agents.specialists { packet }
 import from analysis.consensus { CONSENSUS_VERSION, consensus, draft_action }
 import from analysis.history { bar }
 import from analysis.scoring { BENCHMARK, excess_return, vote_window }
@@ -77,6 +79,7 @@ import from run.public { public }
 
 glob DEMO_ENV: str = "TRADING_AGENT_DEMO";
 glob LOG: logging.Logger = logging.getLogger("trading_agent.demo");
+glob _SEEDING: threading.Lock = threading.Lock();
 glob NOTHING_WRITTEN: str = "demo: the team portfolio already has history; nothing written";
 # Sessions of history, ending with the last weekday before the day it is seeded.
 glob DEMO_SESSIONS: int = 23;
@@ -120,14 +123,21 @@ glob UNIVERSE: list[DemoStock] = [
 glob SPY_START: float = 575.0;
 
 """Seeds the demo history once a minute is up, when the server runs with TRADING_AGENT_DEMO=1.
-Static jobs reach root.shared, which a standalone script cannot (it sees the super root)."""
+Static jobs reach root.shared, which a standalone script cannot (it sees the super root). A seed
+takes about a minute and commits only when its job ends, so the next minute's job skips while
+one is running rather than find an empty graph and seed a second team portfolio."""
 @schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * *")
 def demo_job {
-    if os.environ.get(DEMO_ENV, "").strip() == "1" {
+    if os.environ.get(DEMO_ENV, "").strip() != "1" or not _SEEDING.acquire(blocking=False) {
+        return;
+    }
+    try {
         done = seed_demo(datetime.now(NEW_YORK).date());
         if done != NOTHING_WRITTEN {
             LOG.warning("%s", done);
         }
+    } finally {
+        _SEEDING.release();
     }
 }
 
@@ -229,7 +239,8 @@ obj DemoSim {
         cash: float = STARTING_CASH,
         peak: float = STARTING_CASH,
         decisions: int = 0,
-        orders: int = 0;
+        orders: int = 0,
+        macro_body: MacroReport | None = None;
 
     def postinit {
         self.rng = random.Random(449);
@@ -385,21 +396,17 @@ obj DemoSim {
         inputs = RegimeInputs(spy_close=spy, spy_sma_200=round(spy * 0.935, 2), spy_vol_20=vol, spy_as_of=last);
         regime = RiskRegime.RISK_ON if month > 0.015 else (RiskRegime.RISK_OFF if month < -0.015 else RiskRegime.NEUTRAL);
         word = {RiskRegime.RISK_ON: "favor taking equity risk", RiskRegime.RISK_OFF: "argue for caution", RiskRegime.NEUTRAL: "favor neither side"}[regime];
-        public(run +>:HasMacro():+> MacroRecord(
-            as_of=at(day, "07:40"),
-            model=PRIMARY_MODEL,
-            body=MacroReport(
-                summary=f"SPY closed at {spy:.2f}, {month:+.1%} over the past month and well above its 200-day average. Its 20-day realized volatility is {vol:.0%}. Treasury funds were steady, and the leading sectors rotated without a clear defensive tilt. Conditions {word}.",
-                regime=regime,
-                confidence=round(self.rng.uniform(0.55, 0.75), 2),
-                evidence=[
-                    Evidence(claim=f"SPY closed at {spy:.2f} on {last}.", source_url=f"https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Day&start={last}", published=last),
-                    Evidence(claim="The 200-day average is computed from a year of daily closes.", source_url="https://en.wikipedia.org/wiki/Moving_average", published=last)
-                ],
-                risks=["A hotter inflation print could lift yields.", "Earnings season could widen single-stock dispersion."]
-            ),
-            inputs=inputs
-        ));
+        self.macro_body = MacroReport(
+            summary=f"SPY closed at {spy:.2f}, {month:+.1%} over the past month and well above its 200-day average. Its 20-day realized volatility is {vol:.0%}. Treasury funds were steady, and the leading sectors rotated without a clear defensive tilt. Conditions {word}.",
+            regime=regime,
+            confidence=round(self.rng.uniform(0.55, 0.75), 2),
+            evidence=[
+                Evidence(claim=f"SPY closed at {spy:.2f} on {last}.", source_url=f"https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Day&start={last}", published=last),
+                Evidence(claim="The 200-day average is computed from a year of daily closes.", source_url="https://en.wikipedia.org/wiki/Moving_average", published=last)
+            ],
+            risks=["A hotter inflation print could lift yields.", "Earnings season could widen single-stock dispersion."]
+        );
+        public(run +>:HasMacro():+> MacroRecord(as_of=at(day, "07:40"), model=PRIMARY_MODEL, body=self.macro_body, inputs=inputs));
         return inputs;
     }
 
@@ -450,26 +457,24 @@ obj DemoSim {
                 ]
             )
         };
+        bodies: dict[Domain, ResearchReport] = {};
         for (domain, (summary, evidence)) in reports.items() {
             view = signal + self.rng.gauss(0.0, 0.3);
-            public(c +>:Researched():+> ResearchRecord(
-                ticker=t,
-                domain=domain,
-                as_of=at(day, "07:50"),
-                model=PRIMARY_MODEL,
-                body=ResearchReport(
-                    summary=summary,
-                    view=stance_for(view),
-                    confidence=round(self.rng.uniform(0.5, 0.8), 2),
-                    evidence=evidence,
-                    risks=[self.rng.choice(["A broad market pullback.", "Valuation compresses if rates rise.", "A guidance cut at the next report.", "Sector rotation away from the group."])],
-                    data_gaps=["No intraday data."] if domain == Domain.MARKET and self.rng.random() < 0.2 else []
-                )
-            ));
+            bodies[domain] = ResearchReport(
+                summary=summary,
+                view=stance_for(view),
+                confidence=round(self.rng.uniform(0.5, 0.8), 2),
+                evidence=evidence,
+                risks=[self.rng.choice(["A broad market pullback.", "Valuation compresses if rates rise.", "A guidance cut at the next report.", "Sector rotation away from the group."])],
+                data_gaps=["No intraday data."] if domain == Domain.MARKET and self.rng.random() < 0.2 else []
+            );
+            public(c +>:Researched():+> ResearchRecord(ticker=t, domain=domain, as_of=at(day, "07:50"), model=PRIMARY_MODEL, body=bodies[domain]));
         }
 
         votes: dict[Specialist, list[Vote]] = {};
         for spec in list(Specialist) {
+            # Cite positions in the packet the specialist would read, as a real vote does.
+            shown = len(packet(spec, t, day, bodies, self.macro_body).evidence);
             lean = signal + self.rng.gauss(0.0, 0.18);
             mine: list[Vote] = [];
             for k in range(SAMPLES) {
@@ -481,7 +486,7 @@ obj DemoSim {
                     confidence=round(min(0.92, max(0.45, 0.62 + abs(x) * 0.3 + self.rng.gauss(0.0, 0.05))), 2),
                     horizon_days=self.rng.choice([5, DEFAULT_HORIZON_DAYS, DEFAULT_HORIZON_DAYS]),
                     rationale=RATIONALE[spec][direction],
-                    cited_evidence=sorted(self.rng.sample([1, 2, 3, 4, 5], self.rng.randint(1, 3)))
+                    cited_evidence=sorted(self.rng.sample(range(shown), min(shown, self.rng.randint(1, 3))))
                 );
                 mine.append(v);
                 public(c +>:Voted():+> VoteRecord(ticker=t, specialist=spec, sample=k, model=PRIMARY_MODEL, body=v));
