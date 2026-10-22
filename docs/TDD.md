@@ -776,7 +776,7 @@ The backing endpoints are `def:pub` functions that read `root.shared` explicitly
 | Page | Access | Shows | Backing endpoints |
 | --- | --- | --- | --- |
 | Portfolio | Public | Equity curve against SPY, Sharpe, max drawdown, open positions with entry, P&L, stop, and thesis | `get_portfolio`, `get_performance` |
-| Today | Public | The run's shortlist, each ticker's action and conviction, run status (normal or fallback), run summary | `get_run` |
+| Today | Public | The run's shortlist, each ticker's action and conviction, run status (normal or fallback), run summary, and the past runs | `get_run`, `list_runs` |
 | Decision detail | Public | The full trail for one ticker: research reports and sources → every specialist sample → consensus score, agreement, interval → Arbiter → risk gate → order and fill | `get_decision_trail` |
 | Specialists | Public | Hit rate, calibration curve, and recent votes per specialist | `get_specialist_stats` |
 | Reports | Signed in | Request a ticker report, view past reports, remaining daily quota | `request_report`, `list_reports` |
