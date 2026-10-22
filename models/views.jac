@@ -209,7 +209,8 @@ obj ResearchView {
 }
 
 """One specialist sample. `signed` is stance / 2 x confidence in [-1, 1], the number the
-consensus averages; `excess_return` and `hit` arrive once the vote's window closes."""
+consensus averages; `excess_return` and `hit` arrive once the vote's window closes. `cited`
+holds positions in the specialist's evidence packet, and `sources` the evidence they name."""
 obj SampleView {
     has sample: int,
         stance: str,
@@ -218,6 +219,7 @@ obj SampleView {
         horizon_days: int,
         rationale: str;
     has cited: list[int] = [],
+        sources: list[EvidenceView] = [],
         excess_return: float | None = None,
         hit: bool | None = None;
 }
