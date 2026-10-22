@@ -77,6 +77,7 @@ import from run.public { public }
 
 glob DEMO_ENV: str = "TRADING_AGENT_DEMO";
 glob LOG: logging.Logger = logging.getLogger("trading_agent.demo");
+glob NOTHING_WRITTEN: str = "demo: the team portfolio already has history; nothing written";
 # Sessions of history, ending with the last weekday before the day it is seeded.
 glob DEMO_SESSIONS: int = 23;
 # Sessions of prices before the first run, for the 20-day figures the first run reads.
@@ -123,7 +124,10 @@ Static jobs reach root.shared, which a standalone script cannot (it sees the sup
 @schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * *")
 def demo_job {
     if os.environ.get(DEMO_ENV, "").strip() == "1" {
-        LOG.warning("%s", seed_demo(datetime.now(NEW_YORK).date()));
+        done = seed_demo(datetime.now(NEW_YORK).date());
+        if done != NOTHING_WRITTEN {
+            LOG.warning("%s", done);
+        }
     }
 }
 
@@ -132,7 +136,7 @@ team portfolio already holds anything. Returns what it did."""
 def seed_demo(today: date) -> str {
     found = [p for p in [root.shared -->[?:Portfolio]] if p.name == TEAM_PORTFOLIO];
     if found and (found[0].demo or [found[0] ->:Ran:->] or [found[0] ->:Marked:->] or [found[0] ->:Benchmarks:->]) {
-        return "demo: the team portfolio already has history; nothing written";
+        return NOTHING_WRITTEN;
     }
     portfolio = found[0] if found else public(root.shared ++> Portfolio(name=TEAM_PORTFOLIO, mode=PortfolioMode.AUTO, starting_cash=STARTING_CASH, opened_at=""));
     sim = DemoSim(portfolio=portfolio, today=today);
