@@ -132,6 +132,22 @@ test "nothing happens in insight mode, on a holiday, on a weekend, or before the
     }
 }
 
+test "the demo history is never traded, reconciled, or scored, even in auto mode" {
+    fake = FakeBroker();
+    try {
+        demo = team();
+        demo.demo = True;
+        run = finished_run(demo, DAY, [Call(ticker="AAA", action=TradeAction.BUY)]);
+        fake.set_price("AAA", 100.0);
+        deps = deps_for(fake);
+        assert [tick_at(fake, demo, deps, t) for t in ["09:45", "09:46", "15:50", "16:30"]] == [[], [], [], []];
+        assert fake.orders == [] and not run.executed_at and not run.reconciled_at and not run.votes_scored_at;
+        assert marks_of(demo) == {};
+    } finally {
+        fake.stop();
+    }
+}
+
 test "reconciliation adopts a position the record lacks, closes one Alpaca lacks, and flags a bypass" {
     fake = FakeBroker();
     try {

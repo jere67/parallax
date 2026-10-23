@@ -7,6 +7,7 @@ import from dashboard.api { get_performance, get_portfolio }
 import from dashboard.ui.EquityChart { EquityChart }
 import from dashboard.ui.format {
     MISSING,
+    count,
     day_et,
     day_long,
     day_short,
@@ -116,7 +117,7 @@ def Headline(view: PortfolioData, perf: PerformanceData | None) -> JsxElement {
         <Stat
             label="Gross exposure"
             value={pct(view.gross_exposure, 1)}
-            sub={str(len(view.positions)) + " positions, " + money(view.positions_value, 0)}
+            sub={count(len(view.positions), "position") + ", " + money(view.positions_value, 0)}
         />
     </section>
 }
@@ -140,35 +141,37 @@ def stat_tone(s: SeriesData, row: str) -> str {
 
 def StatsTable(perf: PerformanceData, view: PortfolioData) -> JsxElement {
     <Panel title="Performance" pad={False}>
-        <table className="w-full">
-            <thead>
-                <tr>
-                    <th className={TH}></th>
-                    {for s in perf.series {
-                        <th key={s.key} className={TH_NUM}>{SHORT_LABELS.get(s.key, s.label)}</th>
-                    }}
-                </tr>
-            </thead>
-            <tbody>
-                {for row in STAT_ROWS {
-                    <tr key={row} className={ROW}>
-                        <td className={TD + " text-muted"}>{row}</td>
+        <div className="scroll-x">
+            <table className="w-full">
+                <thead>
+                    <tr>
+                        <th className={TH}></th>
                         {for s in perf.series {
-                            <td key={s.key} className={TD_NUM + " " + stat_tone(s, row) + (" font-semibold" if s.key == "team" else "")}>
-                                {stat_value(s, row)}
-                            </td>
+                            <th key={s.key} className={TH_NUM}>{SHORT_LABELS.get(s.key, s.label)}</th>
                         }}
                     </tr>
-                }}
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    {for row in STAT_ROWS {
+                        <tr key={row} className={ROW}>
+                            <td className="border-b border-line py-2 pl-4 pr-2 text-[13px] text-muted">{row}</td>
+                            {for s in perf.series {
+                                <td key={s.key} className={TD_NUM + " " + stat_tone(s, row) + (" font-semibold" if s.key == "team" else "")}>
+                                    {stat_value(s, row)}
+                                </td>
+                            }}
+                        </tr>
+                    }}
+                </tbody>
+            </table>
+        </div>
         <p className="border-t border-line px-4 py-2.5 text-[12px] text-faint">
-            {str(view.sessions) + " sessions since " + day_long(perf.start_day) + ". Sharpe and volatility are annualized from daily returns."}
+            {count(view.sessions, "session") + " since " + day_long(perf.start_day) + ". Sharpe and volatility are annualized from daily returns."}
         </p>
         <p className="flex items-start gap-2 border-t border-line px-4 py-2.5 text-[12px]">
             <span className={"mt-[5px] size-1.5 shrink-0 rounded-full " + ("bg-up" if view.bypasses == 0 and view.drift == 0 else "bg-down")}></span>
             <span className="text-muted">
-                {"Ledger checks: " + str(view.bypasses) + " orders outside the risk gate, " + str(view.drift) + " positions drifted from the broker"}
+                {"Ledger checks: " + count(view.bypasses, "order") + " outside the risk gate, " + count(view.drift, "position") + " drifted from the broker"}
             </span>
         </p>
     </Panel>
@@ -187,25 +190,25 @@ def SectorExposure(positions: list[PositionData]) -> JsxElement {
     <Panel title="Sector exposure" aside={<span className="text-[11px] text-faint">Cap 30%</span>}>
         {if len(ranked) == 0 {
             <p className="text-[13px] text-muted">No open positions.</p>
-            skip;
+        } else {
+            <ul className="flex flex-col gap-2.5">
+                {for (name, w) in ranked {
+                    <li key={name} className="text-[12px]">
+                        <div className="mb-1 flex items-baseline justify-between gap-3">
+                            <span className="truncate text-muted">{name}</span>
+                            <span className="num">{pct(w, 1)}</span>
+                        </div>
+                        <div className="relative h-1.5 rounded-full bg-panel-2">
+                            <div
+                                className={"absolute inset-y-0 left-0 rounded-full " + ("bg-warn" if w > SECTOR_CAP - 0.02 else "bg-accent")}
+                                style={{"width": str(min(w / 0.4, 1.0) * 100) + "%"}}
+                            ></div>
+                            <div className="absolute inset-y-[-3px] w-px bg-line-strong" style={{"left": str(SECTOR_CAP / 0.4 * 100) + "%"}}></div>
+                        </div>
+                    </li>
+                }}
+            </ul>
         }}
-        <ul className="flex flex-col gap-2.5">
-            {for (name, w) in ranked {
-                <li key={name} className="text-[12px]">
-                    <div className="mb-1 flex items-baseline justify-between gap-3">
-                        <span className="truncate text-muted">{name}</span>
-                        <span className="num">{pct(w, 1)}</span>
-                    </div>
-                    <div className="relative h-1.5 rounded-full bg-panel-2">
-                        <div
-                            className={"absolute inset-y-0 left-0 rounded-full " + ("bg-warn" if w > SECTOR_CAP - 0.02 else "bg-accent")}
-                            style={{"width": str(min(w / 0.4, 1.0) * 100) + "%"}}
-                        ></div>
-                        <div className="absolute inset-y-[-3px] w-px bg-line-strong" style={{"left": str(SECTOR_CAP / 0.4 * 100) + "%"}}></div>
-                    </div>
-                </li>
-            }}
-        </ul>
     </Panel>
 }
 
@@ -219,73 +222,73 @@ def PositionsTable(positions: list[PositionData]) -> JsxElement {
     <Panel title="Open positions" aside={<span className="num text-[12px] text-faint">{str(len(positions))}</span>} pad={False}>
         {if len(positions) == 0 {
             <p className="px-4 py-6 text-[13px] text-muted">No open positions.</p>
-            skip;
-        }}
-        <div className="scroll-x">
-            <table className="w-full min-w-[980px]">
-                <thead>
-                    <tr>
-                        <th className={TH + " w-8"}></th>
-                        <th className={TH}>Ticker</th>
-                        <th className={TH_NUM}>Qty</th>
-                        <th className={TH_NUM}>Avg cost</th>
-                        <th className={TH_NUM}>Last</th>
-                        <th className={TH_NUM}>Value</th>
-                        <th className={TH_NUM}>Weight</th>
-                        <th className={TH_NUM}>Unrealized</th>
-                        <th className={TH_NUM}>Return</th>
-                        <th className={TH_NUM}>Stop</th>
-                        <th className={TH_NUM}>To stop</th>
-                        <th className={TH_NUM}>Time stop</th>
-                        <th className={TH_NUM}>Opened</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {for p in positions {
-                        <tr key={p.ticker} className={ROW + " cursor-pointer"} onClick={lambda { toggle(p.ticker); }}>
-                            <td className={TD + " pr-0 text-faint"}>
-                                <button
-                                    type="button"
-                                    className="grid size-5 place-items-center rounded hover:text-text"
-                                    aria-expanded={opened == p.ticker}
-                                    aria-label={"Thesis for " + p.ticker}
-                                >
-                                    <ChevronRight size={14} className={"transition-transform " + ("rotate-90" if opened == p.ticker else "")}/>
-                                </button>
-                            </td>
-                            <td className={TD}><TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/></td>
-                            <td className={TD_NUM}>{qty(p.qty)}</td>
-                            <td className={TD_NUM}>{money(p.avg_entry_price)}</td>
-                            <td className={TD_NUM}>{money(p.last_price)}</td>
-                            <td className={TD_NUM}>{money(p.market_value, 0)}</td>
-                            <td className={TD_NUM}>{pct(p.weight, 1)}</td>
-                            <td className={TD_NUM + " " + tone(p.pnl)}>{signed_money(p.pnl)}</td>
-                            <td className={TD_NUM + " " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</td>
-                            <td className={TD_NUM}>{money(p.stop_price)}</td>
-                            <td className={TD_NUM + " text-muted"}>{pct(p.stop_distance, 1)}</td>
-                            <td className={TD_NUM + " text-muted"}>{day_short(p.time_stop)}</td>
-                            <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.opened_at))}</td>
+        } else {
+            <div className="scroll-x">
+                <table className="w-full min-w-[980px]">
+                    <thead>
+                        <tr>
+                            <th className={TH + " w-8"}></th>
+                            <th className={TH}>Ticker</th>
+                            <th className={TH_NUM}>Qty</th>
+                            <th className={TH_NUM}>Avg cost</th>
+                            <th className={TH_NUM}>Last</th>
+                            <th className={TH_NUM}>Value</th>
+                            <th className={TH_NUM}>Weight</th>
+                            <th className={TH_NUM}>Unrealized</th>
+                            <th className={TH_NUM}>Return</th>
+                            <th className={TH_NUM}>Stop</th>
+                            <th className={TH_NUM}>To stop</th>
+                            <th className={TH_NUM}>Time stop</th>
+                            <th className={TH_NUM}>Opened</th>
                         </tr>
-                        if opened == p.ticker {
-                            <tr key={p.ticker + "-thesis"} className="bg-panel-2/60">
-                                <td className="border-b border-line"></td>
-                                <td colSpan={12} className="border-b border-line px-3 py-3 pr-4">
-                                    <div className="max-w-4xl text-[13px] leading-relaxed text-muted">
-                                        <span className="mr-2 text-[11px] font-medium uppercase tracking-[0.06em] text-faint">Thesis</span>
-                                        {p.thesis or "No thesis was recorded for this position."}
-                                    </div>
-                                    {if p.decision_day {
-                                        <Link to={trail_link(p.decision_day, p.ticker)} className="mt-2 inline-block text-[12px] font-medium text-accent hover:underline">
-                                            {"Open the " + day_short(p.decision_day) + " decision trail"}
-                                        </Link>
-                                    }}
+                    </thead>
+                    <tbody>
+                        {for p in positions {
+                            <tr key={p.ticker} className={ROW + " cursor-pointer"} onClick={lambda { toggle(p.ticker); }}>
+                                <td className={TD + " pr-0 text-faint"}>
+                                    <button
+                                        type="button"
+                                        className="grid size-5 place-items-center rounded hover:text-text"
+                                        aria-expanded={opened == p.ticker}
+                                        aria-label={"Thesis for " + p.ticker}
+                                    >
+                                        <ChevronRight size={14} className={"transition-transform " + ("rotate-90" if opened == p.ticker else "")}/>
+                                    </button>
                                 </td>
+                                <td className={TD}><TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/></td>
+                                <td className={TD_NUM}>{qty(p.qty)}</td>
+                                <td className={TD_NUM}>{money(p.avg_entry_price)}</td>
+                                <td className={TD_NUM}>{money(p.last_price)}</td>
+                                <td className={TD_NUM}>{money(p.market_value, 0)}</td>
+                                <td className={TD_NUM}>{pct(p.weight, 1)}</td>
+                                <td className={TD_NUM + " " + tone(p.pnl)}>{signed_money(p.pnl)}</td>
+                                <td className={TD_NUM + " " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</td>
+                                <td className={TD_NUM}>{money(p.stop_price)}</td>
+                                <td className={TD_NUM + " text-muted"}>{pct(p.stop_distance, 1)}</td>
+                                <td className={TD_NUM + " text-muted"}>{day_short(p.time_stop)}</td>
+                                <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.opened_at))}</td>
                             </tr>
-                        }
-                    }}
-                </tbody>
-            </table>
-        </div>
+                            if opened == p.ticker {
+                                <tr key={p.ticker + "-thesis"} className="bg-panel-2/60">
+                                    <td className="border-b border-line"></td>
+                                    <td colSpan={12} className="border-b border-line px-3 py-3 pr-4">
+                                        <div className="max-w-4xl text-[13px] leading-relaxed text-muted">
+                                            <span className="mr-2 text-[11px] font-medium uppercase tracking-[0.06em] text-faint">Thesis</span>
+                                            {p.thesis or "No thesis was recorded for this position."}
+                                        </div>
+                                        {if p.decision_day {
+                                            <Link to={trail_link(p.decision_day, p.ticker)} className="mt-2 inline-block text-[12px] font-medium text-accent hover:underline">
+                                                {"Open the " + day_short(p.decision_day) + " decision trail"}
+                                            </Link>
+                                        }}
+                                    </td>
+                                </tr>
+                            }
+                        }}
+                    </tbody>
+                </table>
+            </div>
+        }}
     </Panel>
 }
 
