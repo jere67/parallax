@@ -31,7 +31,8 @@ def returns_at(series: list[Series], start: float, day: str) -> dict[str, float]
     return out;
 }
 
-def:pub EquityChart(series: list[Series], starting_cash: float, height: int = 300) -> JsxElement {
+"""`height` is the chart's least height; inside a filling panel it grows to the panel."""
+def:pub EquityChart(series: list[Series], starting_cash: float, height: int = 280) -> JsxElement {
     has box: Ref[HTMLDivElement] = Ref(),
         hover_day: str = "",
         repaint: int = 0;
@@ -129,7 +130,7 @@ def:pub EquityChart(series: list[Series], starting_cash: float, height: int = 30
 
     shown = returns_at(series, starting_cash, hover_day);
 
-    <div>
+    <div className="flex flex-1 flex-col">
         <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-[12px]">
             {for s in series {
                 <span key={s.key} className="inline-flex items-center gap-2">
@@ -142,6 +143,6 @@ def:pub EquityChart(series: list[Series], starting_cash: float, height: int = 30
                 </span>
             }}
         </div>
-        <div ref={box} style={{"height": str(height) + "px"}}></div>
+        <div ref={box} className="flex-1" style={{"minHeight": str(height) + "px"}}></div>
     </div>
 }

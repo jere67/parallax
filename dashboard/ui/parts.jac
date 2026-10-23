@@ -28,16 +28,24 @@ glob STATUS_TONES: dict[str, str] = {
     "insight": "bg-panel-2 text-muted"
 };
 
-"""A bordered section with a small header and an optional control on its right."""
-def:pub Panel(title: str = "", aside: any = None, children: any = None, pad: bool = True, className: str = "") -> JsxElement {
-    <section className={"rounded-lg border border-line bg-panel " + className}>
+"""A bordered section with a small header and an optional control on its right. `fill` lets
+the body grow to the panel's height, for a chart beside a taller column."""
+def:pub Panel(
+    title: str = "",
+    aside: any = None,
+    children: any = None,
+    pad: bool = True,
+    fill: bool = False,
+    className: str = ""
+) -> JsxElement {
+    <section className={"rounded-lg border border-line bg-panel " + ("flex flex-col " if fill else "") + className}>
         {if title or aside {
-            <header className="flex min-h-10 items-center justify-between gap-3 border-b border-line px-4 py-2">
+            <header className="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-2">
                 <h2 className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted">{title}</h2>
                 {aside}
             </header>
         }}
-        <div className={"p-4" if pad else ""}>{children}</div>
+        <div className={("p-4" if pad else "") + (" flex flex-1 flex-col" if fill else "")}>{children}</div>
     </section>
 }
 
@@ -57,10 +65,14 @@ def:pub ActionBadge(action: str) -> JsxElement {
     <span className={BADGE_BASE + " " + tone}>{"No action" if action == "NO_ACTION" else action}</span>
 }
 
+"""Alpaca's names for an order still working at the broker."""
+glob WORKING: list[str] = ["new", "accepted", "pending_new", "accepted_for_bidding", "held", "pending_replace", "pending_cancel"];
+
 def:pub StatusBadge(status: str, label: str = "") -> JsxElement {
+    working = status in WORKING;
     tone = STATUS_TONES.get(status, "bg-accent-soft text-accent");
-    text = label or status.replace("_", " ");
-    <span className={BADGE_BASE + " capitalize " + tone}>{text}</span>
+    text = label or ("working" if working else status.replace("_", " "));
+    <span className={BADGE_BASE + " capitalize " + tone} title={status}>{text}</span>
 }
 
 """A muted label and its value, on one line."""
@@ -93,9 +105,10 @@ def:pub ErrorBox(message: str) -> JsxElement {
     </div>
 }
 
-"""Table cell classes, so every table lines up the same way."""
-glob TH: str = "whitespace-nowrap border-b border-line px-3 py-2 text-left text-[11px] font-medium uppercase tracking-[0.06em] text-faint first:pl-4 last:pr-4";
-glob TH_NUM: str = "whitespace-nowrap border-b border-line px-3 py-2 text-right text-[11px] font-medium uppercase tracking-[0.06em] text-faint first:pl-4 last:pr-4";
+"""Table cell classes, so every table lines up the same way. Header cells stick to the top of a
+scrolling table."""
+glob TH: str = "sticky top-0 z-[1] bg-panel whitespace-nowrap border-b border-line px-3 py-2 text-left text-[11px] font-medium uppercase tracking-[0.06em] text-faint first:pl-4 last:pr-4";
+glob TH_NUM: str = "sticky top-0 z-[1] bg-panel whitespace-nowrap border-b border-line px-3 py-2 text-right text-[11px] font-medium uppercase tracking-[0.06em] text-faint first:pl-4 last:pr-4";
 glob TD: str = "whitespace-nowrap border-b border-line px-3 py-2 text-[13px] first:pl-4 last:pr-4";
 glob TD_NUM: str = "num whitespace-nowrap border-b border-line px-3 py-2 text-right text-[13px] first:pl-4 last:pr-4";
 glob ROW: str = "transition-colors hover:bg-hover [&:last-child>td]:border-b-0";
