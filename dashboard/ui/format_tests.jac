@@ -7,6 +7,7 @@ import from dashboard.ui.format {
     num,
     pct,
     qty,
+    count,
     signed,
     signed_money,
     signed_pct,
@@ -22,6 +23,7 @@ test "numbers group thousands and carry a sign only where a change is meant" {
     assert pct(0.01234) == "1.23%" and signed_pct(-0.00421) == "-0.42%" and signed_pct(0.0) == "0.00%";
     assert num(1234.5, 1) == "1,234.5" and num(-0.04, 1) == "0.0";
     assert num(100.0, 0) == "100" and qty(12500) == "12,500" and signed(0.4321) == "+0.43";
+    assert count(1, "order") == "1 order" and count(0, "order") == "0 orders" and count(1200, "share") == "1,200 shares";
     assert compact(52300000.0) == "52.3M" and compact(840000.0) == "840K" and compact(None) == "-";
     assert money(None) == "-" and pct(None) == "-" and tone(None) == "text-muted";
     assert tone(0.1) == "text-up" and tone(-0.1) == "text-down" and tone(0.0) == "text-muted";

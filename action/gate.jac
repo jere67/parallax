@@ -239,10 +239,11 @@ def check_orders(
         }
         due = found.sessions_to_earnings;
         if due is not None and due <= config.earnings_blackout_sessions {
-            r.apply("earnings blackout", 0, f"earnings in {due} trading sessions; logged as insight only");
+            when = "today" if due == 0 else f"in {due} trading session{'' if due == 1 else 's'}";
+            r.apply("earnings blackout", 0, f"earnings {when}; logged as insight only");
             continue;
         }
-        r.apply("earnings blackout", r.approved_qty, "no earnings within 2 sessions" if due is None or due > config.earnings_blackout_sessions else "");
+        r.apply("earnings blackout", r.approved_qty, f"no earnings within {config.earnings_blackout_sessions} sessions");
         if drawn_down {
             r.apply("drawdown breaker", 0, f"equity {equity:,.0f} is {1 - equity / book.peak_equity:.1%} below the peak {book.peak_equity:,.0f}; new buys halt");
             continue;

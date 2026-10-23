@@ -80,6 +80,11 @@ def qty(x: int | None) -> str {
     return MISSING if x is None else num(float(x), 0);
 }
 
+"""A count with its noun: "1 order", "3 orders", "1,200 shares"."""
+def count(n: int, noun: str, plural: str = "") -> str {
+    return qty(n) + " " + (noun if n == 1 else (plural or noun + "s"));
+}
+
 """Large share volumes as 12.3M or 840K."""
 def compact(x: float | None) -> str {
     if x is None {

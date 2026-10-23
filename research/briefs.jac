@@ -422,7 +422,12 @@ def trend_line(t: RecommendationTrend) -> str {
 
 def earnings_date_text(e: EarningsDate, sessions_until: int | None) -> str {
     when = {"bmo": "before the open", "amc": "after the close", "dmh": "during market hours"}.get(e.hour, "time not announced");
-    distance = f"{sessions_until} trading sessions after the run date" if sessions_until is not None else "an unknown number of sessions away";
+    distance = "an unknown number of sessions away";
+    if sessions_until == 0 {
+        distance = "on the run date";
+    } elif sessions_until is not None {
+        distance = f"{sessions_until} trading session{'' if sessions_until == 1 else 's'} after the run date";
+    }
     parts = [f"Fiscal Q{e.quarter} {e.year} results are scheduled for {e.day}, {when}: {distance}."];
     if e.eps_estimate is not None {
         parts.append(f"Consensus EPS estimate: ${e.eps_estimate:.2f}.");

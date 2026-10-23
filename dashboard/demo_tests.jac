@@ -44,6 +44,8 @@ test "the demo history is consistent, and every page's view can be built from it
     assert latest is not None and latest.rows;
     trail = trail_view(portfolio, latest.run_date, latest.rows[0].ticker);
     assert trail is not None and len(trail.specialists) == 5 and len(trail.research) == 3;
+    # Every cited position names evidence in the packet the specialist read.
+    assert all(x.sources and len(x.sources) == len(x.cited) for s in trail.specialists for x in s.samples);
 }
 
 test "the seed writes into an empty team portfolio once, and never over history" {
