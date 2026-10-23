@@ -8,8 +8,12 @@ glob PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent;
 glob SKIP_DIRS: set[str] = {".git", ".jac", "dist", "node_modules", "tests"};
 glob FUNCTION_DECL: re.Pattern[str] = re.compile(r"def:(?:pub|priv)\s+(\w+)([^{;]*)");
 glob WALKER_DECL: re.Pattern[str] = re.compile(r"walker:(?:pub|priv)\s+(\w+)");
+# Browser globals place a module client (jac guide jac-codespaces), so its :pub helpers are
+# exports for other client modules, not endpoints.
+glob BROWSER_GLOBAL: re.Pattern[str] = re.compile(r"\b(?:window|document|localStorage)\.");
 
-"""Names of the functions and walkers marked :pub or :priv in the source, skipping client components."""
+"""Names of the functions and walkers marked :pub or :priv in the source, skipping client
+components and modules that use browser globals."""
 def declared_endpoints -> tuple[set[str], set[str]] {
     functions: set[str] = set();
     walkers: set[str] = set();
@@ -18,6 +22,9 @@ def declared_endpoints -> tuple[set[str], set[str]] {
             continue;
         }
         source = path.read_text();
+        if BROWSER_GLOBAL.search(source) {
+            continue;
+        }
         for found in FUNCTION_DECL.finditer(source) {
             if "JsxElement" not in found.group(2) {
                 functions.add(found.group(1));
@@ -39,7 +46,7 @@ def start_client -> JacTestClient {
 test "endpoint discovery finds the health endpoint" {
     (functions, _) = declared_endpoints();
     assert "health" in functions;
-    assert "HomePage" not in functions;
+    assert "App" not in functions and "Layout" not in functions;
 }
 
 test "every declared endpoint is served" {

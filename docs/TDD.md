@@ -786,6 +786,10 @@ A Live committee page (real-time run progress through polling or a [streaming en
 
 ### Design notes
 
+- **UI method.** Tailwind CSS v4 through its Vite plugin, with every color a design token in `dashboard/theme.css`, so the light and dark themes share one set of components; the theme follows the system until the reader picks one.
+  Inter and JetBrains Mono are self-hosted through Fontsource, icons come from Lucide, the equity curves use TradingView's [Lightweight Charts](https://www.tradingview.com/lightweight-charts/), and the small figures (interval bars, vote dot plots) are plain SVG.
+  The routes are a manual table in `dashboard/App.jac`, since file-based routing reads only a `pages/` directory at the project root.
+- **Quiet, dense, and exact.** One accent color, green for gains and red for losses, tabular figures, New York times, and no motion beyond hover states, so the numbers carry the page.
 - **Decision detail is the hero page.** It is the product's hook, so it gets the most design effort: a left-to-right trail from evidence to order, with each stage expandable.
 - **Disagreement is visible.** Vote distributions are shown as dot plots per specialist, so users see dissent rather than a single number.
 - **Mobile-first reading.** Portfolio, Today, and Decision detail must work on a phone, since most classmates will open the link from a shared message.

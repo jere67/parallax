@@ -1,0 +1,146 @@
+/* The dashboard's whole stylesheet: Tailwind, the fonts, and the design tokens.
+ *
+ * Colors are tokens on :root, so every component reads them through Tailwind utilities such
+ * as bg-panel or text-muted and the charts read them with getComputedStyle. The theme follows
+ * the system unless the reader picks one, which sets data-theme on <html>. Gains are green and
+ * losses red in both themes; every other color is a quiet neutral, so the numbers stand out.
+ */
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+:root {
+    color-scheme: light;
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --panel-2: #f1f3f6;
+    --hover: #f3f5f8;
+    --line: #e4e7ec;
+    --line-strong: #cdd2da;
+    --text: #0e1217;
+    --muted: #4b5462;
+    --faint: #7c8594;
+    --accent: #2c64d6;
+    --accent-soft: rgb(44 100 214 / 0.1);
+    --up: #0b875b;
+    --up-soft: rgb(11 135 91 / 0.1);
+    --down: #cf3339;
+    --down-soft: rgb(207 51 57 / 0.09);
+    --warn: #a86a12;
+    --warn-soft: rgb(196 132 29 / 0.12);
+    --series-team: #2c64d6;
+    --series-ew: #c47d14;
+    --series-spy: #8a93a3;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --bg: #0a0c0f;
+        --panel: #101318;
+        --panel-2: #151920;
+        --hover: #161b22;
+        --line: #20262f;
+        --line-strong: #2c3440;
+        --text: #e4e8ee;
+        --muted: #a1a9b6;
+        --faint: #687282;
+        --accent: #5d8ff0;
+        --accent-soft: rgb(93 143 240 / 0.14);
+        --up: #2bbf85;
+        --up-soft: rgb(43 191 133 / 0.12);
+        --down: #f0636b;
+        --down-soft: rgb(240 99 107 / 0.12);
+        --warn: #e2a64a;
+        --warn-soft: rgb(226 166 74 / 0.13);
+        --series-team: #5d8ff0;
+        --series-ew: #e2a64a;
+        --series-spy: #7b8595;
+    }
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0a0c0f;
+    --panel: #101318;
+    --panel-2: #151920;
+    --hover: #161b22;
+    --line: #20262f;
+    --line-strong: #2c3440;
+    --text: #e4e8ee;
+    --muted: #a1a9b6;
+    --faint: #687282;
+    --accent: #5d8ff0;
+    --accent-soft: rgb(93 143 240 / 0.14);
+    --up: #2bbf85;
+    --up-soft: rgb(43 191 133 / 0.12);
+    --down: #f0636b;
+    --down-soft: rgb(240 99 107 / 0.12);
+    --warn: #e2a64a;
+    --warn-soft: rgb(226 166 74 / 0.13);
+    --series-team: #5d8ff0;
+    --series-ew: #e2a64a;
+    --series-spy: #7b8595;
+}
+
+@theme inline {
+    --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+    --color-bg: var(--bg);
+    --color-panel: var(--panel);
+    --color-panel-2: var(--panel-2);
+    --color-hover: var(--hover);
+    --color-line: var(--line);
+    --color-line-strong: var(--line-strong);
+    --color-text: var(--text);
+    --color-muted: var(--muted);
+    --color-faint: var(--faint);
+    --color-accent: var(--accent);
+    --color-accent-soft: var(--accent-soft);
+    --color-up: var(--up);
+    --color-up-soft: var(--up-soft);
+    --color-down: var(--down);
+    --color-down-soft: var(--down-soft);
+    --color-warn: var(--warn);
+    --color-warn-soft: var(--warn-soft);
+}
+
+html {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss03";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+::selection {
+    background: var(--accent-soft);
+}
+
+/* Figures line up in columns everywhere. */
+.num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum", "cv11", "ss03";
+}
+
+/* Wide tables scroll inside their panel on a phone, never the page. */
+.scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
