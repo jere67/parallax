@@ -1,9 +1,12 @@
 """LimitedModel against a local fake OpenRouter: every request is limited, counted, and
 retried or rerouted the way TDD §12 says. No network and no API key."""
 import io;
+import asyncio;
+import json;
 import os;
 import re;
 import time;
+import from concurrent.futures { ThreadPoolExecutor }
 import from contextlib { redirect_stdout }
 import from importlib { import_module }
 import from pathlib { Path }
@@ -15,6 +18,7 @@ import from agents.models {
     ModelsDisabledError,
     PRIMARY_MODEL,
     RequestLimiter,
+    model_error,
     arbiter_llm,
     orchestrator_llm,
     provider_requests_left,
@@ -24,6 +28,9 @@ import from agents.models {
 }
 import from jaclang.byllm.lib { AuthenticationError }
 import from models.agents { Stance, Vote }
+import agents.specialists as specialists_module;
+import from agents.specialists { Packet, sample_vote }
+import from models.agents { Specialist }
 import from tests.fakes.openrouter { FakeOpenRouter }
 
 glob VOTE_JSON: str = '{"stance": "BUY", "confidence": 0.7, "horizon_days": 10, "rationale": "r", "cited_evidence": [0]}';
@@ -37,11 +44,17 @@ glob test_llm: LimitedModel = LimitedModel(
     api_key="test-key",
     config={"base_url": fake.start()},
     limiter=test_limiter,
+    role="specialist",
     backoff_s=0.0,
     request_timeout_s=1.0
 );
+glob test_retry_llm: LimitedModel = LimitedModel(
+    model_name=PRIMARY_MODEL, api_key="test-key", config=test_llm.config,
+    limiter=test_limiter, role="retry", backoff_s=0.0, request_timeout_s=1.0
+);
 
 def cast_vote(ticker: str) -> Vote by test_llm(max_output_retries=1);
+async def cast_vote_async(ticker: str) -> Vote by test_llm(max_output_retries=1);
 
 """Run one scripted call and return the vote, the requests the fake saw, and the limiter count."""
 def scripted_vote(script: list[tuple[int, str]]) -> tuple[Vote, list[dict[str, object]], int] {
@@ -61,24 +74,30 @@ test "a call goes through the limiter to the primary model at low reasoning effo
 }
 
 test "a parse retry is a second request, and the limiter counts it" {
+    before = test_limiter.snapshot();
     (vote, sent, counted) = scripted_vote([(200, "not json"), (200, VOTE_JSON)]);
     assert vote.confidence == 0.7;
     assert len(sent) == 2;
     assert counted == 2;
+    assert test_limiter.since(before) == {"specialist": {"first_attempt": 1, "parse_retry": 1, "transient_retry": 0, "fallback": 0}};
 }
 
 test "a 429 backs off and retries the primary model" {
+    before = test_limiter.snapshot();
     (vote, sent, counted) = scripted_vote([(429, ""), (200, VOTE_JSON)]);
     assert vote.horizon_days == 10;
     assert [r["model"] for r in sent] == [PROVIDER_PRIMARY, PROVIDER_PRIMARY];
     assert counted == 2;
+    assert test_limiter.since(before)["specialist"]["transient_retry"] == 1;
 }
 
 test "a primary model that stays rate limited falls back to the second free model" {
+    before = test_limiter.snapshot();
     (vote, sent, counted) = scripted_vote([(429, "")] * 4 + [(200, VOTE_JSON)]);
     assert vote.stance == Stance.BUY;
     assert [r["model"] for r in sent] == [PROVIDER_PRIMARY] * 4 + [PROVIDER_FALLBACK];
     assert counted == 5;
+    assert test_limiter.since(before) == {"specialist": {"first_attempt": 1, "parse_retry": 0, "transient_retry": 3, "fallback": 1}};
 }
 
 test "a primary model not found falls back to the second free model" {
@@ -141,6 +160,91 @@ test "every role has its own model instance and all share one limiter" {
     assert len({id(m) for m in roles}) == len(roles);
     assert all(m.limiter is LIMITER for m in roles);
     assert LIMITER.per_minute == 18;
+    assert {m.role for m in roles} == {"research", "specialist", "arbiter", "orchestrator", "retry"};
+}
+
+test "a parse retry that gets a 429 counts each request once under its actual kind" {
+    before = test_limiter.snapshot();
+    (_, sent, counted) = scripted_vote([(200, "not json"), (429, ""), (200, VOTE_JSON)]);
+    counts = test_limiter.since(before)["specialist"];
+    assert counts == {"first_attempt": 1, "parse_retry": 1, "transient_retry": 1, "fallback": 0};
+    assert sum(counts.values()) == counted == len(sent);
+}
+
+test "a fallback during a parse retry keeps the role and does not change the next call" {
+    before = test_limiter.snapshot();
+    (_, sent, counted) = scripted_vote([(200, "not json"), (503, ""), (200, VOTE_JSON)]);
+    assert [r["model"] for r in sent] == [PROVIDER_PRIMARY, PROVIDER_PRIMARY, PROVIDER_FALLBACK];
+    counts = test_limiter.since(before)["specialist"];
+    assert counts == {"first_attempt": 1, "parse_retry": 1, "transient_retry": 0, "fallback": 1};
+    assert sum(counts.values()) == counted;
+    scripted_vote([(200, VOTE_JSON)]);
+    assert test_limiter.since(before)["specialist"]["first_attempt"] == 2;
+}
+
+test "an outer transient retry restarts on the primary and remains counted" {
+    before = test_limiter.snapshot();
+    (_, sent, counted) = scripted_vote([(503, ""), (503, ""), (200, VOTE_JSON)]);
+    assert [r["model"] for r in sent] == [PROVIDER_PRIMARY, PROVIDER_FALLBACK, PROVIDER_PRIMARY];
+    assert counted == 3;
+    assert test_limiter.since(before)["specialist"] == {"first_attempt": 1, "parse_retry": 0, "transient_retry": 1, "fallback": 1};
+}
+
+test "the async typed retry path has the same request classification" {
+    fake.script = [(200, "not json"), (200, VOTE_JSON)];
+    fake.requests = [];
+    before = test_limiter.snapshot();
+    result = asyncio.run(cast_vote_async("AAPL"));
+    assert result.stance == Stance.BUY;
+    assert test_limiter.since(before) == {"specialist": {"first_attempt": 1, "parse_retry": 1, "transient_retry": 0, "fallback": 0}};
+}
+
+test "concurrent calls start independently and snapshots cannot mutate limiter counts" {
+    fake.script = [(200, VOTE_JSON)] * 8;
+    fake.requests = [];
+    before = test_limiter.snapshot();
+    with ThreadPoolExecutor(max_workers=4) as workers {
+        votes = list(workers.map(cast_vote, ["AAPL"] * 8));
+    }
+    assert len(votes) == len(fake.requests) == 8;
+    counts = test_limiter.since(before);
+    assert counts["specialist"] == {"first_attempt": 8, "parse_retry": 0, "transient_retry": 0, "fallback": 0};
+    detached = test_limiter.snapshot();
+    detached["specialist"]["first_attempt"] = -1;
+    assert test_limiter.snapshot()["specialist"]["first_attempt"] >= 8;
+}
+
+test "full validation errors retain the tail and earlier attempt" {
+    tail = "validation failed: cited_evidence is empty";
+    error = ValueError("x" * 600 + tail);
+    detail = model_error(error, "initial parse: horizon_days is zero");
+    assert tail in detail and "initial parse: horizon_days is zero" in detail;
+    assert len(detail) > 600;
+}
+
+test "the known Flow citation failure takes four requests while a verified gap HOLD takes one" {
+    gap = "SEC insider transaction data is unavailable.";
+    p = Packet(specialist=Specialist.FLOW, ticker="AAPL", as_of="2026-10-16", research="Flow inputs missing.", evidence=[], data_gaps=[gap]);
+    legacy = {"stance": "HOLD", "confidence": 0.2, "horizon_days": 10, "rationale": "Missing flow inputs.", "cited_evidence": []};
+    fake.script = [(200, json.dumps(legacy))] * 4 + [(200, json.dumps({**legacy, "cited_gaps": [gap]}))];
+    fake.requests = [];
+    saved = (specialists_module.specialist_llm, specialists_module.retry_llm);
+    setattr(specialists_module, "specialist_llm", test_llm);
+    setattr(specialists_module, "retry_llm", test_retry_llm);
+    try {
+        before = test_limiter.snapshot();
+        dropped = sample_vote(p, 0);
+        legacy_requests = sum(sum(kinds.values()) for kinds in test_limiter.since(before).values());
+        before = test_limiter.snapshot();
+        accepted = sample_vote(p, 1);
+        fixed_requests = sum(sum(kinds.values()) for kinds in test_limiter.since(before).values());
+    } finally {
+        setattr(specialists_module, "specialist_llm", saved[0]);
+        setattr(specialists_module, "retry_llm", saved[1]);
+    }
+    assert not dropped.valid() and dropped.retried and legacy_requests == 4;
+    assert accepted.valid() and not accepted.retried and fixed_requests == 1;
+    assert len(fake.requests) == 5;
 }
 
 test "no agent calls the builtin llm, which bypasses the limiter" {

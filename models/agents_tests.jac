@@ -66,3 +66,11 @@ test "evidence accepts http and https sources" {
         assert Evidence(claim="c", source_url=url, published="2026-10-01").source_url == url;
     }
 }
+
+test "a gap-only vote can abstain but cannot become a directional trade signal" {
+    hold = Vote(stance=Stance.HOLD, confidence=0.2, horizon_days=10, rationale="Inputs unavailable.", cited_gaps=["No insider data."]);
+    assert hold.cited_evidence == [] and hold.cited_gaps == ["No insider data."];
+    with testraises(ValueError, `match="only HOLD") {
+        Vote(stance=Stance.BUY, confidence=0.8, horizon_days=10, rationale="Missing inputs.", cited_gaps=["No insider data."]);
+    }
+}

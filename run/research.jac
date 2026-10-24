@@ -10,7 +10,7 @@ and a failed sub-agent a safe default, so one bad ticker or provider never stops
 import time;
 import from concurrent.futures { Future }
 import from datetime { date, datetime, timedelta }
-import from agents.models { FALLBACK_MODEL, LIMITER, PRIMARY_MODEL }
+import from agents.models { FALLBACK_MODEL, LIMITER, PRIMARY_MODEL, request_total }
 import from agents.research { MacroResult, ResearchResult, macro_research, research }
 import from models.agents { Domain }
 import from models.graph {
@@ -123,6 +123,7 @@ obj ResearchPass {
     has gaps: list[str] = [],
         phase_seconds: dict[str, float] = {},
         model_requests: int = 0,
+        model_requests_by_role: dict[str, dict[str, int]] = {},
         fallbacks: int = 0,
         source_calls: dict[str, int] = {};
 
@@ -172,12 +173,13 @@ obj Collection {
 and every symbol in `open_positions`. Never touches the graph; pass the result to
 `record_pass`."""
 def research_pass(run_day: str, open_positions: list[str], config: PassConfig = PassConfig()) -> ResearchPass {
-    (requests_before, fallbacks_before) = (LIMITER.sent, LIMITER.fallbacks);
+    counts_before = LIMITER.snapshot();
     found = collect_pass(run_day, open_positions, config);
     phases = dict(found.phase_seconds);
     clock = time.monotonic();
     (per_ticker, macro) = write_reports(run_day, found.tickers, found.macro_inputs);
     phases["research"] = time.monotonic() - clock;
+    counts = LIMITER.since(counts_before);
     return ResearchPass(
         run_day=run_day,
         started_at=found.started_at,
@@ -188,8 +190,9 @@ def research_pass(run_day: str, open_positions: list[str], config: PassConfig = 
         regime=regime_inputs(found.macro_inputs),
         gaps=found.gaps,
         phase_seconds=phases,
-        model_requests=LIMITER.sent - requests_before,
-        fallbacks=LIMITER.fallbacks - fallbacks_before,
+        model_requests=request_total(counts),
+        model_requests_by_role=counts,
+        fallbacks=sum(kinds["fallback"] for kinds in counts.values()),
         source_calls=found.source_calls
     );
 }
@@ -420,7 +423,8 @@ def record_pass(portfolio: Portfolio, result: ResearchPass) -> Run {
         finished_at=result.finished_at,
         summary=f"Research: {len(result.tickers)} tickers, {result.completeness():.0%} of reports complete, {result.citation_rate():.0%} of claims cited.",
         model_versions={"primary": PRIMARY_MODEL, "fallback": FALLBACK_MODEL, "sources": SOURCES_VERSION, "screen": result.shortlist.version},
-        model_requests=result.model_requests
+        model_requests=result.model_requests,
+        model_requests_by_role=result.model_requests_by_role
     ));
     public(run +>:HasMacro():+> MacroRecord(as_of=result.finished_at, model=result.macro.model, body=result.macro.body, inputs=result.regime));
     for t in result.tickers {

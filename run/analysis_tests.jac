@@ -11,8 +11,10 @@ import from jaclang.byllm.lib { MockError, MockLLM, MockRawResponse }
 import agents.arbiter as arbiter_module;
 import agents.specialists as specialists_module;
 import from agents.research { ResearchResult }
+import from agents.arbiter { Ruling }
+import from agents.specialists { VoteResult }
 import from analysis.consensus { ConsensusConfig }
-import from models.agents { Domain, Evidence, MacroReport, ResearchReport, RiskRegime, Stance }
+import from models.agents { Domain, Evidence, MacroReport, ResearchReport, RiskRegime, Specialist, Stance, Vote }
 import from models.graph { Concluded, Coverage, CoverageReason, Decided, Portfolio, PortfolioMode, TradeAction, Voted }
 import from run.analysis { Holding, TickerAnalysis, analyze, record_analysis, trading_day_after }
 
@@ -136,4 +138,22 @@ test "a finished analysis writes its valid votes, consensus, and decision under 
     assert (held.action, held.conviction) == (TradeAction.HOLD, 0.0);
     assert held.forced_hold_reason == "insufficient data: no complete fundamentals research";
     assert [short ->:Voted:->] == [] and [short ->:Concluded:->] == [];
+}
+
+test "stored analysis retains dropped sample errors, Arbiter errors and Flow gap citations" {
+    cov = Coverage(ticker="AAPL", sector="Information Technology", reason=CoverageReason.SCREEN);
+    root ++> cov;
+    error = "schema mismatch " + "x" * 600 + " missing citation at the end";
+    gap = "No insider data.";
+    vote = Vote(stance=Stance.HOLD, confidence=0.2, horizon_days=10, rationale="Missing flow inputs.", cited_gaps=[gap]);
+    analysis = TickerAnalysis(
+        ticker="AAPL", held=False,
+        votes=[VoteResult(specialist=Specialist.NEWS, sample=1, error=error), VoteResult(specialist=Specialist.FLOW, sample=0, vote=vote)],
+        ruling=Ruling(action=TradeAction.NO_ACTION, thesis="Safe default.", risks=["Unknown."], exit_condition="Reassess.", error=error)
+    );
+    made = record_analysis(cov, analysis);
+    assert cov.analysis_errors == [f"news sample 1: {error}"];
+    assert made.arbiter_error == error;
+    records = [cov ->:Voted:->];
+    assert len(records) == 1 and records[0].body.cited_gaps == [gap];
 }

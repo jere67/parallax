@@ -129,6 +129,7 @@ node Run {
         summary: str = "",
         model_versions: dict[str, str] = {},
         model_requests: int = 0,
+        model_requests_by_role: dict[str, dict[str, int]] = {},
         prompt_tokens: int = 0,
         completion_tokens: int = 0;
 }
@@ -158,6 +159,7 @@ node Coverage {
     has screen_score: float = 0.0,
         reason_note: str = "",
         fetch_errors: list[str] = [],
+        analysis_errors: list[str] = [],
         flag_reason: str = "",
         last_close: float = 0.0,
         atr_14: float | None = None,
@@ -209,6 +211,7 @@ node Decision {
         downgrade_reason: str = "",
         forced_hold_reason: str = "",
         arbiter_verdict: str = "",
+        arbiter_error: str = "",
         model: str = "";
 }
 

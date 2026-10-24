@@ -155,8 +155,9 @@ The following user needs are the basis for the functional requirements and user 
 
 - Each specialist shall provide, for every sample, a stance in the ordered set STRONG_SELL, SELL, HOLD, BUY, STRONG_BUY.
 - Each sample shall provide confidence in the closed interval [0,1].
-- Each sample shall provide a trading horizon in days, a rationale, and at least one cited evidence item.
-- A sample with no cited evidence shall be discarded.
+- Each sample shall provide a trading horizon in days, a rationale, and at least one cited evidence item, except that a Flow HOLD may cite a supplied data gap verbatim in a separate `cited_gaps` field (#71).
+- A sample with neither valid cited evidence nor a verified Flow-HOLD gap citation shall be discarded.
+- Missing inputs shall remain distinct from factual evidence; a gap-only vote shall never support a directional stance.
 - The standard configuration shall generate three samples per specialist per ticker.
 - Specialist samples shall be generated independently and specialists shall not see each other's votes before consensus aggregation.
 - Evidence shall be presented in a different order across repeated samples for the same specialist/ticker.
