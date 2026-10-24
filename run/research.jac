@@ -51,6 +51,7 @@ import from research.finnhub {
     recommendation_trends
 }
 import from research.indicators { BOND_BENCHMARKS, BOND_ETFS, SECTOR_ETFS, Technicals, summarize }
+import from research.holdings { HoldingsBatch, institutional_holdings }
 import from research.screener { Pick, PickReason, ScreenConfig, Shortlist, gather, screen }
 import from research.sec { cik_map, earnings_release, eight_ks, filings, fundamentals, insider_trades }
 import from research.sources { DATASETS, Dataset, SOURCES_VERSION }
@@ -88,6 +89,7 @@ obj PassContext {
         technicals: dict[str, Technicals],
         budget: RunBudget,
         config: PassConfig;
+    has holdings: HoldingsBatch = HoldingsBatch();
 
     def since(days: int) -> str {
         return (date.fromisoformat(self.run_day) - timedelta(days=days)).isoformat();
@@ -233,6 +235,8 @@ def collect_pass(run_day: str, open_positions: list[str], config: PassConfig = P
     (releases, calendar_gaps) = next_releases(ctx);
     gaps.extend(calendar_gaps);
     ciks = company_ciks(symbols, members, budget, gaps);
+    # Collect once before worker fan-out: the same quarter archive serves every ticker.
+    ctx.holdings = institutional_holdings({m.symbol: m.name for m in members}, run_day, budget);
     pending = [NETWORK.submit(collect_ticker, p, releases.get(p.symbol), ciks.get(p.symbol, ""), ctx) for p in shortlist.picks];
     collected = [f.result() for f in pending];
     phases["collect"] = time.monotonic() - clock;
@@ -313,6 +317,8 @@ def collect_ticker(pick: Pick, release: EarningsDate | None, cik: str, ctx: Pass
     }
 
     funda = FundamentalsInputs(insider_since=ctx.since(config.insider_days));
+    funda.holdings = ctx.holdings.values.get(symbol);
+    funda.gaps.extend(ctx.holdings.gaps.get(symbol, [f"sec.13f: no issuer name for {symbol} in the index constituents"]));
     funda.metrics = tries.run("finnhub.metrics", funda.gaps, lambda { key_metrics(symbol, budget); });
     (funda.trends, trend_gaps) = current(tries.run("finnhub.recommendations", funda.gaps, lambda { recommendation_trends(symbol, budget); }) or [], DATASETS["finnhub.recommendations"], ctx.now);
     (funda.surprises, surprise_gaps) = current(tries.run("finnhub.eps_surprises", funda.gaps, lambda { eps_surprises(symbol, budget); }) or [], DATASETS["finnhub.eps_surprises"], ctx.now);
