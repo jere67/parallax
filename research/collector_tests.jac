@@ -341,3 +341,32 @@ test "collectors never touch the graph, since they run inside flow" {
     }
     assert not offenders, f"Collectors return values; write to the graph after wait: {offenders}";
 }
+
+test "binary decoding records original bytes and replays through the same decoder" {
+    record_dir = Path(tempfile.mkdtemp());
+    client = make_client();
+    payload = bytes([0, 255, 128, 65]);
+    fake.script = [(200, {}, payload)];
+    os.environ[RECORD_DIR_ENV] = str(record_dir);
+    try {
+        first = client.get(NEWS, "/binary", budget(), decode=lambda (data: bytes) { str(list(data)); });
+        assert first.body == "[0, 255, 128, 65]";
+        assert client.get(NEWS, "/binary", budget(), decode=lambda (data: bytes) { str(list(data)); }).from_cache;
+    } finally {
+        del os.environ[RECORD_DIR_ENV];
+    }
+    recorded = list((record_dir / "test").glob("*.json"));
+    assert len(recorded) == 1 and "body_base64" in recorded[0].read_text();
+    assert "s3cret" not in recorded[0].read_text();
+    replay = FakeSource();
+    replay.load(record_dir / "test");
+    os.environ[URL_ENV] = replay.start();
+    try {
+        again = make_client().get(NEWS, "/binary", budget(), decode=lambda (data: bytes) { str(list(data)); });
+        assert again.body == "[0, 255, 128, 65]";
+        assert replay.misses == [];
+    } finally {
+        replay.stop();
+        os.environ[URL_ENV] = FAKE_URL;
+    }
+}
