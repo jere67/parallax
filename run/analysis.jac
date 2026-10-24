@@ -218,6 +218,7 @@ def trading_day_after(sessions: list[str], run_day: str, n: int) -> str {
 """Write one ticker's valid votes, its consensus, and its decision under its coverage, each
 granted READ. Call it on the caller's thread, never on a worker thread."""
 def record_analysis(coverage: Coverage, result: TickerAnalysis) -> Decision {
+    coverage.analysis_errors = [f"{r.specialist.value} sample {r.sample}: {r.error}" for r in result.votes if not r.valid()];
     for r in result.votes {
         if r.vote is not None {
             public(coverage +>:Voted():+> VoteRecord(ticker=result.ticker, specialist=r.specialist, sample=r.sample, model=r.model, body=r.vote));
@@ -257,6 +258,7 @@ def decision(result: TickerAnalysis) -> Decision {
         time_stop=result.time_stop,
         downgrade_reason=ruling.downgrade_reason,
         arbiter_verdict=ruling.verdict,
+        arbiter_error=ruling.error,
         model=ruling.model
     );
 }

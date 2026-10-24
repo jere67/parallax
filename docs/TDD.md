@@ -601,7 +601,12 @@ A result counts as near a threshold when moving C and its interval, or A, by up 
 
 Each sample returns a typed `Vote`: a stance from STRONG\_SELL to STRONG\_BUY, a confidence from 0 to 1, a horizon in trading days, a rationale, and the indices of the evidence it relied on.
 The stance is a string enum that code maps to a score from −2 to +2 (Section 3).
-A vote that cites no evidence fails the parse and is retried with feedback; code then maps the numbers a sample was shown back to the packet's own order, and a vote that still cites nothing in range is discarded.
+A vote that cites no evidence fails the parse and is retried with feedback; code then maps the 1-based numbers a sample was shown back to the packet's own 0-based order, and a vote that still cites nothing in range is discarded.
+The explicit exception is a Flow HOLD: it may copy a supplied missing-input statement verbatim into `cited_gaps`, without inventing a factual citation (#71).
+Code accepts such gaps only for Flow HOLD votes, keeps them distinct from sourced evidence, and rejects invented gaps; a gap-only vote can never be directional.
+These abstentions score zero and do not count as directional agreement, like every other HOLD.
+Prompts and Vote field semantics state the citation numbering, confidence bounds, and minimum horizon before the first request.
+Output retry limits remain at one until an instrumented live run establishes the largest retry source; the prompt/contract correction is a targeted hypothesis, not a measured reduction.
 
 ### Aggregation
 
@@ -859,7 +864,8 @@ Every agent runs on one free model, NVIDIA Nemotron 3 Super (`nvidia/nemotron-3-
 The binding constraint is OpenRouter's free-model rate limit, which covers the whole account: 20 requests per minute, and 1,000 requests per day once the account has bought at least $10 of credits, or 50 per day otherwise ([OpenRouter limits](https://openrouter.ai/docs/api_reference/limits)).
 The team account has the 1,000-a-day allowance, and its key's credit limit is $0, so a paid model is refused rather than billed.
 Additional keys or accounts do not raise the limit, because OpenRouter governs capacity globally.
-A standard run uses about 460 requests, including retries, which leaves room for on-demand reports.
+The October 16 Analysis exit run used 530 requests, including about 150 retry requests; the standard run budget is 600.
+Issue #71 adds per-role retry accounting; a new live measurement is required before claiming that retry overhead has fallen.
 
 ### Model choice
 
@@ -895,21 +901,31 @@ A local model through Ollama is fine for manual prompt work, but local models ar
 
 ### Requests per run (standard configuration: 20 tickers, K = 3)
 
-| Step | Requests per run | Notes |
+| Step | October 16 measured base calls | Notes |
 | --- | --- | --- |
-| Research sub-agents | 60 | 3 per ticker × 20 tickers |
-| Macro brief | 1 | Once per run |
-| Orchestrator follow-ups | Up to 10 | At most two per ticker |
-| Specialist samples | 300 | 5 specialists × K = 3 × 20 tickers |
-| Extra samples near thresholds | About 20 | Sequential sampling on ambiguous tickers |
-| Arbiter | 20 | One per ticker |
-| Orchestrator loop | About 30 | ReAct iterations with batched tools, capped |
-| Parse and transient-error retries | About 20 | `max_output_retries = 1` and up to two retries on timeouts; every retry is a request |
-| **Total** | **About 460** | **At 18 requests a minute, at least 26 minutes of model time** |
+| Research sub-agents and Macro | 61 | 3 per ticker × 20 tickers, plus Macro |
+| Orchestrator follow-ups | 4 | One follow-up per call in that run |
+| Specialist samples | 285 | 19 panels × 5 specialists × K = 3; one ticker was flagged HOLD |
+| Extra samples near thresholds | 0 | No ambiguous result in that run |
+| Arbiter | 19 | One review per panel |
+| Orchestrator loop | 11 | Tool-loop steps and closing answer |
+| Additional requests from retries/fallback | About 150 | Legacy totals cannot separate parse, transient, fallback, or low-temperature retry-role calls |
+| **Total provider requests** | **530** | **44.3 minutes measured; 600-request configured run budget** |
 
-The Analysis exit run measured 530 requests and 44 minutes for this configuration: retries took about 150 requests, not 20, and the loop and follow-ups fewer than planned, so the 600-request run budget holds about 22 tickers ([exit run](runs/2026-10-16-analysis-exit-run.md)).
+These are the [Analysis exit run's](runs/2026-10-16-analysis-exit-run.md) historical observations, replacing the optimistic 460-request estimate rather than presenting an unmeasured post-change result.
+Its panel sent 451 requests for 304 base calls, the largest observed overhead; the old data cannot determine the underlying validation-error mix.
+The new `Run.model_requests_by_role` matrix records roles `research`, `specialist`, `retry`, `arbiter`, and `orchestrator`, with mutually exclusive kinds `first_attempt`, `parse_retry`, `transient_retry`, and `fallback`.
+A kind describes the actual provider request: fallback takes precedence over the retry that triggered it, and a transport retry of a parse request is `transient_retry`.
+A call through the low-temperature retry instance is a `first_attempt` under role `retry`, so overhead analysis must include that role instead of counting only retry-kind columns.
+Typed retries are identified by the pinned runtime's actual retry hook, not prompt text; dispatch state is local to the thread/async context, so concurrent calls and nested tool calls do not share retry state.
+The matrix is the shared limiter's run-interval delta, using the same boundary as `Run.model_requests`; its cells sum to that total.
+As with the existing scalar total, overlapping runs or on-demand calls in the same process would share that accounting interval.
+Dropped sample errors persist untruncated in `Coverage.analysis_errors`, and a failed review's full error persists in `Decision.arbiter_error`, including the preceding role's validation failure when both attempts fail.
+The exit-run JSON includes the matrix both per run and per tool, plus full dropped errors and each Flow vote's gap citations.
+The live remeasurement and any evidence-based retry-limit tuning remain pending; no provider credentials are present in this checkout.
+
 An on-demand report on a ticker not already covered that day uses about 22 requests: 3 research, 15 specialist samples, 1 Arbiter, and a few Orchestrator steps.
-A global cap of 15 new reports a day bounds reports at about 330 requests, so the daily total stays under about 790 of the 1,000 allowed, leaving room for further retries.
+A global cap of 15 new reports a day bounds reports at about 330 requests, so combining the measured 530-request morning run with that estimate uses about 860 of the 1,000 allowed; retry headroom is tighter than the earlier 790-request estimate implied.
 
 ### Request controls
 

@@ -131,3 +131,47 @@ test "a packet with no evidence makes no model request" {
 test "the specialist and retry roles are the shared limited instances" {
     assert specialists_module.specialist_llm is specialist_llm and specialists_module.retry_llm is retry_llm;
 }
+
+test "Flow may HOLD on an exact supplied gap without inventing factual evidence" {
+    gap = "SEC insider transaction data is unavailable.";
+    p = Packet(specialist=Specialist.FLOW, ticker="AAPL", as_of="2026-10-16", research="Insider inputs missing.", evidence=[], data_gaps=[gap]);
+    response = json.dumps({"stance": "HOLD", "confidence": 0.3, "horizon_days": 10, "rationale": "Missing inputs prevent a directional view.", "cited_evidence": [], "cited_gaps": [gap]});
+    (result, main, backup) = with_mocks(p, 0, [MockRawResponse(content=response)], []);
+    assert result.valid() and not result.retried;
+    assert result.vote is not None and result.vote.cited_evidence == [];
+    assert result.vote.cited_gaps == [gap] and result.vote.stance == Stance.HOLD;
+    assert gap in main.seen_prompts[0];
+    assert len(main.seen_prompts) == 1 and backup.seen_prompts == [];
+}
+
+test "invented gaps and gaps offered to another specialist cannot validate a vote" {
+    gap = "No insider data.";
+    response = json.dumps({"stance": "HOLD", "confidence": 0.2, "horizon_days": 10, "rationale": "Missing data.", "cited_evidence": [], "cited_gaps": [gap]});
+    flow_packet = funda_packet();
+    flow_packet.specialist = Specialist.FLOW;
+    flow_packet.data_gaps = ["Some other gap."];
+    (invented, _, _) = with_mocks(flow_packet, 0, [MockRawResponse(content=response)], []);
+    assert not invented.valid();
+    funda = funda_packet();
+    funda.data_gaps = [gap];
+    (wrong_role, _, _) = with_mocks(funda, 0, [MockRawResponse(content=response)], []);
+    assert not wrong_role.valid();
+}
+
+test "Flow packet gaps remain distinct from sourced evidence and survive on the vote" {
+    found = reports();
+    found[Domain.FUNDAMENTALS].data_gaps = ["No insider data."];
+    p = packet(Specialist.FLOW, "AAPL", "2026-10-16", found, None);
+    assert p.data_gaps == ["No insider data."];
+    assert len(p.evidence) == 4 and all("No insider data" not in e.claim for e in p.evidence);
+}
+
+test "a dropped sample preserves the whole validation error from both role attempts" {
+    primary = "primary " + "x" * 600 + " missing citation at the end";
+    retry = "retry " + "y" * 600 + " invalid horizon at the end";
+    import from jaclang.byllm.lib { OutputConversionError }
+    (result, _, _) = with_mocks(funda_packet(), 0, [MockError(error=OutputConversionError(primary))] * 2, [MockError(error=OutputConversionError(retry))] * 2);
+    assert not result.valid() and result.retried;
+    assert "missing citation at the end" in result.error;
+    assert "invalid horizon at the end" in result.error;
+}

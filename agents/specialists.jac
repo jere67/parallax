@@ -7,7 +7,8 @@ summary, risks, and gaps, and the reports' evidence as one numbered list. It nev
 another specialist's votes, nor the research sub-agents' own views and confidences, so the
 panel's errors stay independent. Every sample shows the evidence in a different seeded order
 to reduce position bias; code maps the numbers a vote cites back to the packet's own order,
-and a vote that cites nothing in range is discarded (FR-06).
+and a vote that cites nothing in range is discarded (FR-06), except for a Flow HOLD
+that cites an exact supplied data gap separately from factual evidence.
 
 Every call site follows TDD §4: a parse that still fails after `max_output_retries` is tried
 once more through `retry_llm` at temperature 0.2, and any other error, or a second failure,
@@ -18,8 +19,8 @@ import random;
 import time;
 import zlib;
 import from jaclang.byllm.lib { OutputConversionError }
-import from agents.models { retry_llm, specialist_llm }
-import from models.agents { Domain, Evidence, MacroReport, ResearchReport, Specialist, Vote }
+import from agents.models { model_error, retry_llm, specialist_llm }
+import from models.agents { Domain, Evidence, MacroReport, ResearchReport, Specialist, Stance, Vote }
 
 # What each specialist judges, passed to the shared prompt.
 glob SPECIALIST_FOCUS: dict[Specialist, str] = {
@@ -27,7 +28,7 @@ glob SPECIALIST_FOCUS: dict[Specialist, str] = {
     Specialist.TECHNICAL: "Technicals: trend, momentum, support and resistance, volatility, and relative strength against the market and the sector. Judge whether price action supports owning the stock now.",
     Specialist.NEWS: "News and events: how material the recent news is, whether it is already priced in, and the catalysts ahead, such as an earnings release. Judge which way the news flow points.",
     Specialist.MACRO: "Macro and sector: the market's trend and volatility regime, rates and inflation expectations, sector rotation, and how this stock's sector sits in that regime. Judge whether conditions favor this stock.",
-    Specialist.FLOW: "Flow and positioning: insider buying and selling, its size, and who traded, and analyst positioning where the reports carry it. Judge what informed money is doing; with no insider activity, say so and lean HOLD."
+    Specialist.FLOW: "Flow and positioning: insider buying and selling, its size, and who traded, and analyst positioning where the reports carry it. Judge what informed money is doing. Missing insider data is uncertainty, not evidence of no trading. When missing flow inputs justify HOLD, copy the applicable supplied data gaps verbatim into cited_gaps; leave cited_evidence empty if no factual flow evidence supports the call. Never cite unrelated business facts just to satisfy a citation requirement."
 };
 
 # The research reports each specialist reads (TDD §7, specialists).
@@ -50,7 +51,11 @@ specialty alone, described in `focus`, using the research context and the number
 
 Rules:
 - cited_evidence lists the numbers, in brackets below, of the evidence items your call
-  relies on; cite at least one, and only items that bear on your specialty.
+  relies on; cite at least one, and only items that bear on your specialty. Numbers are
+  1-based: [1] is the first item. confidence is between 0 and 1; horizon_days is at least 1.
+- A Flow HOLD may instead cite supplied data gaps verbatim in cited_gaps when missing
+  inputs prevent a directional view. Gaps are uncertainty, not evidence of buying/selling.
+  Other specialists must cite factual evidence. Never invent a gap or a citation.
 - Judge only your specialty; other committee members cover the rest.
 - horizon_days counts trading days; never work out calendar dates.
 - With weak, stale, or mixed evidence, prefer HOLD and a lower confidence."""
@@ -61,7 +66,11 @@ specialty alone, described in `focus`, using the research context and the number
 
 Rules:
 - cited_evidence lists the numbers, in brackets below, of the evidence items your call
-  relies on; cite at least one, and only items that bear on your specialty.
+  relies on; cite at least one, and only items that bear on your specialty. Numbers are
+  1-based: [1] is the first item. confidence is between 0 and 1; horizon_days is at least 1.
+- A Flow HOLD may instead cite supplied data gaps verbatim in cited_gaps when missing
+  inputs prevent a directional view. Gaps are uncertainty, not evidence of buying/selling.
+  Other specialists must cite factual evidence. Never invent a gap or a citation.
 - Judge only your specialty; other committee members cover the rest.
 - horizon_days counts trading days; never work out calendar dates.
 - With weak, stale, or mixed evidence, prefer HOLD and a lower confidence."""
@@ -101,6 +110,7 @@ obj Packet {
         as_of: str,
         research: str,
         evidence: list[Evidence];
+    has data_gaps: list[str] = [];
 
     """The order sample `sample` shows the evidence in, as packet indices, fixed by the run
     date, ticker, specialist, and sample number."""
@@ -111,7 +121,11 @@ obj Packet {
     }
 
     def render_evidence(shown: list[int]) -> str {
-        return "\n".join(f"[{n}] {_clip(self.evidence[i].claim, MAX_CLAIM_CHARS)} (source: {self.evidence[i].source_url}; published {self.evidence[i].published})" for (n, i) in enumerate(shown, start=1));
+        facts = "\n".join(f"[{n}] {_clip(self.evidence[i].claim, MAX_CLAIM_CHARS)} (source: {self.evidence[i].source_url}; published {self.evidence[i].published})" for (n, i) in enumerate(shown, start=1)) or "(no factual evidence)";
+        if self.specialist == Specialist.FLOW and self.data_gaps {
+            facts += "\n\nSupplied data gaps (uncertainty, not factual evidence; copy verbatim into cited_gaps for a Flow HOLD):\n" + "\n".join(self.data_gaps);
+        }
+        return facts;
     }
 }
 
@@ -138,7 +152,8 @@ def packet(specialist: Specialist, ticker: str, as_of: str, reports: dict[Domain
         sections.append(f"Missing research: {', '.join(missing)}.");
     }
     evidence = [e for v in views for e in v.evidence[:MAX_EVIDENCE_PER_REPORT]];
-    return Packet(specialist=specialist, ticker=ticker, as_of=as_of, research="\n\n".join(sections), evidence=evidence);
+    gaps = list(dict.fromkeys(_clip(g, MAX_CLAIM_CHARS) for v in views for g in v.data_gaps[:MAX_LIST_ITEMS] if g.strip()));
+    return Packet(specialist=specialist, ticker=ticker, as_of=as_of, research="\n\n".join(sections), evidence=evidence, data_gaps=gaps);
 }
 
 def _section(v: ReportView) -> str {
@@ -172,29 +187,32 @@ obj VoteResult {
 sample with the error recorded, so one bad response never stops the panel."""
 def sample_vote(p: Packet, sample: int) -> VoteResult {
     started = time.monotonic();
-    if not p.evidence {
+    if not p.evidence and not (p.specialist == Specialist.FLOW and p.data_gaps) {
         return VoteResult(specialist=p.specialist, sample=sample, error="no evidence to judge", seconds=time.monotonic() - started);
     }
     shown = p.order(sample);
     (focus, evidence) = (SPECIALIST_FOCUS[p.specialist], p.render_evidence(shown));
     retried = False;
+    previous = "";
     try {
         try {
             cast = cast_vote(p.ticker, focus, p.as_of, p.research, evidence);
             model = specialist_llm.model_name;
-        } except OutputConversionError {
+        } except OutputConversionError as e {
             retried = True;
+            previous = model_error(e);
             cast = cast_vote_retry(p.ticker, focus, p.as_of, p.research, evidence);
             model = retry_llm.model_name;
         }
     } except Exception as e {
-        return VoteResult(specialist=p.specialist, sample=sample, error=f"{type(e).__name__}: {str(e)[:300]}", retried=retried, seconds=time.monotonic() - started);
+        return VoteResult(specialist=p.specialist, sample=sample, error=model_error(e, previous), retried=retried, seconds=time.monotonic() - started);
     }
     cited = sorted({shown[n - 1] for n in cast.cited_evidence if 1 <= n <= len(shown)});
-    if not cited {
+    gaps = list(dict.fromkeys(g for g in cast.cited_gaps if g in p.data_gaps)) if p.specialist == Specialist.FLOW and cast.stance == Stance.HOLD else [];
+    if not cited and not gaps {
         return VoteResult(specialist=p.specialist, sample=sample, model=model, error=f"cited no evidence item in range: {cast.cited_evidence}", retried=retried, seconds=time.monotonic() - started);
     }
-    checked = Vote(stance=cast.stance, confidence=cast.confidence, horizon_days=cast.horizon_days, rationale=cast.rationale, cited_evidence=cited);
+    checked = Vote(stance=cast.stance, confidence=cast.confidence, horizon_days=cast.horizon_days, rationale=cast.rationale, cited_evidence=cited, cited_gaps=gaps);
     return VoteResult(specialist=p.specialist, sample=sample, vote=checked, model=model, retried=retried, seconds=time.monotonic() - started);
 }
 

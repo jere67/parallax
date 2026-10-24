@@ -26,7 +26,7 @@ import uuid;
 import from datetime { datetime }
 import from pathlib { Path }
 import from zoneinfo { ZoneInfo }
-import from agents.models { KILL_SWITCH_ENV, LIMITER, provider_requests_left }
+import from agents.models { KILL_SWITCH_ENV, LIMITER, provider_requests_left, request_total }
 import from models.graph { Concluded, Covers, Decided, Decision, Portfolio, PortfolioMode, Researched, Run, Voted }
 import from run.analysis { TickerAnalysis }
 import from run.guard { RunLimits, RunOutcome, RunSession, daily_run }
@@ -44,6 +44,7 @@ obj ToolUse {
         requests: int,
         args: str,
         result: str;
+    has model_requests_by_role: dict[str, dict[str, int]] = {};
 }
 
 """Replace the session's tools with timed copies that keep each tool's name, signature, and
@@ -58,9 +59,11 @@ def instrument(s: RunSession, log: list[ToolUse]) {
 def timed(name: str, tool: Callable[..., str], log: list[ToolUse], started: float) -> Callable[..., str] {
     @functools.wraps(tool)
     def call(*args: object, **kwargs: object) -> str {
-        (clock, before) = (time.monotonic(), LIMITER.sent);
+        clock = time.monotonic();
+        counts_before = LIMITER.snapshot();
         result = tool(*args, **kwargs);
-        log.append(ToolUse(name=name, at=round(clock - started, 1), seconds=round(time.monotonic() - clock, 1), requests=LIMITER.sent - before, args=json.dumps({"args": [str(a) for a in args], "kwargs": {k: str(v) for (k, v) in kwargs.items()}})[:400], result=result[:600]));
+        counts = LIMITER.since(counts_before);
+        log.append(ToolUse(name=name, at=round(clock - started, 1), seconds=round(time.monotonic() - clock, 1), requests=request_total(counts), args=json.dumps({"args": [str(a) for a in args], "kwargs": {k: str(v) for (k, v) in kwargs.items()}})[:400], result=result[:600], model_requests_by_role=counts));
         return result;
     }
     return call;
@@ -109,7 +112,7 @@ def ticker_row(a: TickerAnalysis, s: RunSession) -> dict[str, object] {
         "followups": s.followups.get(a.ticker, 0),
         "flag": s.flags.get(a.ticker, ""),
         "research": {d.value: {"complete": r.complete(), "cited": r.cited, "error": r.error, "view": r.body.view.value} for (d, r) in s.latest.get(a.ticker, {}).items()},
-        "votes": [{"specialist": r.specialist.value, "sample": r.sample, "stance": r.vote.stance.value, "confidence": r.vote.confidence, "horizon": r.vote.horizon_days, "rationale": r.vote.rationale, "cited": r.vote.cited_evidence} for r in a.votes if r.vote is not None]
+        "votes": [{"specialist": r.specialist.value, "sample": r.sample, "stance": r.vote.stance.value, "confidence": r.vote.confidence, "horizon": r.vote.horizon_days, "rationale": r.vote.rationale, "cited": r.vote.cited_evidence, "cited_gaps": r.vote.cited_gaps} for r in a.votes if r.vote is not None]
     };
 }
 
@@ -135,11 +138,12 @@ def outcome_row(label: str, o: RunOutcome, seconds: float, requests: int, fallba
         "status": o.status.value,
         "note": o.note,
         "seconds": round(seconds, 1),
-        "model_requests": requests,
+        "model_requests": o.run.model_requests if o.run is not None else requests,
+        "model_requests_by_role": o.run.model_requests_by_role if o.run is not None else {},
         "fallback_model_requests": fallbacks,
         "graph": graph_counts(o.run),
         "summary": o.run.summary if o.run is not None else "",
-        "tools": [{"name": t.name, "at": t.at, "seconds": t.seconds, "requests": t.requests, "args": t.args, "result": t.result} for t in log]
+        "tools": [{"name": t.name, "at": t.at, "seconds": t.seconds, "requests": t.requests, "model_requests_by_role": t.model_requests_by_role, "args": t.args, "result": t.result} for t in log]
     };
     if o.preflight is not None {
         p = o.preflight;
