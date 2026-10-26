@@ -9,7 +9,7 @@ Every base URL can be overridden through its environment variable, which is how 
 replay recorded fixtures from a local server instead of calling the provider.
 """
 
-glob SOURCES_VERSION: str = "2026-10-08.2";
+glob SOURCES_VERSION: str = "2026-10-23.1";
 
 glob HOUR: float = 1.0;
 glob DAY: float = 24.0;
@@ -157,6 +157,10 @@ glob DATASETS: dict[str, Dataset] = {
         ),
         # A filed document never changes; how old it may be is the collector's window.
         Dataset(name="sec.filing", source="sec_archives", max_age_hours=150 * DAY),
+        # The listing changes quarterly. Closed filing windows are immutable; the
+        # collector keys each reduced ZIP by its window end, shared by all tickers.
+        Dataset(name="sec.13f_index", source="sec_archives", max_age_hours=2 * DAY, cache_ttl_hours=DAY),
+        Dataset(name="sec.13f", source="sec_archives", max_age_hours=180 * DAY),
         Dataset(
             name="sec.tickers",
             source="sec_archives",

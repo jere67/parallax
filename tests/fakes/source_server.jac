@@ -9,6 +9,7 @@ when matching, since recordings never contain keys.
 Scripted responses are served first, in order, to inject 429s and outages. Every request
 is logged, and a request with no recording gets a 404 and is listed in `misses`.
 """
+import base64;
 import json;
 import os;
 import threading;
@@ -24,8 +25,8 @@ obj SeenRequest {
 }
 
 obj FakeSource {
-    has recordings: dict[str, str] = {},
-        script: list[tuple[int, dict[str, str], str]] = [],
+    has recordings: dict[str, str | bytes] = {},
+        script: list[tuple[int, dict[str, str], str | bytes]] = [],
         requests: list[SeenRequest] = [],
         misses: list[str] = [],
         secret_params: set[str] = {"token", "api_key"};
@@ -53,7 +54,7 @@ obj FakeSource {
     def load(directory: Path) {
         for file in sorted(directory.glob("*.json")) {
             recorded = json.loads(file.read_text());
-            self.recordings[request_key(recorded["path"], recorded["params"])] = recorded["body"];
+            self.recordings[request_key(recorded["path"], recorded["params"])] = base64.b64decode(recorded["body_base64"]) if "body_base64" in recorded else recorded["body"];
         }
     }
 
@@ -64,7 +65,7 @@ obj FakeSource {
     }
 
     """Log a request and return the (status, headers, body) to answer it with."""
-    def answer(path: str, params: dict[str, str], headers: dict[str, str]) -> tuple[int, dict[str, str], str] {
+    def answer(path: str, params: dict[str, str], headers: dict[str, str]) -> tuple[int, dict[str, str], str | bytes] {
         with self._lock {
             self.requests.append(SeenRequest(path=path, params=params, headers=headers));
             if self.script {
@@ -99,7 +100,7 @@ class _Handler(BaseHTTPRequestHandler) {
         (status, headers, body) = fake.answer(
             url.path, dict(parse_qsl(url.query)), dict(self.headers.items())
         );
-        data = body.encode();
+        data = body if isinstance(body, bytes) else body.encode();
         self.send_response(status);
         for (name, value) in headers.items() {
             self.send_header(name, value);

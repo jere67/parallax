@@ -27,7 +27,7 @@ glob SPECIALIST_FOCUS: dict[Specialist, str] = {
     Specialist.TECHNICAL: "Technicals: trend, momentum, support and resistance, volatility, and relative strength against the market and the sector. Judge whether price action supports owning the stock now.",
     Specialist.NEWS: "News and events: how material the recent news is, whether it is already priced in, and the catalysts ahead, such as an earnings release. Judge which way the news flow points.",
     Specialist.MACRO: "Macro and sector: the market's trend and volatility regime, rates and inflation expectations, sector rotation, and how this stock's sector sits in that regime. Judge whether conditions favor this stock.",
-    Specialist.FLOW: "Flow and positioning: insider buying and selling, its size, and who traded, and analyst positioning where the reports carry it. Judge what informed money is doing; with no insider activity, say so and lean HOLD."
+    Specialist.FLOW: "Flow and positioning: insider buying and selling, its size, and who traded; quarterly changes in institutional shares and manager counts; and analyst positioning where the reports carry it. Cite each holdings quarter and filing deadline. 13F positions are weeks to months old, never current flows, and reported value changes include price changes. Respect issuer/share-class join gaps and missing comparisons. With no insider or institutional evidence, say so and lean HOLD."
 };
 
 # The research reports each specialist reads (TDD §7, specialists).

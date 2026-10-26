@@ -7,8 +7,8 @@ requests a second across sec.gov (https://www.sec.gov/os/accessing-edgar-data); 
 share one rate limiter (research/sources.jac). No key is needed, so the User-Agent from
 SEC_USER_AGENT is required instead, and the .env.example placeholder is refused.
 
-Institutional holdings (13F) are out of scope: they live in each manager's filing, with no
-per-issuer endpoint, so a per-stock view needs SEC's quarterly bulk data sets (#22).
+Institutional holdings (13F) live in each manager's filing, with no per-issuer endpoint;
+research/holdings.jac builds the per-stock view from SEC's quarterly bulk data sets (#52).
 
 Filing text is untrusted (TDD §14): an earnings release is reduced to plain text, capped,
 and handed to an agent only through `EarningsRelease.as_untrusted`.

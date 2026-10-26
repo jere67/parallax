@@ -17,6 +17,7 @@ ones with `split_fresh`, which names each dropped datum for the report's data_ga
 Collectors return values and never read or write the graph: they run inside `flow`, whose
 worker threads lose the request's graph context (TDD §3, rules 5 and 6).
 """
+import base64;
 import hashlib;
 import io;
 import json;
@@ -273,17 +274,20 @@ obj SourceClient {
     as-of date that makes the response final (a bar range's end date), so a response that
     can no longer change is never fetched twice. `day` defaults to today in UTC.
     `check` returns what is wrong with a fresh body, or "" when it is usable; a body it
-    rejects is neither cached nor recorded, and raises UnexpectedResponse.
+    rejects is neither cached nor recorded, and raises UnexpectedResponse. `decode`
+    converts binary payloads to a compact text representation before caching; recordings
+    retain the original bytes as base64 so the same decoder runs during fixture replay.
     Raises SourceError, or BudgetExceeded, which the collector reports as a data gap.
     """
-    def get(
+    def get(  # noqa: too-many-params -- request placement and binary decoding are independent options.
         dataset: Dataset,
         path: str,
         budget: RunBudget,
         params: dict[str, str | int | float] | None = None,
         symbol: str = "",
         day: str = "",
-        check: Callable[[str], str] | None = None
+        check: Callable[[str], str] | None = None,
+        decode: Callable[[bytes], str] | None = None
     ) -> Fetched {
         if dataset.source != self.source.name {
             raise ValueError(f"dataset {dataset.name} belongs to {dataset.source}, not {self.source.name}");
@@ -318,7 +322,7 @@ obj SourceClient {
             );
         }
 
-        body = self._fetch(path, {**query, **self.secrets}, public_url, budget);
+        (body, binary_body) = self._fetch(path, {**query, **self.secrets}, public_url, budget, decode);
         problem = check(body) if check else "";
         if problem {
             raise UnexpectedResponse(source=self.source.name, url=public_url, status=200, detail=problem);
@@ -334,12 +338,12 @@ obj SourceClient {
         self.cache.write(
             CacheEntry(key=key, source_url=public_url, fetched_at=fetched.fetched_at, body=body)
         );
-        _record(self.source.name, dataset.name, path, query, request_id, body);
+        _record(self.source.name, dataset.name, path, query, request_id, body, binary_body);
         return fetched;
     }
 
     """The response body, after up to `max_retries` retries of transient failures."""
-    def _fetch(path: str, params: dict[str, str], public_url: str, budget: RunBudget) -> str {
+    def _fetch(path: str, params: dict[str, str], public_url: str, budget: RunBudget, decode: Callable[[bytes], str] | None = None) -> tuple[str, bytes | None] {
         bucket = self.bucket or bucket_for(self.source);
         failure = SourceError(source=self.source.name, url=public_url);
         for attempt in range(self.max_retries + 1) {
@@ -360,7 +364,9 @@ obj SourceClient {
             } else {
                 status = response.status_code;
                 if 200 <= status < 300 {
-                    return response.text;
+                    # Binary sources can decode and reduce a large archive once, before
+                    # caching and recording. Decoder failures never poison the cache.
+                    return (decode(response.content), response.content) if decode else (response.text, None);
                 }
                 failure = SourceError(
                     source=self.source.name,
@@ -410,7 +416,8 @@ def _record(
     path: str,
     params: dict[str, str],
     request_id: str,
-    body: str
+    body: str,
+    binary_body: bytes | None = None
 ) {
     record_dir = os.environ.get(RECORD_DIR_ENV);
     if not record_dir {
@@ -418,9 +425,13 @@ def _record(
     }
     target = Path(record_dir) / source / f"{dataset}-{_digest(request_id)}.json";
     target.parent.mkdir(parents=True, exist_ok=True);
-    target.write_text(
-        json.dumps({"path": path, "params": params, "status": 200, "body": body}, indent=1)
-    );
+    recorded = {"path": path, "params": params, "status": 200, "body": body};
+    if binary_body is not None {
+        # Keep only the original binary response, not a second copy of its reduction.
+        recorded["body"] = "";
+        recorded["body_base64"] = base64.b64encode(binary_body).decode("ascii");
+    }
+    target.write_text(json.dumps(recorded, indent=1));
 }
 
 """Keep the items young enough for `dataset`, and describe each dropped one for data_gaps.
