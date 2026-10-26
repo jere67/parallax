@@ -7,6 +7,7 @@ LimitedModel.model_call_no_stream: byLLM's parse retries, transient-error retrie
 iterations, and compaction summaries all call it again.
 """
 import asyncio;
+import from contextvars { ContextVar }
 import os;
 import threading;
 import time;
@@ -14,6 +15,42 @@ import from datetime { datetime, timezone }
 import from importlib { import_module }
 import httpx;
 import from jaclang.byllm.lib { AuthenticationError, ConfigurationError, Model, RateLimitError }
+import from jaclang.byllm.mtir { MTRuntime }
+import from jaclang.byllm.types { CompletionResult }
+
+glob REQUEST_KINDS: tuple[str, ...] = ("first_attempt", "parse_retry", "transient_retry", "fallback");
+
+"""One provider dispatch's state, isolated across threads, async tasks and nested tools."""
+obj RequestAttempt {
+    has kind: str = "first_attempt",
+        sent: int = 0;
+}
+
+glob _ATTEMPT: ContextVar[RequestAttempt | None] = ContextVar("parallax_request_attempt", `default=None);
+
+def request_total(counts: dict[str, dict[str, int]]) -> int {
+    return sum(sum(kinds.values()) for kinds in counts.values());
+}
+
+"""Preserve validation messages and their exception causes, including the first role's
+failure when the low-temperature retry also fails. Never cap these diagnostic strings."""
+def model_error(error: Exception, previous: str = "") -> str {
+    parts: list[str] = [];
+    seen: set[int] = set();
+    current: BaseException | None = error;
+    while current is not None and id(current) not in seen {
+        seen.add(id(current));
+        detail = f"{type(current).__name__}: {current}";
+        if not parts or detail not in parts[-1] {
+            parts.append(detail);
+        }
+        current = current.__cause__ or current.__context__;
+    }
+    if previous and previous not in "\n".join(parts) {
+        parts.append(f"Previous role attempt: {previous}");
+    }
+    return "\nCaused by: ".join(parts);
+}
 
 # Chosen by spike #12 (docs/spikes/2026-10-08-free-models.md): the only free model with every
 # typed output valid on the first request and no provider errors. The fallback was the
@@ -53,7 +90,8 @@ obj RequestLimiter {
     has per_minute: int;
     has sent: int = 0,
         fallbacks: int = 0,
-        sent_by_day: dict[str, int] = {};
+        sent_by_day: dict[str, int] = {},
+        by_role: dict[str, dict[str, int]] = {};
     has _lock: threading.Lock | None = None,
         _next_slot: float = 0.0;
 
@@ -62,7 +100,10 @@ obj RequestLimiter {
     }
 
     """Block until the next request may go out, then count it."""
-    def acquire {
+    def acquire(role: str = "unknown", kind: str = "first_attempt") {
+        if kind not in REQUEST_KINDS {
+            raise ValueError(f"unknown model request kind: {kind}");
+        }
         with self._lock {
             now = time.monotonic();
             if self._next_slot > now {
@@ -74,13 +115,28 @@ obj RequestLimiter {
             self.sent += 1;
             day = datetime.now(timezone.utc).date().isoformat();
             self.sent_by_day[day] = self.sent_by_day.get(day, 0) + 1;
+            counts = self.by_role.setdefault(role, {k: 0 for k in REQUEST_KINDS});
+            counts[kind] += 1;
+            if kind == "fallback" {
+                self.fallbacks += 1;
+            }
         }
     }
 
-    def note_fallback {
+    """A detached, atomic snapshot; request kinds are mutually exclusive and sum to sent."""
+    def snapshot -> dict[str, dict[str, int]] {
         with self._lock {
-            self.fallbacks += 1;
+            return {role: dict(counts) for (role, counts) in self.by_role.items()};
         }
+    }
+
+    def since(before: dict[str, dict[str, int]]) -> dict[str, dict[str, int]] {
+        after = self.snapshot();
+        delta = {
+            role: {kind: count - before.get(role, {}).get(kind, 0) for (kind, count) in counts.items()}
+            for (role, counts) in after.items()
+        };
+        return {role: counts for (role, counts) in delta.items() if any(counts.values())};
     }
 }
 
@@ -116,11 +172,39 @@ connection, or a timeout arrives as LiteLLM's own exception, so every error but 
 authentication or configuration one falls back (#53)."""
 obj LimitedModel(Model) {
     has limiter: RequestLimiter = LIMITER,
+        role: str = "unknown",
         fallback_model: str = FALLBACK_MODEL,
         max_429_retries: int = 3,
         backoff_s: float = 2.0,
         request_timeout_s: float = REQUEST_TIMEOUT_S,
         reasoning_effort: str = "low";
+
+    # These hooks match the pinned Jac 0.37.12 runtime. Classify typed retries from
+    # the actual retry hook, never by searching untrusted prompt text for a phrase.
+    override def _typed_retry_reset(mt_run: MTRuntime, base_msgs: list[object], base_scaffolding: list[object], reason: str, output: str) {
+        super._typed_retry_reset(mt_run, base_msgs, base_scaffolding, reason, output);
+        setattr(mt_run, "_parallax_parse_retry", True);
+    }
+
+    override def dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
+        state = RequestAttempt(kind="parse_retry" if getattr(mt_run, "_parallax_parse_retry", False) else "first_attempt");
+        token = _ATTEMPT.set(state);
+        try {
+            return super.dispatch_no_streaming(mt_run);
+        } finally {
+            _ATTEMPT.reset(token);
+        }
+    }
+
+    override async def adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
+        state = RequestAttempt(kind="parse_retry" if getattr(mt_run, "_parallax_parse_retry", False) else "first_attempt");
+        token = _ATTEMPT.set(state);
+        try {
+            return await super.adispatch_no_streaming(mt_run);
+        } finally {
+            _ATTEMPT.reset(token);
+        }
+    }
 
     override def model_call_no_stream(params: dict[str, object]) -> dict[str, object] {
         if models_disabled() {
@@ -128,13 +212,18 @@ obj LimitedModel(Model) {
         }
         # Free reasoning models can default to a high effort, which makes every call slow; every
         # model in spike #12 accepted this setting.
+        # Fallback must not mutate the primary model in byLLM's params: an outer
+        # transport retry must start on the primary and retain its correct label.
+        params = dict(params);
         params["extra_body"] = {
             **params.get("extra_body", {}),
             "reasoning": {"effort": self.reasoning_effort}
         };
         params["timeout"] = self.request_timeout_s;
+        state = _ATTEMPT.get() or RequestAttempt();
         for attempt in range(self.max_429_retries + 1) {
-            self.limiter.acquire();
+            self.limiter.acquire(self.role, "transient_retry" if state.sent else state.kind);
+            state.sent += 1;
             try {
                 return super.model_call_no_stream(params);
             } except AuthenticationError {
@@ -150,8 +239,8 @@ obj LimitedModel(Model) {
             }
         }
         params["model"] = self.fallback_model;
-        self.limiter.note_fallback();
-        self.limiter.acquire();
+        self.limiter.acquire(self.role, "fallback");
+        state.sent += 1;
         return super.model_call_no_stream(params);
     }
 
@@ -170,8 +259,8 @@ obj LimitedModel(Model) {
 }
 
 # One instance per role, so concurrent calls never share call params (TDD §3, rule 1).
-glob research_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL);
-glob specialist_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL);
-glob arbiter_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL);
-glob orchestrator_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL);
-glob retry_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL);
+glob research_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role="research");
+glob specialist_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role="specialist");
+glob arbiter_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role="arbiter");
+glob orchestrator_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role="orchestrator");
+glob retry_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role="retry");

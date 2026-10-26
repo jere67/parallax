@@ -114,15 +114,19 @@ obj Vote {
         confidence: float,
         horizon_days: int,
         rationale: str;
-    has cited_evidence: list[int] = [];
+    has cited_evidence: list[int] = [],
+        cited_gaps: list[str] = [];
 
     def postinit {
         check_unit_interval("confidence", self.confidence);
         if self.horizon_days < 1 {
             raise ValueError(f"horizon_days must be at least 1, got {self.horizon_days}");
         }
-        if not self.cited_evidence {
-            raise ValueError("cited_evidence must list at least one evidence number");
+        if not self.cited_evidence and not self.cited_gaps {
+            raise ValueError("cited_evidence must list at least one evidence number, or a Flow HOLD must cite a supplied data gap in cited_gaps");
+        }
+        if not self.cited_evidence and self.stance != Stance.HOLD {
+            raise ValueError("data gaps alone can justify only HOLD, never a directional vote");
         }
     }
 }
@@ -131,4 +135,5 @@ sem Vote.stance = "Your call on the stock over horizon_days.";
 sem Vote.confidence = "Probability in [0, 1] that the stance is right over horizon_days.";
 sem Vote.horizon_days = "How many trading days the call is meant to hold.";
 sem Vote.rationale = "Two to four sentences explaining the call from your specialty alone.";
-sem Vote.cited_evidence = "Numbers of the evidence items this vote relies on, as shown in brackets; at least one.";
+sem Vote.cited_evidence = "1-based numbers of the factual evidence items this vote relies on, exactly as shown in brackets. Cite at least one unless this is a Flow HOLD supported only by cited_gaps.";
+sem Vote.cited_gaps = "For Flow HOLD only: missing-input statements copied verbatim from the supplied data gaps. These describe uncertainty, not factual evidence of buying or selling. Otherwise return an empty list.";

@@ -16,7 +16,7 @@ import from concurrent.futures { Future }
 import from datetime { date, datetime }
 import from zoneinfo { ZoneInfo }
 import from action.insights { publish_card }
-import from agents.models { FALLBACK_MODEL, FREE_REQUESTS_PER_DAY, LIMITER, PRIMARY_MODEL, provider_requests_left }
+import from agents.models { FALLBACK_MODEL, FREE_REQUESTS_PER_DAY, LIMITER, PRIMARY_MODEL, model_error, provider_requests_left, request_total }
 import from agents.research { MacroResult, ResearchResult, macro_research, research }
 import from analysis.consensus { CONSENSUS_VERSION, ConsensusConfig }
 import from models.agents { Domain }
@@ -175,12 +175,14 @@ obj RunSession {
         actions: list[str] = [],
         started: float = 0.0,
         requests_at_start: int = 0;
+    has request_counts_at_start: dict[str, dict[str, int]] = {};
     has _lock: threading.RLock | None = None;
 
     def postinit {
         self._lock = threading.RLock();
         self.started = time.monotonic();
-        self.requests_at_start = LIMITER.sent;
+        self.request_counts_at_start = LIMITER.snapshot();
+        self.requests_at_start = request_total(self.request_counts_at_start);
     }
 
     def tickers -> list[str] {
@@ -525,7 +527,7 @@ def daily_run(
                 status = RunStatus.NORMAL;
             }
         } except Exception as e {
-            session.actions.append(f"orchestrator error: {type(e).__name__}: {str(e)[:300]}");
+            session.actions.append(f"orchestrator error: {model_error(e)}");
         }
     }
     session.complete_in_order();
@@ -578,8 +580,9 @@ def record_run(portfolio: Portfolio, run: Run, s: RunSession, status: RunStatus)
         publish_card(cov, s.run_day, portfolio.mode.value, finished);
     }
     run.model_versions = {"primary": PRIMARY_MODEL, "fallback": FALLBACK_MODEL, "sources": SOURCES_VERSION, "screen": s.collection.shortlist.version, "consensus": CONSENSUS_VERSION};
-    run.model_requests = s.requests_used();
-    count_requests(portfolio, utc_now().date().isoformat(), s.requests_used());
+    run.model_requests_by_role = LIMITER.since(s.request_counts_at_start);
+    run.model_requests = request_total(run.model_requests_by_role);
+    count_requests(portfolio, utc_now().date().isoformat(), run.model_requests);
     _close(run, status, s.summary);
 }
 

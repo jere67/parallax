@@ -13,7 +13,7 @@ gives a safe default HOLD with confidence 0 and the error in data_gaps (TDD §2,
 """
 import time;
 import from jaclang.byllm.lib { OutputConversionError }
-import from agents.models { research_llm, retry_llm }
+import from agents.models { model_error, research_llm, retry_llm }
 import from models.agents { Domain, Evidence, MacroReport, ResearchReport, RiskRegime, Stance }
 import from research.briefs { Brief }
 
@@ -118,17 +118,19 @@ def research(brief: Brief, question: str = "") -> ResearchResult {
     }
     (focus, sources) = (DOMAIN_FOCUS[brief.domain], brief.render());
     retried = False;
+    previous = "";
     try {
         try {
             written = write_research(brief.ticker, focus, brief.as_of, sources, question);
             model = research_llm.model_name;
-        } except OutputConversionError {
+        } except OutputConversionError as e {
             retried = True;
+            previous = model_error(e);
             written = write_research_retry(brief.ticker, focus, brief.as_of, sources, question);
             model = retry_llm.model_name;
         }
     } except Exception as e {
-        result = fallback(brief, f"{type(e).__name__}: {str(e)[:300]}", started);
+        result = fallback(brief, model_error(e, previous), started);
         result.retried = retried;
         return result;
     }
@@ -189,17 +191,19 @@ def macro_research(brief: Brief) -> MacroResult {
     }
     sources = brief.render();
     retried = False;
+    previous = "";
     try {
         try {
             written = write_macro(brief.as_of, sources);
             model = research_llm.model_name;
-        } except OutputConversionError {
+        } except OutputConversionError as e {
             retried = True;
+            previous = model_error(e);
             written = write_macro_retry(brief.as_of, sources);
             model = retry_llm.model_name;
         }
     } except Exception as e {
-        return macro_fallback(brief, f"{type(e).__name__}: {str(e)[:300]}", started, retried);
+        return macro_fallback(brief, model_error(e, previous), started, retried);
     }
     (kept, dropped) = checked_evidence(written.evidence, brief);
     checked = MacroReport(

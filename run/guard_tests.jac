@@ -2,6 +2,8 @@
 fallback, and the graph a finished run writes, on the stubs in run/stubs.jac, so
 no test touches the network."""
 import uuid;
+import run.guard as guard_module;
+import from agents.models { RequestLimiter }
 import from analysis.consensus { ConsensusConfig }
 import from models.graph {
     Counted,
@@ -271,4 +273,31 @@ test "closed positions are not holdings" {
     portfolio +>:Holds():+> Position(ticker="XOM", sector="Energy", qty=10, avg_entry_price=100.0, opened_at="2026-10-01T15:00:00+00:00");
     portfolio +>:Holds():+> Position(ticker="CVX", sector="Energy", qty=0, avg_entry_price=100.0, opened_at="2026-10-01T15:00:00+00:00", closed_at="2026-10-02T15:00:00+00:00");
     assert list(holdings_of(portfolio)) == ["XOM"];
+}
+
+test "the stored run request breakdown excludes earlier requests and sums to the total" {
+    limiter = RequestLimiter(per_minute=60000);
+    limiter.acquire("research", "first_attempt");
+    saved = guard_module.LIMITER;
+    setattr(guard_module, "LIMITER", limiter);
+    def counted_driver(s: RunSession) -> str {
+        # Simulate provider counts while Stubs keeps all model/data calls offline.
+        for (role, kind) in [("research", "first_attempt"), ("specialist", "first_attempt"), ("specialist", "parse_retry"), ("specialist", "transient_retry"), ("retry", "first_attempt"), ("arbiter", "fallback"), ("orchestrator", "first_attempt")] {
+            limiter.acquire(role, kind);
+        }
+        return scripted_driver(s);
+    }
+    try {
+        outcome = run_day(Stubs(), team(), counted_driver);
+    } finally {
+        setattr(guard_module, "LIMITER", saved);
+    }
+    run = outcome.run;
+    assert run is not None;
+    counts = run.model_requests_by_role;
+    assert run.model_requests == sum(sum(kinds.values()) for kinds in counts.values()) == 7;
+    assert counts["research"]["first_attempt"] == 1;
+    assert counts["specialist"]["parse_retry"] == 1 and counts["specialist"]["transient_retry"] == 1;
+    assert counts["retry"]["first_attempt"] == 1 and counts["arbiter"]["fallback"] == 1;
+    assert counts["orchestrator"]["first_attempt"] == 1;
 }
