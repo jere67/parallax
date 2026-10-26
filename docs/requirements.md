@@ -95,7 +95,7 @@ The following user needs are the basis for the functional requirements and user 
 | Category | Required information |
 |---|---|
 | Market | Daily price/volume history, recent trading activity, and benchmark/sector comparisons. |
-| Fundamentals and filings | Company facts, financial statements/filings, guidance, earnings information, insider transactions, and institutional holdings (13F holdings are a stretch goal, #52). |
+| Fundamentals and filings | Company facts, financial statements/filings, guidance, earnings information, insider transactions, and delayed quarterly institutional holdings (bulk SEC 13F, #52; ambiguous ticker joins and unavailable comparisons are explicit gaps). |
 | News and events | Recent company news, filings, scheduled events, earnings dates, and relevant catalysts. |
 | Macro | Market trend and volatility regime, rates and inflation expectations, and sector-rotation information. |
 

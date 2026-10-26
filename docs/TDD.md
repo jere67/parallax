@@ -513,7 +513,7 @@ Social-media and alternative data sources are stretch goals (Section 16).
 | Sub-agent | Scope | Main inputs | Runs |
 | --- | --- | --- | --- |
 | Market and Technical | Trend, momentum, volatility, volume, relative strength | Alpaca daily bars; indicators computed in code | Per ticker |
-| Fundamentals and Filings | Growth, margins, balance sheet, valuation, guidance, insider and institutional activity | SEC XBRL company facts, 10-K/10-Q/8-K text, Form 4; Finnhub key metrics, recommendation trends, EPS surprises | Per ticker |
+| Fundamentals and Filings | Growth, margins, balance sheet, valuation, guidance, insider and institutional activity | SEC XBRL company facts, 10-K/10-Q/8-K text, Form 4, quarterly bulk 13F holdings; Finnhub key metrics, recommendation trends, EPS surprises | Per ticker |
 | News and Events | What happened, what is scheduled, and whether news is priced in | Alpaca news (Benzinga), Finnhub company news and earnings calendar, SEC 8-K filings | Per ticker |
 | Macro | Market trend and volatility regime, rates and inflation expectations, sector rotation | Alpaca daily bars for SPY, four Treasury funds (SHY, IEF, TLT, TIP), and the 11 sector funds | Once per run |
 
@@ -579,10 +579,21 @@ Votes flow one way into code; only an ambiguous result loops back for more sampl
 | Technical | Trend, momentum, support and resistance, volatility, relative strength | Market and Technical |
 | News and Events | Materiality of news, whether it is priced in, upcoming catalysts such as earnings | News and Events |
 | Macro and Sector | Rate and inflation regime, sector rotation, sensitivity to scheduled releases | Macro; sector ETF data |
-| Flow and Positioning | Insider buying and selling; changes in institutional holdings once 13F data lands (#52) | Fundamentals and Filings (Form 4) |
+| Flow and Positioning | Insider buying and selling; quarterly changes in reported institutional shares, value, and manager counts | Fundamentals and Filings (Form 4 and bulk 13F) |
 
 Flow data has different delays: Form 4 arrives within [two business days](https://www.sec.gov/files/forms-3-4-5.pdf) of an insider trade, while 13F holdings are quarterly and filed up to [45 days after quarter end](https://www.sec.gov/rules-regulations/staff-guidance/division-investment-management-frequently-asked-questions/frequently-asked-questions-about-form-13f), so the Flow specialist treats institutional data as weeks to months old.
-EDGAR has no per-issuer 13F endpoint: holdings sit in each manager's own filing, so a per-stock view needs SEC's quarterly [13F data sets](https://www.sec.gov/data-research/sec-markets-data/form-13f-data-sets) joined to tickers, which is a stretch goal (#52); until then the Flow specialist reads Form 4 only.
+EDGAR has no per-issuer 13F endpoint: `research/holdings.jac` aggregates SEC's quarterly [13F data sets](https://www.sec.gov/data-research/sec-markets-data/form-13f-data-sets) once for the whole index before per-ticker collection (#52).
+The current bulk windows end in February, May, August and November; the collector discovers their URLs from SEC's listing and selects holdings by `PERIODOFREPORT`, rather than treating the filing window as the holdings quarter.
+`SourceClient` downloads and reduces each closed ZIP once, then caches the compact issuer aggregates under the window end for reuse across daily runs.
+Restatements replace earlier manager tables, new-holdings amendments extend them, and unknown or incomplete amendment histories become gaps.
+The collector counts distinct manager CIKs and excludes options, principal amounts, and non-common stock; shared-manager rows are retained as filed, so totals can overlap across managers and omit confidential or later filings.
+Values filed from January 3, 2023 onward are dollars; earlier filings use thousands of dollars.
+Ticker joins use index constituent names after punctuation and corporate-suffix normalization, accepting only a unique ticker and common-stock CUSIP; missing or ambiguous issuer/share-class matches are listed in each ticker's gaps.
+Symbols outside the constituent list have no name join and retain that gap.
+The brief stamps the holdings quarter, filing deadline (45 days rolled through weekends and the applicable federal holiday), filing-window end, age in calendar days, and both quarterly source URLs.
+A missing prior quarter or changed CUSIP leaves changes unknown, never zero; value changes include price moves and are not net purchases.
+Holdings quarters older than 180 days are excluded; the prior quarter remains comparison context.
+The source stamp's publish field denotes the filing-window end, not a verified archive publication day: today's SEC listing does not establish exact historical availability, so this collector alone cannot provide point-in-time backtest inputs.
 
 Each specialist reads a packet built in code from its primary reports (`agents/specialists.jac`): every report's summary, risks, and data gaps, and their evidence as one numbered list, but not the research sub-agents' own views or confidences, so the panel does not anchor on them.
 The Macro and Sector specialist reads the run's macro report and the ticker's market report, which carries its strength against its sector fund.
@@ -1111,7 +1122,6 @@ Prediction markets need their own evaluation metric, the Brier score of the agen
 | Second free model for sampling | Alternate specialist samples across two free models to decorrelate errors | Depends on OpenRouter's free list at the time |
 | Single-agent baseline | A second paper portfolio run by one agent with the same tools | Roughly doubles daily model requests |
 | Options and short-sale signals | Put/call and implied-volatility proxies from Alpaca's free [indicative options feed](https://docs.alpaca.markets/us/docs/historical-option-data), a 15-minute-delayed derivative of OPRA; [FINRA daily short-sale volume](https://www.finra.org/finra-data/browse-catalog/short-sale-volume-data/daily-short-sale-volume-files) | Short-sale volume is not short interest and covers only off-exchange (TRF, ADF, ORF) trades ([FINRA](https://www.finra.org/rules-guidance/notices/information-notice-051019)) |
-| Institutional holdings (#52) | Quarterly changes in institutional ownership for the Flow specialist | EDGAR has no per-issuer 13F endpoint; built from SEC's quarterly [13F data sets](https://www.sec.gov/data-research/sec-markets-data/form-13f-data-sets), which identify securities by CUSIP, not ticker |
 | Congressional trade disclosures | House and Senate periodic transaction reports | Scraping required; check the filing lag before relying on it |
 | Live committee page | Real-time run progress through polling or a streaming (SSE) endpoint | Dashboard polish |
 | Backup data providers | FMP (250 calls a day; [FAQ](https://site.financialmodelingprep.com/faqs)) and Twelve Data (800 calls a day, 8 a minute, non-commercial use; [pricing](https://twelvedata.com/pricing)) | Only if a core source proves unreliable |

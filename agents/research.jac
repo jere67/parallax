@@ -20,7 +20,7 @@ import from research.briefs { Brief }
 # What each domain judges, passed to the shared prompt.
 glob DOMAIN_FOCUS: dict[Domain, str] = {
     Domain.MARKET: "Market and technical: trend, momentum, volatility, volume, and relative strength, from the computed indicators alone. Judge whether price action supports owning the stock over the next few weeks.",
-    Domain.FUNDAMENTALS: "Fundamentals and filings: growth, margins, cash flow, balance sheet, valuation, earnings surprises, analyst ratings, and insider activity. Judge the business and its price, not the chart.",
+    Domain.FUNDAMENTALS: "Fundamentals and filings: growth, margins, cash flow, balance sheet, valuation, earnings surprises, analyst ratings, insider activity, and quarterly institutional holdings. Preserve the holdings quarter, filing deadline, age, and join gaps. Institutional positions are delayed context; a change in reported value includes price changes and is not net buying. Judge the business and its price, not the chart.",
     Domain.NEWS: "News and events: what happened, what is scheduled, and whether the news is already priced in. Judge how material the news is and which way it points."
 };
 
