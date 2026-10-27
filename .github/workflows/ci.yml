@@ -37,6 +37,14 @@ jobs:
       - name: Show Jac version
         run: jac --version
 
+      # The caches hold native binaries linked against the runner's system libraries, so each
+      # key names the OS release: when ubuntu-latest moves to a new release, a cache saved on
+      # the old one is never restored onto it.
+      - name: Name the runner's OS release for the cache keys
+        run: |
+          . /etc/os-release
+          echo "OS_RELEASE=${ID}-${VERSION_ID}" >> "$GITHUB_ENV"
+
       # Only the embedded Postgres binaries are cached, never its data directory (pg/main):
       # a cached postmaster.pid names a process from the job that saved the cache, and when a
       # live process in a later job has that PID, Jac takes Postgres for running, never
@@ -47,7 +55,7 @@ jobs:
           path: |
             ~/.cache/jac/rt
             ~/.cache/jac/pg/dist
-          key: jac-runtime-pgdist-${{ runner.os }}-${{ env.JAC_VERSION }}
+          key: jac-runtime-pgdist-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ env.JAC_VERSION }}
 
       - name: Cache project dependencies
         uses: actions/cache@v6
@@ -55,7 +63,7 @@ jobs:
           path: |
             .jac/venv
             .jac/client/node_modules
-          key: jac-deps-${{ runner.os }}-${{ env.JAC_VERSION }}-${{ hashFiles('jac.toml') }}
+          key: jac-deps-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ env.JAC_VERSION }}-${{ hashFiles('jac.toml') }}
 
       - name: Install dependencies
         run: jac install
