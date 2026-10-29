@@ -1,8 +1,10 @@
 """The equity curves: the team portfolio and its baselines as cumulative return since the
-start, drawn with TradingView's Lightweight Charts. Colors are the theme's series tokens, so
-the chart repaints when the reader switches theme or the system does."""
+start, drawn with TradingView's Lightweight Charts. The team is a brass line over a fading
+fill; the baselines are dashed, so the eye follows the committee first. Colors are the
+theme's series tokens, so the chart repaints when the reader switches theme or the system
+does."""
 import from react { useEffect }
-import from "lightweight-charts" { createChart, ColorType, CrosshairMode, LineSeries, LineType }
+import from "lightweight-charts" { createChart, AreaSeries, ColorType, CrosshairMode, LineSeries, LineStyle, LineType }
 import from models.views { Series }
 import from dashboard.ui.format { signed_pct }
 import from dashboard.ui.theme { THEME_EVENT, css_var }
@@ -12,6 +14,18 @@ glob SERIES_COLORS: dict[str, str] = {
     "equal_weight": "--series-ew",
     "spy": "--series-spy"
 };
+# A baseline's dash, as Lightweight Charts styles and as the legend's swatch.
+glob DASHES: dict[str, int] = {"equal_weight": LineStyle.SparseDotted, "spy": LineStyle.Dashed};
+glob SWATCH_DASHES: dict[str, str] = {"equal_weight": "1 3", "spy": "4 3"};
+
+"""A #rrggbb token at `alpha`, as rgba() for the chart's canvas."""
+def tint(hex: str, alpha: float) -> str {
+    h = hex.strip().lstrip("#");
+    if len(h) != 6 {
+        return hex;
+    }
+    return "rgba(" + str(int(h[0:2], 16)) + ", " + str(int(h[2:4], 16)) + ", " + str(int(h[4:6], 16)) + ", " + str(alpha) + ")";
+}
 
 """Each series' return at `day`, or at its last point when `day` is empty or missing."""
 def returns_at(series: list[Series], start: float, day: str) -> dict[str, float] {
@@ -29,6 +43,23 @@ def returns_at(series: list[Series], start: float, day: str) -> dict[str, float]
         out[s.key] = value / start - 1.0;
     }
     return out;
+}
+
+"""The legend's short line in a series' color, dashed for a baseline."""
+def Swatch(series_key: str) -> JsxElement {
+    color = "var(" + SERIES_COLORS.get(series_key, "--series-spy") + ")";
+    <svg viewBox="0 0 14 2" className="h-0.5 w-3.5 shrink-0" aria-hidden="true">
+        <line
+            x1="0"
+            y1="1"
+            x2="14"
+            y2="1"
+            stroke={color}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeDasharray={SWATCH_DASHES.get(series_key, "")}
+        />
+    </svg>
 }
 
 """`height` is the chart's least height; inside a filling panel it grows to the panel."""
@@ -65,16 +96,17 @@ def:pub EquityChart(series: list[Series], starting_cash: float, height: int = 28
                         "background": {"type": ColorType.Solid, "color": "transparent"},
                         "textColor": css_var("--faint"),
                         "fontFamily": "'JetBrains Mono Variable', ui-monospace, monospace",
-                        "fontSize": 11,
+                        "fontSize": 10,
                         "attributionLogo": False
                     },
                     "grid": {
                         "vertLines": {"visible": False},
-                        "horzLines": {"color": css_var("--line")}
+                        "horzLines": {"color": tint(css_var("--line"), 0.7)}
                     },
                     "rightPriceScale": {
                         "borderVisible": False,
-                        "scaleMargins": {"top": 0.12, "bottom": 0.08}
+                        "entireTextOnly": True,
+                        "scaleMargins": {"top": 0.14, "bottom": 0.06}
                     },
                     "timeScale": {
                         "borderVisible": False,
@@ -83,9 +115,9 @@ def:pub EquityChart(series: list[Series], starting_cash: float, height: int = 28
                         "lockVisibleTimeRangeOnResize": True
                     },
                     "crosshair": {
-                        "mode": CrosshairMode.Normal,
-                        "vertLine": {"color": css_var("--line-strong"), "labelBackgroundColor": css_var("--muted")},
-                        "horzLine": {"color": css_var("--line-strong"), "labelBackgroundColor": css_var("--muted")}
+                        "mode": CrosshairMode.Magnet,
+                        "vertLine": {"color": css_var("--line-strong"), "width": 1, "style": LineStyle.Solid, "labelBackgroundColor": css_var("--panel-2")},
+                        "horzLine": {"color": css_var("--line-strong"), "width": 1, "style": LineStyle.Dashed, "labelBackgroundColor": css_var("--panel-2")}
                     },
                     "handleScroll": False,
                     "handleScale": False,
@@ -96,18 +128,52 @@ def:pub EquityChart(series: list[Series], starting_cash: float, height: int = 28
                     }
                 }
             );
-            for s in series {
-                line = chart.addSeries(
-                    LineSeries,
-                    {
-                        "color": css_var(SERIES_COLORS.get(s.key, "--series-spy")),
-                        "lineWidth": 2 if s.key == "team" else 1,
-                        "lineType": LineType.Simple,
-                        "priceLineVisible": False,
-                        "lastValueVisible": True,
-                        "crosshairMarkerRadius": 3
-                    }
-                );
+            # Baselines first, so the team's line and fill draw over them.
+            ordered = [s for s in series if s.key != "team"] + [s for s in series if s.key == "team"];
+            for s in ordered {
+                color = css_var(SERIES_COLORS.get(s.key, "--series-spy"));
+                if s.key == "team" {
+                    line = chart.addSeries(
+                        AreaSeries,
+                        {
+                            "lineColor": color,
+                            "topColor": tint(color, 0.22),
+                            "bottomColor": tint(color, 0.0),
+                            "lineWidth": 2,
+                            "lineType": LineType.Simple,
+                            "priceLineVisible": False,
+                            "lastValueVisible": True,
+                            "crosshairMarkerRadius": 4,
+                            "crosshairMarkerBorderColor": css_var("--panel"),
+                            "crosshairMarkerBorderWidth": 2
+                        }
+                    );
+                    line.createPriceLine(
+                        {
+                            "price": 0,
+                            "color": css_var("--line-strong"),
+                            "lineWidth": 1,
+                            "lineStyle": LineStyle.Dashed,
+                            "axisLabelVisible": False,
+                            "title": "Start"
+                        }
+                    );
+                } else {
+                    line = chart.addSeries(
+                        LineSeries,
+                        {
+                            "color": color,
+                            "lineWidth": 2,
+                            "lineStyle": DASHES.get(s.key, LineStyle.Dashed),
+                            "lineType": LineType.Simple,
+                            "priceLineVisible": False,
+                            "lastValueVisible": True,
+                            "crosshairMarkerRadius": 3,
+                            "crosshairMarkerBorderColor": css_var("--panel"),
+                            "crosshairMarkerBorderWidth": 2
+                        }
+                    );
+                }
                 line.setData(
                     [
                         {"time": p.day, "value": (p.equity / starting_cash - 1.0) * 100.0}
@@ -131,15 +197,12 @@ def:pub EquityChart(series: list[Series], starting_cash: float, height: int = 28
     shown = returns_at(series, starting_cash, hover_day);
 
     <div className="flex flex-1 flex-col">
-        <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-[12px]">
+        <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px]">
             {for s in series {
                 <span key={s.key} className="inline-flex items-center gap-2">
-                    <span
-                        className="inline-block h-0.5 w-3 rounded-full"
-                        style={{"background": "var(" + SERIES_COLORS.get(s.key, "--series-spy") + ")"}}
-                    ></span>
+                    <Swatch series_key={s.key}/>
                     <span className="text-muted">{s.label}</span>
-                    <span className="num font-medium">{signed_pct(shown.get(s.key))}</span>
+                    <span className={"num text-[12px] font-medium " + ("text-accent" if s.key == "team" else "text-text")}>{signed_pct(shown.get(s.key))}</span>
                 </span>
             }}
         </div>
