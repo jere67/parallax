@@ -151,3 +151,8 @@ glob TD: str = "whitespace-nowrap border-b border-line/60 px-3 py-2.5 text-[13px
 glob TD_TEXT: str = "min-w-[180px] border-b border-line/60 px-3 py-2.5 text-[13px] first:pl-4 last:pr-4";
 glob TD_NUM: str = "num whitespace-nowrap border-b border-line/60 px-3 py-2.5 text-right text-[13px] first:pl-4 last:pr-4";
 glob ROW: str = "transition-colors duration-150 hover:bg-hover [&:last-child>td]:border-b-0";
+# A table's first column, frozen at the left edge so the ticker stays in view while the rest
+# scrolls under it on a phone; appended to TH and TD. The cell is opaque, so it takes the
+# row's hover itself (the row needs "group").
+glob FROZEN_HEAD: str = " left-0 z-[2] max-md:border-r";
+glob FROZEN_CELL: str = " sticky left-0 z-[1] bg-panel transition-colors duration-150 group-hover:bg-hover max-md:border-r";

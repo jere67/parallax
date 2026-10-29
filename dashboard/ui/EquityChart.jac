@@ -167,7 +167,9 @@ def:pub EquityChart(series: list[Series], starting_cash: float, height: int = 28
                             "lineStyle": DASHES.get(s.key, LineStyle.Dashed),
                             "lineType": LineType.Simple,
                             "priceLineVisible": False,
-                            "lastValueVisible": True,
+                            # Only the team's last value sits on the axis; the legend carries
+                            # the baselines', so the labels never stack.
+                            "lastValueVisible": False,
                             "crosshairMarkerRadius": 3,
                             "crosshairMarkerBorderColor": css_var("--panel"),
                             "crosshairMarkerBorderWidth": 2
