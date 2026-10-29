@@ -28,9 +28,24 @@ def:pub is_dark -> bool {
     return window.matchMedia("(prefers-color-scheme: dark)").matches;  # jac:ignore[E1030,E1002]
 }
 
-"""Pick light or dark, save it, and tell the charts to repaint."""
+"""Pick light or dark, save it, and tell the charts to repaint. Transitions are off for the
+swap, so every color changes in one frame instead of each fading on its own."""
 def:pub set_theme(choice: str) {
+    still = document.createElement("style");
+    still.append(document.createTextNode("*,*::before,*::after{transition:none !important}"));  # jac:ignore[E1030]
+    document.head.append(still);  # jac:ignore[E1030]
     document.documentElement.setAttribute("data-theme", choice);
+    # Reading a layout value makes the browser apply the new colors now, under the override.
+    document.body.offsetHeight;
+    window.requestAnimationFrame(
+        lambda {
+            window.requestAnimationFrame(
+                lambda {
+                    still.remove();  # jac:ignore[E1030]
+                }
+            );
+        }
+    );
     try {
         localStorage.setItem(THEME_KEY, choice);
     } except Exception { }
