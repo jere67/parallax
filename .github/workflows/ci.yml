@@ -37,6 +37,14 @@ jobs:
       - name: Show Jac version
         run: jac --version
 
+      # The caches hold native binaries linked against the runner's system libraries, so each
+      # key names the OS release: when ubuntu-latest moves to a new release, a cache saved on
+      # the old one is never restored onto it.
+      - name: Name the runner's OS release for the cache keys
+        run: |
+          . /etc/os-release
+          echo "OS_RELEASE=${ID}-${VERSION_ID}" >> "$GITHUB_ENV"
+
       # Only the embedded Postgres binaries are cached, never its data directory (pg/main):
       # a cached postmaster.pid names a process from the job that saved the cache, and when a
       # live process in a later job has that PID, Jac takes Postgres for running, never
@@ -47,7 +55,7 @@ jobs:
           path: |
             ~/.cache/jac/rt
             ~/.cache/jac/pg/dist
-          key: jac-runtime-pgdist-${{ runner.os }}-${{ env.JAC_VERSION }}
+          key: jac-runtime-pgdist-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ env.JAC_VERSION }}
 
       - name: Cache project dependencies
         uses: actions/cache@v6
@@ -55,7 +63,7 @@ jobs:
           path: |
             .jac/venv
             .jac/client/node_modules
-          key: jac-deps-${{ runner.os }}-${{ env.JAC_VERSION }}-${{ hashFiles('jac.toml') }}
+          key: jac-deps-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ env.JAC_VERSION }}-${{ hashFiles('jac.toml') }}
 
       - name: Install dependencies
         run: jac install
@@ -69,7 +77,12 @@ jobs:
       - name: Build
         run: jac build
 
+      # The demo history gives the end-to-end check pages with data. This server is this job's
+      # alone; TRADING_AGENT_DEMO is never set on a deployed one.
       - name: Boot the production build
+        env:
+          TRADING_AGENT_DEMO: "1"
+          TRADING_AGENT_DISABLE_ORDERS: "1"
         run: |
           jac run dist/trading-agent.jab < /dev/null > server.log 2>&1 &
           for _ in $(seq 1 120); do
@@ -81,6 +94,33 @@ jobs:
             -H 'Content-Type: application/json' -d '{}' | grep -q '"status": "ok"'
           curl -sf http://localhost:8000/ | grep -q '<title>Trading Agent</title>'
           echo "Server booted and answered."
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Cache the Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ hashFiles('e2e/package-lock.json') }}
+
+      - name: Check every page on each device
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium webkit
+          npx playwright test
+
+      - name: Keep the browser report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: e2e/playwright-report
+          retention-days: 7
 
       - name: Server log
         if: always()

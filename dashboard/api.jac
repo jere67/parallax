@@ -6,6 +6,10 @@ returns a view from models/views.jac. Nothing here writes, calls a model, or rea
 so a page loads from what the pipeline already stored and cannot spend the request budget
 (TDD §10, design notes). The builders take the portfolio as an argument, so tests can run
 them on any graph; the endpoints only pick the team's.
+
+Views come through the read cache in dashboard/cache.jac, and refresh_job rebuilds the
+portfolio, performance, and run list every minute, so a page shows the graph as of at most
+a minute or two ago.
 """
 import math;
 import statistics;
@@ -13,9 +17,11 @@ import from urllib.parse { urlsplit }
 import from action.baselines { baselines_of, sim_marks }
 import from action.insights { DISCLAIMER }
 import from action.reconcile { marks_of }
+import from agents.specialists { packet }
+import from dashboard.cache { VIEWS }
 import from analysis.consensus { signed_score }
 import from analysis.scoring { hit }
-import from models.agents { Domain, Specialist }
+import from models.agents { Domain, Evidence, ResearchReport, Specialist }
 import from models.graph {
     BaselineKind,
     CheckedBy,
@@ -89,37 +95,68 @@ def find_team -> Portfolio | None {
     return None;
 }
 
-"""The team portfolio at its last mark, with its positions and recent orders."""
+"""A cache key for one of the team portfolio's views; the portfolio's id keeps graphs apart."""
+def view_key(team: Portfolio, *parts: str) -> str {
+    return ":".join([jid(team)] + list(parts));
+}
+
+"""The team portfolio at its last mark, with its positions and its most recently submitted orders."""
 def:pub get_portfolio -> PortfolioView {
     team = find_team();
     if team is None {
         return PortfolioView(name=TEAM_PORTFOLIO, mode="insight", started=False);
     }
-    return portfolio_view(team);
+    return VIEWS.get(view_key(team, "portfolio"), portfolio_view, team);
 }
 
 """The team portfolio's daily equity beside both forward-test baselines."""
 def:pub get_performance -> PerformanceView {
     team = find_team();
-    return performance_view(team) if team is not None else PerformanceView(started=False);
+    if team is None {
+        return PerformanceView(started=False);
+    }
+    return VIEWS.get(view_key(team, "performance"), performance_view, team);
 }
 
 """The team's runs, newest first."""
 def:pub list_runs -> list[RunSummary] {
     team = find_team();
-    return run_summaries(team) if team is not None else [];
+    if team is None {
+        return [];
+    }
+    return VIEWS.get(view_key(team, "runs"), run_summaries, team);
 }
 
 """The run for `run_date`, or the newest run when it is empty; None when there is none."""
 def:pub get_run(run_date: str = "") -> RunView | None {
     team = find_team();
-    return run_view(team, run_date) if team is not None else None;
+    if team is None {
+        return None;
+    }
+    return VIEWS.get(view_key(team, "run", run_date), run_view, team, run_date);
 }
 
 """One ticker's trail in the run for `run_date`, or None when the run did not cover it."""
 def:pub get_decision_trail(run_date: str, ticker: str) -> TrailView | None {
     team = find_team();
-    return trail_view(team, run_date, ticker.strip().upper()) if team is not None else None;
+    if team is None {
+        return None;
+    }
+    symbol = ticker.strip().upper();
+    return VIEWS.get(view_key(team, "trail", run_date, symbol), trail_view, team, run_date, symbol);
+}
+
+"""Rebuild the views every page opens with, so no reader waits for them (dashboard/cache.jac).
+A static job runs as the system user, which reaches root.shared."""
+@schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * *")
+def refresh_job {
+    team = find_team();
+    if team is not None {
+        VIEWS.put(view_key(team, "portfolio"), portfolio_view(team));
+        VIEWS.put(view_key(team, "performance"), performance_view(team));
+        VIEWS.put(view_key(team, "runs"), run_summaries(team));
+        VIEWS.put(view_key(team, "run", ""), run_view(team, ""));
+    }
 }
 
 # --- Portfolio --------------------------------------------------------------------------
@@ -166,7 +203,7 @@ def portfolio_view(portfolio: Portfolio) -> PortfolioView {
     );
     closed = sorted([p for p in held if not p.open()], key=lambda (p: Position) { p.closed_at; }, reverse=True);
     view.closed = [position_view(p, equity, sent) for p in closed[:RECENT_CLOSED]];
-    recent = sorted(sent, key=lambda (o: Order) { o.updated_at or o.submitted_at; }, reverse=True);
+    recent = sorted(sent, key=lambda (o: Order) { (o.submitted_at, o.client_order_id); }, reverse=True);
     view.orders = [order_view(o) for o in recent[:RECENT_ORDERS]];
     return view;
 }
@@ -459,6 +496,7 @@ def trail_view(portfolio: Portfolio, run_date: str, ticker: str) -> TrailView | 
     if cov is None {
         return None;
     }
+    records = [r for r in [cov ->:Researched:->[?:ResearchRecord]]];
     view = TrailView(
         run_date=run_date,
         ticker=cov.ticker,
@@ -476,7 +514,7 @@ def trail_view(portfolio: Portfolio, run_date: str, ticker: str) -> TrailView | 
         realized_vol_20=cov.realized_vol_20,
         volume_20=cov.volume_20,
         sessions_to_earnings=cov.sessions_to_earnings,
-        research=research_views([r for r in [cov ->:Researched:->[?:ResearchRecord]]]),
+        research=research_views(records),
         macro=macro_view(run),
         tickers=[r.ticker for r in sorted([coverage_row(c) for c in covered], key=lambda (r: CoverageRow) { (-(r.conviction or 0.0), r.ticker); })],
         disclaimer=DISCLAIMER
@@ -485,7 +523,8 @@ def trail_view(portfolio: Portfolio, run_date: str, ticker: str) -> TrailView | 
     if c is not None {
         view.consensus = ConsensusView(score=c.score, agreement=c.agreement, ci_low=c.ci_low, ci_high=c.ci_high, draft_action=c.draft_action.value, samples_used=c.samples_used, samples_dropped=c.samples_dropped);
     }
-    view.specialists = specialist_views([v for v in [cov ->:Voted:->[?:VoteRecord]]], c.weights if c is not None else {});
+    sources = packet_sources(records, first_of([m for m in [run ->:HasMacro:->[?:MacroRecord]]]), cov.ticker, run_date);
+    view.specialists = specialist_views([v for v in [cov ->:Voted:->[?:VoteRecord]]], c.weights if c is not None else {}, sources);
     d = first_of([d for d in [cov ->:Decided:->[?:Decision]]]);
     if d is None {
         return view;
@@ -544,7 +583,7 @@ def research_views(records: list[ResearchRecord]) -> list[ResearchView] {
                 view=r.body.view.value,
                 confidence=r.body.confidence,
                 summary=r.body.summary,
-                evidence=[EvidenceView(claim=e.claim, source_url=e.source_url, published=e.published, host=urlsplit(e.source_url).hostname or "") for e in r.body.evidence],
+                evidence=[evidence_view(e) for e in r.body.evidence],
                 risks=r.body.risks,
                 data_gaps=r.body.data_gaps,
                 model=r.model,
@@ -556,8 +595,25 @@ def research_views(records: list[ResearchRecord]) -> list[ResearchView] {
     return found;
 }
 
-"""Each specialist's samples in panel order, with its mean signed score and its weight."""
-def specialist_views(votes: list[VoteRecord], weights: dict[str, float]) -> list[SpecialistView] {
+def evidence_view(e: Evidence) -> EvidenceView {
+    return EvidenceView(claim=e.claim, source_url=e.source_url, published=e.published, host=urlsplit(e.source_url).hostname or "");
+}
+
+"""Each specialist's evidence packet as the panel read it (agents/specialists.jac), so a vote's
+cited positions name their evidence: the newest report per domain, since a follow-up replaces
+the report it follows, and the run's macro report."""
+def packet_sources(records: list[ResearchRecord], macro: MacroRecord | None, ticker: str, run_date: str) -> dict[str, list[EvidenceView]] {
+    newest: dict[Domain, ResearchReport] = {};
+    for r in sorted(records, key=lambda (r: ResearchRecord) { bool(r.followup_question); }) {
+        newest[r.domain] = r.body;
+    }
+    body = macro.body if macro is not None else None;
+    return {s.value: [evidence_view(e) for e in packet(s, ticker, run_date, newest, body).evidence] for s in list(Specialist)};
+}
+
+"""Each specialist's samples in panel order, with its mean signed score, its weight, and the
+evidence each sample cited."""
+def specialist_views(votes: list[VoteRecord], weights: dict[str, float], sources: dict[str, list[EvidenceView]] = {}) -> list[SpecialistView] {
     found: list[SpecialistView] = [];
     for s in list(Specialist) {
         mine = sorted([v for v in votes if v.specialist == s], key=lambda (v: VoteRecord) { v.sample; });
@@ -573,6 +629,7 @@ def specialist_views(votes: list[VoteRecord], weights: dict[str, float]) -> list
                 horizon_days=v.body.horizon_days,
                 rationale=v.body.rationale,
                 cited=v.body.cited_evidence,
+                sources=[sources[s.value][i] for i in v.body.cited_evidence if s.value in sources and 0 <= i < len(sources[s.value])],
                 excess_return=v.excess_return,
                 hit=hit(v)
             )

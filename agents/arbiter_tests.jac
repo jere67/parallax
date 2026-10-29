@@ -115,3 +115,12 @@ test "the arguments are the strongest rationales on each side" {
 test "the Arbiter and retry roles are the shared limited instances" {
     assert arbiter_module.arbiter_llm is arbiter_llm and arbiter_module.retry_llm is retry_llm;
 }
+
+test "a failed review retains the full validation error" {
+    import from jaclang.byllm.lib { OutputConversionError }
+    message = "schema mismatch " + "x" * 600 + " risks must name the two biggest risks";
+    bad = MockError(error=OutputConversionError(message));
+    (ruling, _, _) = with_mocks(docket(TradeAction.BUY), [bad, bad], [bad, bad]);
+    assert "risks must name the two biggest risks" in ruling.error;
+    assert len(ruling.error) > 600;
+}

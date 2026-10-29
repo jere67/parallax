@@ -376,6 +376,7 @@ trading-agent/
   run/                     # DailyRun walker, Run Guard, scheduled jobs
   dashboard/               # client pages and components, beside the def:pub endpoints they call
   tests/                   # integration tests, recorded API fixtures, backtest harness, fake OpenRouter server
+  e2e/                     # the dashboard's browser checks on each device in the matrix (Playwright)
   .github/workflows/       # CI only; scheduling runs inside the app
 ```
 
@@ -513,7 +514,7 @@ Social-media and alternative data sources are stretch goals (Section 16).
 | Sub-agent | Scope | Main inputs | Runs |
 | --- | --- | --- | --- |
 | Market and Technical | Trend, momentum, volatility, volume, relative strength | Alpaca daily bars; indicators computed in code | Per ticker |
-| Fundamentals and Filings | Growth, margins, balance sheet, valuation, guidance, insider and institutional activity | SEC XBRL company facts, 10-K/10-Q/8-K text, Form 4; Finnhub key metrics, recommendation trends, EPS surprises | Per ticker |
+| Fundamentals and Filings | Growth, margins, balance sheet, valuation, guidance, insider and institutional activity | SEC XBRL company facts, 10-K/10-Q/8-K text, Form 4, quarterly bulk 13F holdings; Finnhub key metrics, recommendation trends, EPS surprises | Per ticker |
 | News and Events | What happened, what is scheduled, and whether news is priced in | Alpaca news (Benzinga), Finnhub company news and earnings calendar, SEC 8-K filings | Per ticker |
 | Macro | Market trend and volatility regime, rates and inflation expectations, sector rotation | Alpaca daily bars for SPY, four Treasury funds (SHY, IEF, TLT, TIP), and the 11 sector funds | Once per run |
 
@@ -579,10 +580,21 @@ Votes flow one way into code; only an ambiguous result loops back for more sampl
 | Technical | Trend, momentum, support and resistance, volatility, relative strength | Market and Technical |
 | News and Events | Materiality of news, whether it is priced in, upcoming catalysts such as earnings | News and Events |
 | Macro and Sector | Rate and inflation regime, sector rotation, sensitivity to scheduled releases | Macro; sector ETF data |
-| Flow and Positioning | Insider buying and selling; changes in institutional holdings once 13F data lands (#52) | Fundamentals and Filings (Form 4) |
+| Flow and Positioning | Insider buying and selling; quarterly changes in reported institutional shares, value, and manager counts | Fundamentals and Filings (Form 4 and bulk 13F) |
 
 Flow data has different delays: Form 4 arrives within [two business days](https://www.sec.gov/files/forms-3-4-5.pdf) of an insider trade, while 13F holdings are quarterly and filed up to [45 days after quarter end](https://www.sec.gov/rules-regulations/staff-guidance/division-investment-management-frequently-asked-questions/frequently-asked-questions-about-form-13f), so the Flow specialist treats institutional data as weeks to months old.
-EDGAR has no per-issuer 13F endpoint: holdings sit in each manager's own filing, so a per-stock view needs SEC's quarterly [13F data sets](https://www.sec.gov/data-research/sec-markets-data/form-13f-data-sets) joined to tickers, which is a stretch goal (#52); until then the Flow specialist reads Form 4 only.
+EDGAR has no per-issuer 13F endpoint: `research/holdings.jac` aggregates SEC's quarterly [13F data sets](https://www.sec.gov/data-research/sec-markets-data/form-13f-data-sets) once for the whole index before per-ticker collection (#52).
+The current bulk windows end in February, May, August and November; the collector discovers their URLs from SEC's listing and selects holdings by `PERIODOFREPORT`, rather than treating the filing window as the holdings quarter.
+`SourceClient` downloads and reduces each closed ZIP once, then caches the compact issuer aggregates under the window end for reuse across daily runs.
+Restatements replace earlier manager tables, new-holdings amendments extend them, and unknown or incomplete amendment histories become gaps.
+The collector counts distinct manager CIKs and excludes options, principal amounts, and non-common stock; shared-manager rows are retained as filed, so totals can overlap across managers and omit confidential or later filings.
+Values filed from January 3, 2023 onward are dollars; earlier filings use thousands of dollars.
+Ticker joins use index constituent names after punctuation and corporate-suffix normalization, accepting only a unique ticker and common-stock CUSIP; missing or ambiguous issuer/share-class matches are listed in each ticker's gaps.
+Symbols outside the constituent list have no name join and retain that gap.
+The brief stamps the holdings quarter, filing deadline (45 days rolled through weekends and the applicable federal holiday), filing-window end, age in calendar days, and both quarterly source URLs.
+A missing prior quarter or changed CUSIP leaves changes unknown, never zero; value changes include price moves and are not net purchases.
+Holdings quarters older than 180 days are excluded; the prior quarter remains comparison context.
+The source stamp's publish field denotes the filing-window end, not a verified archive publication day: today's SEC listing does not establish exact historical availability, so this collector alone cannot provide point-in-time backtest inputs.
 
 Each specialist reads a packet built in code from its primary reports (`agents/specialists.jac`): every report's summary, risks, and data gaps, and their evidence as one numbered list, but not the research sub-agents' own views or confidences, so the panel does not anchor on them.
 The Macro and Sector specialist reads the run's macro report and the ticker's market report, which carries its strength against its sector fund.
@@ -601,7 +613,12 @@ A result counts as near a threshold when moving C and its interval, or A, by up 
 
 Each sample returns a typed `Vote`: a stance from STRONG\_SELL to STRONG\_BUY, a confidence from 0 to 1, a horizon in trading days, a rationale, and the indices of the evidence it relied on.
 The stance is a string enum that code maps to a score from −2 to +2 (Section 3).
-A vote that cites no evidence fails the parse and is retried with feedback; code then maps the numbers a sample was shown back to the packet's own order, and a vote that still cites nothing in range is discarded.
+A vote that cites no evidence fails the parse and is retried with feedback; code then maps the 1-based numbers a sample was shown back to the packet's own 0-based order, and a vote that still cites nothing in range is discarded.
+The explicit exception is a Flow HOLD: it may copy a supplied missing-input statement verbatim into `cited_gaps`, without inventing a factual citation (#71).
+Code accepts such gaps only for Flow HOLD votes, keeps them distinct from sourced evidence, and rejects invented gaps; a gap-only vote can never be directional.
+These abstentions score zero and do not count as directional agreement, like every other HOLD.
+Prompts and Vote field semantics state the citation numbering, confidence bounds, and minimum horizon before the first request.
+Output retry limits remain at one until an instrumented live run establishes the largest retry source; the prompt/contract correction is a targeted hypothesis, not a measured reduction.
 
 ### Aggregation
 
@@ -776,7 +793,7 @@ The backing endpoints are `def:pub` functions that read `root.shared` explicitly
 | Page | Access | Shows | Backing endpoints |
 | --- | --- | --- | --- |
 | Portfolio | Public | Equity curve against SPY, Sharpe, max drawdown, open positions with entry, P&L, stop, and thesis | `get_portfolio`, `get_performance` |
-| Today | Public | The run's shortlist, each ticker's action and conviction, run status (normal or fallback), run summary | `get_run` |
+| Today | Public | The run's shortlist, each ticker's action and conviction, run status (normal or fallback), run summary, and the past runs | `get_run`, `list_runs` |
 | Decision detail | Public | The full trail for one ticker: research reports and sources → every specialist sample → consensus score, agreement, interval → Arbiter → risk gate → order and fill | `get_decision_trail` |
 | Specialists | Public | Hit rate, calibration curve, and recent votes per specialist | `get_specialist_stats` |
 | Reports | Signed in | Request a ticker report, view past reports, remaining daily quota | `request_report`, `list_reports` |
@@ -786,10 +803,21 @@ A Live committee page (real-time run progress through polling or a [streaming en
 
 ### Design notes
 
-- **UI method (issue #106).** Use plain Jac JSX with the app stylesheet in `assets/dashboard.css`, not Tailwind or jac-shadcn. `dashboard/HomePage.jac` owns the manual client-side route table so route components and the shared shell stay under `dashboard/`; the shared layout provides light and dark themes, responsive navigation, reusable page states, formatting helpers, and the disclaimer.
+- **UI method.** Tailwind CSS v4 through its Vite plugin, with every color a design token in `dashboard/theme.css`, so the light and dark themes share one set of components; the theme follows the system until the reader picks one.
+  Inter and JetBrains Mono are self-hosted through Fontsource, icons come from Lucide, the equity curves use TradingView's [Lightweight Charts](https://www.tradingview.com/lightweight-charts/), and the small figures (interval bars and vote dot plots) are plain SVG or HTML placed in percent, so they fill whatever width their column has.
+  The routes are a manual table in `dashboard/App.jac`, since file-based routing reads only a `pages/` directory at the project root.
+- **Quiet, dense, and exact.** One accent color, green for gains and red for losses, tabular figures, New York times, and no motion beyond hover states, so the numbers carry the page.
 - **Decision detail is the hero page.** It is the product's hook, so it gets the most design effort: a left-to-right trail from evidence to order, with each stage expandable.
 - **Disagreement is visible.** Vote distributions are shown as dot plots per specialist, so users see dissent rather than a single number.
 - **Mobile-first reading.** Portfolio, Today, and Decision detail must work on a phone, since most classmates will open the link from a shared message.
+- **Device matrix (GAP-13).** Every page must render its data, log no errors, and fit the screen without scrolling sideways at a minimum width of 360 CSS pixels, on iOS Safari (WebKit with Playwright's iPhone 15 profile) and Android Chrome (Chromium with its Pixel 7 profile), and on desktop Chrome at 1440 by 900.
+  Wide tables scroll inside their panel instead of widening the page.
+  The `e2e/` suite checks every page on all four in CI, against a production build seeded with the demo history (Section 14, Testing).
+- **Reads are served from a cache.** The persistent graph loads about one node per database query, so building a view from it takes a second or more and grows with history.
+  The endpoints answer from an in-process cache of built views (`dashboard/cache.jac`) that a static job rebuilds every minute, so pages load in milliseconds and show state at most two minutes old.
+- **Demo history for development.** A local server started with `TRADING_AGENT_DEMO=1` fills an empty team portfolio with a few weeks of made-up sessions (`dashboard/demo.jac`): random-walk prices and template research and votes, with every later number computed by the real consensus, sizing, risk gate, baselines, and scoring.
+  The portfolio is flagged `demo`, every page says so, and the scheduled jobs never run, trade, reconcile, or score it.
+  The variable is never set on a deployed server.
 - **No raw data redistribution.** Pages show derived analysis, short quotes of our own agents' text, and links to original sources.
 - **Pages never trigger model calls.** Public pages read state the pipeline already stored, so they load instantly and cannot spend the request budget.
 
@@ -860,7 +888,8 @@ Every agent runs on one free model, NVIDIA Nemotron 3 Super (`nvidia/nemotron-3-
 The binding constraint is OpenRouter's free-model rate limit, which covers the whole account: 20 requests per minute, and 1,000 requests per day once the account has bought at least $10 of credits, or 50 per day otherwise ([OpenRouter limits](https://openrouter.ai/docs/api_reference/limits)).
 The team account has the 1,000-a-day allowance, and its key's credit limit is $0, so a paid model is refused rather than billed.
 Additional keys or accounts do not raise the limit, because OpenRouter governs capacity globally.
-A standard run uses about 460 requests, including retries, which leaves room for on-demand reports.
+The October 16 Analysis exit run used 530 requests, including about 150 retry requests; the standard run budget is 600.
+Issue #71 adds per-role retry accounting; a new live measurement is required before claiming that retry overhead has fallen.
 
 ### Model choice
 
@@ -896,21 +925,31 @@ A local model through Ollama is fine for manual prompt work, but local models ar
 
 ### Requests per run (standard configuration: 20 tickers, K = 3)
 
-| Step | Requests per run | Notes |
+| Step | October 16 measured base calls | Notes |
 | --- | --- | --- |
-| Research sub-agents | 60 | 3 per ticker × 20 tickers |
-| Macro brief | 1 | Once per run |
-| Orchestrator follow-ups | Up to 10 | At most two per ticker |
-| Specialist samples | 300 | 5 specialists × K = 3 × 20 tickers |
-| Extra samples near thresholds | About 20 | Sequential sampling on ambiguous tickers |
-| Arbiter | 20 | One per ticker |
-| Orchestrator loop | About 30 | ReAct iterations with batched tools, capped |
-| Parse and transient-error retries | About 20 | `max_output_retries = 1` and up to two retries on timeouts; every retry is a request |
-| **Total** | **About 460** | **At 18 requests a minute, at least 26 minutes of model time** |
+| Research sub-agents and Macro | 61 | 3 per ticker × 20 tickers, plus Macro |
+| Orchestrator follow-ups | 4 | One follow-up per call in that run |
+| Specialist samples | 285 | 19 panels × 5 specialists × K = 3; one ticker was flagged HOLD |
+| Extra samples near thresholds | 0 | No ambiguous result in that run |
+| Arbiter | 19 | One review per panel |
+| Orchestrator loop | 11 | Tool-loop steps and closing answer |
+| Additional requests from retries/fallback | About 150 | Legacy totals cannot separate parse, transient, fallback, or low-temperature retry-role calls |
+| **Total provider requests** | **530** | **44.3 minutes measured; 600-request configured run budget** |
 
-The Analysis exit run measured 530 requests and 44 minutes for this configuration: retries took about 150 requests, not 20, and the loop and follow-ups fewer than planned, so the 600-request run budget holds about 22 tickers ([exit run](runs/2026-10-16-analysis-exit-run.md)).
+These are the [Analysis exit run's](runs/2026-10-16-analysis-exit-run.md) historical observations, replacing the optimistic 460-request estimate rather than presenting an unmeasured post-change result.
+Its panel sent 451 requests for 304 base calls, the largest observed overhead; the old data cannot determine the underlying validation-error mix.
+The new `Run.model_requests_by_role` matrix records roles `research`, `specialist`, `retry`, `arbiter`, and `orchestrator`, with mutually exclusive kinds `first_attempt`, `parse_retry`, `transient_retry`, and `fallback`.
+A kind describes the actual provider request: fallback takes precedence over the retry that triggered it, and a transport retry of a parse request is `transient_retry`.
+A call through the low-temperature retry instance is a `first_attempt` under role `retry`, so overhead analysis must include that role instead of counting only retry-kind columns.
+Typed retries are identified by the pinned runtime's actual retry hook, not prompt text; dispatch state is local to the thread/async context, so concurrent calls and nested tool calls do not share retry state.
+The matrix is the shared limiter's run-interval delta, using the same boundary as `Run.model_requests`; its cells sum to that total.
+As with the existing scalar total, overlapping runs or on-demand calls in the same process would share that accounting interval.
+Dropped sample errors persist untruncated in `Coverage.analysis_errors`, and a failed review's full error persists in `Decision.arbiter_error`, including the preceding role's validation failure when both attempts fail.
+The exit-run JSON includes the matrix both per run and per tool, plus full dropped errors and each Flow vote's gap citations.
+The live remeasurement and any evidence-based retry-limit tuning remain pending; no provider credentials are present in this checkout.
+
 An on-demand report on a ticker not already covered that day uses about 22 requests: 3 research, 15 specialist samples, 1 Arbiter, and a few Orchestrator steps.
-A global cap of 15 new reports a day bounds reports at about 330 requests, so the daily total stays under about 790 of the 1,000 allowed, leaving room for further retries.
+A global cap of 15 new reports a day bounds reports at about 330 requests, so combining the measured 530-request morning run with that estimate uses about 860 of the 1,000 allowed; retry headroom is tighter than the earlier 790-request estimate implied.
 
 ### Request controls
 
@@ -1015,6 +1054,7 @@ The largest risks are untrusted text reaching agents, leaked credentials, and a 
 | Rate limiting | Every provider request passes the limiter; 429s back off; a model that stays rate limited falls back | `LimitedModel` against a fake OpenRouter server (Section 3) |
 | Collector | Parsing and rate limiting against recorded responses | Recorded fixtures, served through base-URL overrides such as `ALPACA_BASE_URL` |
 | Endpoint smoke | Every `def:pub` function and walker the dashboard uses answers a POST | `JacTestClient` ([testing reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/testing.md)) |
+| End-to-end UI | Every page renders its data, logs no console errors, and fits the width on each device in the matrix (Section 10) | [Playwright](https://playwright.dev/docs/emulation) in `e2e/`, against the production build seeded with the demo history, in CI |
 | Integration | Full run against Alpaca paper with a tiny shortlist and mock agents | Nightly CI job |
 | Failure drills | A source down, the LLM provider down, an Orchestrator timeout | Fault injection flags |
 
@@ -1096,7 +1136,6 @@ Prediction markets need their own evaluation metric, the Brier score of the agen
 | Second free model for sampling | Alternate specialist samples across two free models to decorrelate errors | Depends on OpenRouter's free list at the time |
 | Single-agent baseline | A second paper portfolio run by one agent with the same tools | Roughly doubles daily model requests |
 | Options and short-sale signals | Put/call and implied-volatility proxies from Alpaca's free [indicative options feed](https://docs.alpaca.markets/us/docs/historical-option-data), a 15-minute-delayed derivative of OPRA; [FINRA daily short-sale volume](https://www.finra.org/finra-data/browse-catalog/short-sale-volume-data/daily-short-sale-volume-files) | Short-sale volume is not short interest and covers only off-exchange (TRF, ADF, ORF) trades ([FINRA](https://www.finra.org/rules-guidance/notices/information-notice-051019)) |
-| Institutional holdings (#52) | Quarterly changes in institutional ownership for the Flow specialist | EDGAR has no per-issuer 13F endpoint; built from SEC's quarterly [13F data sets](https://www.sec.gov/data-research/sec-markets-data/form-13f-data-sets), which identify securities by CUSIP, not ticker |
 | Congressional trade disclosures | House and Senate periodic transaction reports | Scraping required; check the filing lag before relying on it |
 | Live committee page | Real-time run progress through polling or a streaming (SSE) endpoint | Dashboard polish |
 | Backup data providers | FMP (250 calls a day; [FAQ](https://site.financialmodelingprep.com/faqs)) and Twelve Data (800 calls a day, 8 a minute, non-commercial use; [pricing](https://twelvedata.com/pricing)) | Only if a core source proves unreliable |

@@ -48,7 +48,7 @@ def add_panel(run: Run) {
     );
     for (s, stances) in [(Specialist.TECHNICAL, [Stance.BUY, Stance.STRONG_BUY]), (Specialist.FUNDAMENTALS, [Stance.SELL, Stance.HOLD])] {
         for (i, stance) in enumerate(stances) {
-            cov +>:Voted():+> VoteRecord(ticker="AAA", specialist=s, sample=i, model="m", body=Vote(stance=stance, confidence=0.8, horizon_days=5, rationale="Because.", cited_evidence=[1]));
+            cov +>:Voted():+> VoteRecord(ticker="AAA", specialist=s, sample=i, model="m", body=Vote(stance=stance, confidence=0.8, horizon_days=5, rationale="Because.", cited_evidence=[0]));
         }
     }
     cov +>:Concluded():+> ConsensusResult(ticker="AAA", score=0.2, agreement=0.5, ci_low=-0.1, ci_high=0.5, draft_action=TradeAction.BUY, weights={"technical": 0.6, "fundamentals": 0.4}, samples_used=4);
@@ -154,6 +154,10 @@ test "a decision trail runs from research and votes through the gate to the orde
         assert [(s.specialist, s.weight) for s in trail.specialists] == [("fundamentals", 0.4), ("technical", 0.6)];
         tech = trail.specialists[1];
         assert [x.signed for x in tech.samples] == [0.4, 0.8] and abs(tech.score - 0.6) < 1e-12;
+        # The technical specialist reads the market report, so its cited positions name that evidence.
+        first = tech.samples[0];
+        assert first.sources and len(first.sources) == len(first.cited);
+        assert first.sources[0].claim == trail.research[0].evidence[first.cited[0]].claim;
         (consensus, decision, gate) = (trail.consensus, trail.decision, trail.gate);
         assert consensus is not None and decision is not None and gate is not None;
         assert consensus.samples_used == 4 and decision.action == "BUY";

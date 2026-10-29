@@ -95,7 +95,7 @@ The following user needs are the basis for the functional requirements and user 
 | Category | Required information |
 |---|---|
 | Market | Daily price/volume history, recent trading activity, and benchmark/sector comparisons. |
-| Fundamentals and filings | Company facts, financial statements/filings, guidance, earnings information, insider transactions, and institutional holdings (13F holdings are a stretch goal, #52). |
+| Fundamentals and filings | Company facts, financial statements/filings, guidance, earnings information, insider transactions, and delayed quarterly institutional holdings (bulk SEC 13F, #52; ambiguous ticker joins and unavailable comparisons are explicit gaps). |
 | News and events | Recent company news, filings, scheduled events, earnings dates, and relevant catalysts. |
 | Macro | Market trend and volatility regime, rates and inflation expectations, and sector-rotation information. |
 
@@ -155,8 +155,9 @@ The following user needs are the basis for the functional requirements and user 
 
 - Each specialist shall provide, for every sample, a stance in the ordered set STRONG_SELL, SELL, HOLD, BUY, STRONG_BUY.
 - Each sample shall provide confidence in the closed interval [0,1].
-- Each sample shall provide a trading horizon in days, a rationale, and at least one cited evidence item.
-- A sample with no cited evidence shall be discarded.
+- Each sample shall provide a trading horizon in days, a rationale, and at least one cited evidence item, except that a Flow HOLD may cite a supplied data gap verbatim in a separate `cited_gaps` field (#71).
+- A sample with neither valid cited evidence nor a verified Flow-HOLD gap citation shall be discarded.
+- Missing inputs shall remain distinct from factual evidence; a gap-only vote shall never support a directional stance.
 - The standard configuration shall generate three samples per specialist per ticker.
 - Specialist samples shall be generated independently and specialists shall not see each other's votes before consensus aggregation.
 - Evidence shall be presented in a different order across repeated samples for the same specialist/ticker.
@@ -721,7 +722,7 @@ This section is intentionally the only place where the requirements leave a mate
 | GAP-10 | Official course schedule source for Pitch Week, Launch Week, and Reflection Week end date. | Prevents milestone/date drift. | Add the course syllabus link to the repository/TDD and update the release dates here. | Before milestone sign-off. |
 | GAP-11 | Launch-week user target; 50 users is explicitly proposed, not finalized. | Affects product/marketing acceptance. | Decide the launch target with the course/team, record it as a product KPI, and update the acceptance dashboard. | Before launch campaign starts. |
 | GAP-12 | Ownership of platform, research, analysis, action/evaluation, and product areas. | Requirements need accountable owners for sign-off and defects. | Assign one primary owner per workstream and record ownership in the project board. | Before phase entry/within week 1. |
-| GAP-13 | Exact supported mobile viewport and browser/device test matrix. | "Works on a phone" needs a reproducible acceptance test. | Choose a minimum viewport plus one current iOS/Safari and Android/Chrome test target and add them to the UI acceptance test. | Before Dashboard MVP. |
+| GAP-13 | Exact supported mobile viewport and browser/device test matrix. | "Works on a phone" needs a reproducible acceptance test. | **Proposed October 22, 2026 (#110), for the team to confirm:** a minimum width of 360 CSS pixels; iOS Safari as WebKit with Playwright's iPhone 15 profile; Android Chrome as Chromium with its Pixel 7 profile; and desktop Chrome at 1440 by 900. Each page must render its data, log no errors, and not scroll sideways on all four; the `e2e/` Playwright suite checks this in CI against a server seeded with the demo history (TDD §10, §14). | Before Dashboard MVP. |
 | GAP-14 | Exact definition of the "excess return" used to score individual specialist votes after their horizons elapse. | Affects specialist hit rate and calibration measurements. | **Decided October 20, 2026 (Jeremy):** the stock's close-to-close return from the last close before the run date to the close of the H-th session counting it, minus SPY's over the same sessions; a directional vote is a hit when the signs match, HOLD votes are never hits, and a vote missing a close stays unscored. Implemented and tested in `analysis/scoring.jac` (TDD §7). | Before the first scored live votes. |
 | GAP-15 | Exact freshness limits for each live data category/source. The TDD requires freshness enforcement but does not give every source a numeric limit. | Determines whether stale evidence can affect a decision. | Establish freshness policies per source/domain, validate them against provider update cadence, and version them before production use. | Before Research exit. |
 | GAP-16 | Exact behavior of the paper brokerage for stop/add/exit sequencing and whether a one-triggers-other order can attach the stop at entry. | Affects execution safety. | Run the planned week-1 paper-account order-rule spike, document observed behavior, and update FR-10 tests to the verified sequence. | Before Action phase exit. |

@@ -8,10 +8,12 @@ or "days ago" is computed here. Article and filing text keeps its untrusted-data
 Builders are pure: they take collector outputs and return a Brief, so they are tested
 without a network, and the agent layer checks every citation against `Brief.published_by_url`.
 """
+import from datetime { date }
 import from models.agents { Domain }
 import from research.alpaca_news { Article }
 import from models.research { RegimeInputs }
 import from research.finnhub { EarningsDate, EpsSurprise, KeyMetrics, RecommendationTrend }
+import from research.holdings { Holdings, filing_deadline }
 import from research.indicators { BOND_BENCHMARKS, BOND_ETFS, SECTOR_ETFS, Technicals }
 import from research.sec { EarningsRelease, Filing, Fundamentals, InsiderTrade, ReportedValue, TRANSACTION_CODES }
 import from research.text { cap, untrusted_block }
@@ -102,6 +104,7 @@ obj FundamentalsInputs {
         surprises: list[EpsSurprise] = [],
         trades: list[InsiderTrade] | None = None,
         insider_since: str = "",
+        holdings: Holdings | None = None,
         gaps: list[str] = [];
 }
 
@@ -171,6 +174,22 @@ def fundamentals_brief(ticker: str, as_of: str, inputs: FundamentalsInputs) -> B
         brief.gaps.append(f"fundamentals: insider transactions for {ticker} are unavailable");
     } else {
         add_insider_sources(brief, inputs.trades, inputs.insider_since);
+    }
+    h = inputs.holdings;
+    if h is None {
+        brief.gaps.append(f"fundamentals: institutional holdings for {ticker} are unavailable");
+    } else {
+        age = (date.fromisoformat(as_of) - date.fromisoformat(h.quarter)).days;
+        text = f"Quarter ended {h.quarter}; filing deadline {h.filing_deadline}; filing window ended {h.archive_end}. Positions are {age} calendar days old as of this run, not current flows. Reported common-stock holdings (CUSIP {h.cusip}): {h.shares:,.0f} shares, ${h.value_usd:,.0f}, {h.managers} reporting managers. Join method: normalized issuer name; ambiguous share classes excluded.";
+        if h.shares_change is not None {
+            text += f" Compared with quarter {h.prior_quarter}: shares {h.shares_change:+,.0f}, value ${h.value_change_usd:+,.0f}, managers {h.managers_change:+d}. A value change includes price changes; it is not net buying.";
+        } else {
+            text += " Prior-quarter changes unavailable; missing holdings are not zero.";
+        }
+        brief.add(f"{ticker} delayed institutional holdings (SEC 13F)", h.stamp.source_url, h.stamp.published_at, text);
+        if h.shares_change is not None {
+            brief.add(f"{ticker} prior-quarter institutional holdings (SEC 13F)", h.prior_source_url, h.prior_archive_end, f"Comparison baseline: holdings quarter ended {h.prior_quarter}; filing deadline {filing_deadline(h.prior_quarter)}. The current source reports the quarter-over-quarter differences.");
+        }
     }
     return brief;
 }
@@ -422,7 +441,12 @@ def trend_line(t: RecommendationTrend) -> str {
 
 def earnings_date_text(e: EarningsDate, sessions_until: int | None) -> str {
     when = {"bmo": "before the open", "amc": "after the close", "dmh": "during market hours"}.get(e.hour, "time not announced");
-    distance = f"{sessions_until} trading sessions after the run date" if sessions_until is not None else "an unknown number of sessions away";
+    distance = "an unknown number of sessions away";
+    if sessions_until == 0 {
+        distance = "on the run date";
+    } elif sessions_until is not None {
+        distance = f"{sessions_until} trading session{'' if sessions_until == 1 else 's'} after the run date";
+    }
     parts = [f"Fiscal Q{e.quarter} {e.year} results are scheduled for {e.day}, {when}: {distance}."];
     if e.eps_estimate is not None {
         parts.append(f"Consensus EPS estimate: ${e.eps_estimate:.2f}.");

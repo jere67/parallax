@@ -13,7 +13,7 @@ that downgrades a buy or an add and keeps any other draft, with the reason store
 """
 import time;
 import from jaclang.byllm.lib { OutputConversionError }
-import from agents.models { arbiter_llm, retry_llm }
+import from agents.models { arbiter_llm, model_error, retry_llm }
 import from analysis.consensus { Consensus, signed_score }
 import from models.agents { Domain, MacroReport, ResearchReport, Specialist, Vote }
 import from models.graph { TradeAction }
@@ -131,17 +131,19 @@ def arbitrate(docket: Docket) -> Ruling {
     started = time.monotonic();
     (draft, stats, arguments, research) = (ACTION_MEANING[docket.draft], statistics_text(docket.consensus), arguments_text(docket.votes), research_text(docket.reports, docket.macro));
     retried = False;
+    previous = "";
     try {
         try {
             said = review_case(docket.ticker, docket.as_of, draft, stats, arguments, research, docket.time_stop);
             model = arbiter_llm.model_name;
-        } except OutputConversionError {
+        } except OutputConversionError as e {
             retried = True;
+            previous = model_error(e);
             said = review_case_retry(docket.ticker, docket.as_of, draft, stats, arguments, research, docket.time_stop);
             model = retry_llm.model_name;
         }
     } except Exception as e {
-        ruling = safe_ruling(docket, f"{type(e).__name__}: {str(e)[:300]}");
+        ruling = safe_ruling(docket, model_error(e, previous));
         ruling.retried = retried;
         ruling.seconds = time.monotonic() - started;
         return ruling;

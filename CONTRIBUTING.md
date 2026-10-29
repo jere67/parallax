@@ -53,6 +53,7 @@ Use `MockLLM` for agents and recorded fixtures for collectors, so CI stays free 
 
 To record collector fixtures, export the source's API key and `COLLECTOR_RECORD_DIR=/some/dir`, then run the collector once.
 Each live response is saved as `<dir>/<source>/<dataset>-<hash>.json`, with API keys sent as query parameters left out.
+Binary collectors may supply a `SourceClient.get(decode=...)` decoder so the cache holds a compact representation; recordings retain the original response in `body_base64`, which `FakeSource` decodes on replay.
 Trim large bodies to what the test needs, commit the files under `tests/fixtures/<source>/`, and replay them with `FakeSource` from `tests/fakes/source_server.jac`, pointing the source's base-URL variable (such as `FINNHUB_BASE_URL`) at it.
 
 ## Writing Jac

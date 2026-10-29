@@ -145,8 +145,13 @@ def start_due(portfolio: Portfolio, now: datetime, day: str, deps: TradingDeps) 
     return [line];
 }
 
-"""Do whatever step of `portfolio`'s trading day is due at `now`, and return what it did."""
+"""Do whatever step of `portfolio`'s trading day is due at `now`, and return what it did.
+Nothing is ever due on the local demo history: its orders, positions, and votes are made up,
+so trading, reconciling, or scoring them against Alpaca would be wrong (dashboard/demo.jac)."""
 def trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = TradingDeps()) -> list[str] {
+    if portfolio.demo {
+        return [];
+    }
     local = now.astimezone(NEW_YORK);
     day = local.date().isoformat();
     if local.weekday() >= 5 {

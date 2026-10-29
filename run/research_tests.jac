@@ -19,6 +19,7 @@ import from research.alpaca_news { Article }
 import from research.briefs { FundamentalsInputs, MacroInputs, MarketInputs, NewsInputs }
 import from research.collector { RunBudget }
 import from research.finnhub { RecommendationTrend }
+import from research.holdings { Holdings, HoldingsBatch }
 import from research.screener { Pick, PickReason, Shortlist }
 import from research.sources { DATASETS, SOURCES }
 import from run.research {
@@ -82,7 +83,7 @@ test "a failed source call is a gap for its brief and a fetch error, never an ex
 """Run `collect_ticker` for AAPL with every source's base URL pointed at one fake that has
 only the SEC recordings, so Finnhub and Alpaca answer 404, and a throwaway raw cache so
 nothing reaches the real one."""
-def collect_aapl(cik: str) -> tuple[TickerInputs, FakeSource] {
+def collect_aapl(cik: str, holdings: HoldingsBatch = HoldingsBatch()) -> tuple[TickerInputs, FakeSource] {
     fake = FakeSource();
     url = fake.start();
     fake.load(SEC_FIXTURES);
@@ -102,7 +103,8 @@ def collect_aapl(cik: str) -> tuple[TickerInputs, FakeSource] {
             series={},
             technicals={},
             budget=RunBudget(limits={name: 40 for name in SOURCES}),
-            config=PassConfig()
+            config=PassConfig(),
+            holdings=holdings
         );
         found = collect_ticker(Pick(symbol="AAPL", sector="Information Technology", reason=PickReason.SCORE, score=1.2), None, cik, ctx);
     } finally {
@@ -141,6 +143,21 @@ test "a ticker's SEC data is collected while Finnhub and Alpaca are down" {
     assert any(g.startswith("alpaca.news: unavailable (") for g in news.gaps);
     assert found.market.stock is None and found.market.sector_etf == "XLK";
     assert found.market.gaps == ["alpaca.bars: no fresh daily bars for AAPL, so there are no indicators"];
+}
+
+test "per-ticker research carries the shared institutional holding and its join gaps" {
+    h = Holdings(
+        symbol="AAPL", issuer="Apple Inc.", cusip="037833100", quarter="2026-06-30",
+        filing_deadline="2026-08-14", archive_end="2026-08-31", shares=230,
+        value_usd=46000, managers=2,
+        stamp=Stamp(source="sec_archives", dataset="sec.13f", source_url="https://www.sec.gov/quarter.zip", published_at="2026-08-31", fetched_at=AT)
+    );
+    shared = HoldingsBatch(values={"AAPL": h}, gaps={"AAPL": ["sec.13f: prior quarter unavailable"]});
+    (found, fake) = collect_aapl("0000320193", shared);
+    assert found.fundamentals.holdings is not None;
+    assert found.fundamentals.holdings.shares == 230;
+    assert "sec.13f: prior quarter unavailable" in found.fundamentals.gaps;
+    assert not any(r.path.endswith(".zip") for r in fake.requests);
 }
 
 test "a ticker without a CIK makes no SEC request and says so in both briefs" {
