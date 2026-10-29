@@ -804,9 +804,13 @@ A Live committee page (real-time run progress through polling or a [streaming en
 ### Design notes
 
 - **UI method.** Tailwind CSS v4 through its Vite plugin, with every color a design token in `dashboard/theme.css`, so the light and dark themes share one set of components; the theme follows the system until the reader picks one.
-  Inter and JetBrains Mono are self-hosted through Fontsource, icons come from Lucide, the equity curves use TradingView's [Lightweight Charts](https://www.tradingview.com/lightweight-charts/), and the small figures (interval bars and vote dot plots) are plain SVG or HTML placed in percent, so they fill whatever width their column has.
+  Instrument Sans, Instrument Serif, and JetBrains Mono are self-hosted through Fontsource, icons come from Lucide, the equity curves use TradingView's [Lightweight Charts](https://www.tradingview.com/lightweight-charts/), and the small figures (interval bars and vote dot plots) are plain SVG or HTML placed in percent, so they fill whatever width their column has.
   The routes are a manual table in `dashboard/App.jac`, since file-based routing reads only a `pages/` directory at the project root.
-- **Quiet, dense, and exact.** One accent color, green for gains and red for losses, tabular figures, New York times, and no motion beyond hover states, so the numbers carry the page.
+- **Quiet, dense, and exact.** One accent color, green for gains and red for losses, tabular figures, New York times, and no motion beyond hover states, a 0.96 press on buttons, and one staggered rise as a page first loads, so the numbers carry the page.
+  Movement is off under the reader's reduced-motion setting, where the rise only fades.
+- **A committee's ledger.** The look follows dense financial data apps such as [Artemis](https://www.artemis.ai/): cards drawn by a hairline on the canvas instead of shadows, a 48-pixel header on every card, muted labels over bright values, and a headline figure set like a quote, with its change as a tinted pill.
+  The palette is warm ink in the dark theme and newsprint in the light one, with brass for the Arbiter and for whatever is selected, verdigris for gains, and cinnabar for losses.
+  Instrument Serif sets page titles and the one headline figure on a page, Instrument Sans everything else, and JetBrains Mono the chart axes and model IDs.
 - **Decision detail is the hero page.** It is the product's hook, so it gets the most design effort: a left-to-right trail from evidence to order, with each stage expandable.
 - **Disagreement is visible.** Vote distributions are shown as dot plots per specialist, so users see dissent rather than a single number.
 - **Mobile-first reading.** Portfolio, Today, and Decision detail must work on a phone, since most classmates will open the link from a shared message.
