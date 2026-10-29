@@ -299,7 +299,7 @@ def ReportRow(r: ResearchData) -> JsxElement {
                 aria-expanded={open}
                 className="press inline-flex items-center gap-1 self-start text-[12px] font-medium text-accent hover:underline"
             >
-                <ChevronRight size={13} className={"transition-[rotate] duration-150 ease-out " + ("rotate-90" if open else "")}/>
+                <ChevronRight size={13} className={"transition-[rotate] duration-150 ease-out motion-reduce:transition-none " + ("rotate-90" if open else "")}/>
                 {("Hide " if open else "Show ") + count(len(r.evidence), "source")}
             </button>
         }}
@@ -380,7 +380,7 @@ def SpecialistRow(s: SpecialistData) -> JsxElement {
                 <DotPlot values={[x.signed for x in s.samples]} mean={s.score}/>
             </span>
             <span className={"num text-right text-[13px] font-semibold " + tone(s.score)}>{signed(s.score)}</span>
-            <ChevronRight size={14} className={"hidden text-faint transition-[rotate] duration-150 ease-out sm:block " + ("rotate-90" if open else "")}/>
+            <ChevronRight size={14} className={"hidden text-faint transition-[rotate] duration-150 ease-out motion-reduce:transition-none sm:block " + ("rotate-90" if open else "")}/>
         </button>
         {if open {
             <ol className="bg-panel-2/50 px-4 pb-1">

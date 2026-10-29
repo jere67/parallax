@@ -158,7 +158,7 @@ glob:pub FROZEN_HEAD: str = " left-0 z-[2] max-md:border-r";
 glob:pub FROZEN_CELL: str = " sticky left-0 z-[1] bg-panel transition-colors duration-150 group-hover:bg-hover max-md:border-r";
 
 # A segmented control's inset track; its chips are Segment. The track's 6px corner is the
-# chip's 4px plus the 2px inset.
+# chip's 3px plus the 2px inset and the 1px border.
 glob:pub SEGMENTS: str = "inline-flex h-8 max-w-full items-center gap-0.5 overflow-x-auto rounded-md border border-line bg-panel-2 p-0.5";
 
 """One choice in a segmented control: a raised chip on the inset track when it is chosen."""
@@ -166,10 +166,10 @@ def:pub Segment(label: str, count: int, active: bool, pick: Callable[[], None]) 
     <button
         type="button"
         onClick={lambda { pick(); }}
-        className={"press inline-flex h-full shrink-0 items-center gap-1.5 rounded-[4px] px-2.5 text-[12px] font-medium " + ("bg-panel text-text shadow-[0_1px_2px_rgb(0_0_0/0.12)]" if active else "text-muted hover:bg-hover hover:text-text")}
+        className={"press inline-flex h-full shrink-0 items-center gap-1.5 rounded-[3px] px-2.5 text-[12px] font-medium " + ("bg-panel text-text shadow-[0_1px_2px_rgb(0_0_0/0.12)]" if active else "text-muted hover:bg-hover hover:text-text")}
         aria-pressed={active}
     >
         {label}
-        <span className={"num rounded-[3px] px-1 text-[10px] leading-4 " + ("bg-panel-2 text-muted" if active else "text-faint")}>{str(count)}</span>
+        <span className={"num rounded-[2px] px-1 text-[10px] leading-4 " + ("bg-panel-2 text-muted" if active else "text-faint")}>{str(count)}</span>
     </button>
 }

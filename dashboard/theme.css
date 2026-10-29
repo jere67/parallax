@@ -170,15 +170,18 @@ body {
     border-radius: 4px;
 }
 
-/* A button presses to 0.96, never when disabled. */
+/* A button presses to 0.96, never when disabled, and only when the reader allows motion; its
+ * colors change either way. */
 .press {
     transition-property: scale, background-color, color;
     transition-duration: 150ms;
     transition-timing-function: ease-out;
 }
 
-.press:not(:disabled):active {
-    scale: 0.96;
+@media (prefers-reduced-motion: no-preference) {
+    .press:not(:disabled):active {
+        scale: 0.96;
+    }
 }
 
 /* A page's first paint: its sections rise in one after another, 100ms apart. Under reduced

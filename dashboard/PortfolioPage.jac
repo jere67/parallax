@@ -295,7 +295,7 @@ def PositionsTable(positions: list[PositionData]) -> JsxElement {
                                         >
                                             <ChevronRight
                                                 size={14}
-                                                className={"transition-[rotate] duration-150 ease-out " + ("rotate-90" if opened == p.ticker else "")}
+                                                className={"transition-[rotate] duration-150 ease-out motion-reduce:transition-none " + ("rotate-90" if opened == p.ticker else "")}
                                             />
                                         </button>
                                         <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/>
