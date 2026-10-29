@@ -22,6 +22,8 @@ import from dashboard.ui.format {
     tone
 }
 import from dashboard.ui.parts {
+    FROZEN_CELL,
+    FROZEN_HEAD,
     ROW,
     TD,
     TD_NUM,
@@ -29,7 +31,9 @@ import from dashboard.ui.parts {
     TH_NUM,
     Empty,
     ErrorBox,
+    Delta,
     Loading,
+    Overline,
     Panel,
     Stat,
     StatusBadge
@@ -43,6 +47,8 @@ import from models.views {
     Series as SeriesData
 }
 
+# A cell of the figures grid, on the panel fill over the grid's hairlines.
+glob CELL: str = "min-w-0 bg-panel px-4 py-3.5";
 glob SECTOR_CAP: float = 0.30;
 glob STAT_ROWS: list[str] = ["Total return", "Sharpe", "Max drawdown", "Volatility"];
 glob SHORT_LABELS: dict[str, str] = {"team": "Team", "equal_weight": "Equal wt", "spy": "SPY"};
@@ -78,7 +84,23 @@ def TickerCell(ticker: str, day: str, sub: str = "") -> JsxElement {
     </div>
 }
 
-def Headline(view: PortfolioData, perf: PerformanceData | None) -> JsxElement {
+"""The headline: the account's equity in the display face with its day's change beside it,
+the way a quote reads, over the chart."""
+def Hero(view: PortfolioData) -> JsxElement {
+    <div className="px-4 pt-4">
+        <Overline>Equity</Overline>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <span className="display text-[40px] leading-[44px] text-text">{money(view.equity)}</span>
+            <Delta text={signed_pct(view.day_return)} value={view.day_return}/>
+            <span className={"num text-[13px] font-medium " + tone(view.day_pnl)}>{signed_money(view.day_pnl)}</span>
+            <span className="text-[11px] text-muted">{"on " + day_short(view.last_day)}</span>
+        </div>
+    </div>
+}
+
+"""The figures under the chart, in one hairline grid: six cells, so every row fills at two
+and at three across."""
+def Figures(view: PortfolioData, perf: PerformanceData | None) -> JsxElement {
     team = series_of(perf, "team");
     spy = series_of(perf, "spy");
     lead: float | None = None;
@@ -86,40 +108,57 @@ def Headline(view: PortfolioData, perf: PerformanceData | None) -> JsxElement {
         lead = team.total_return - spy.total_return;
     }
     drawdown = view.drawdown;
-    <section className="grid grid-cols-2 gap-x-6 gap-y-5 rounded-lg border border-line bg-panel px-4 py-4 sm:grid-cols-3 lg:grid-cols-6">
-        <Stat label="Equity" value={money(view.equity)} sub={"Cash " + money(view.cash)}/>
-        <Stat
-            label="Day P&L"
-            value={signed_money(view.day_pnl)}
-            tone={tone(view.day_pnl)}
-            sub={signed_pct(view.day_return) + " on " + day_short(view.last_day)}
-        />
-        <Stat
-            label="Total return"
-            value={signed_pct(view.total_return)}
-            tone={tone(view.total_return)}
-            sub={signed_money(view.total_pnl) + " since " + day_short(day_et(view.opened_at))}
-        />
-        <Stat
-            label="Against SPY"
-            value={signed_pct(lead)}
-            tone={tone(lead)}
-            sub={"SPY " + signed_pct(spy.total_return if spy is not None else None)}
-            hint="Team total return minus SPY buy-and-hold over the same sessions"
-        />
-        <Stat
-            label="Drawdown"
-            value={signed_pct(0.0 - drawdown) if drawdown is not None else MISSING}
-            tone={"text-down" if drawdown is not None and drawdown > 0.0001 else "text-text"}
-            sub={"Peak " + money(view.peak_equity)}
-            hint="From the highest close; new buys halt at 10%"
-        />
-        <Stat
-            label="Gross exposure"
-            value={pct(view.gross_exposure, 1)}
-            sub={count(len(view.positions), "position") + ", " + money(view.positions_value, 0)}
-        />
-    </section>
+    open_pnl = 0.0;
+    for p in view.positions {
+        open_pnl = open_pnl + (p.pnl or 0.0);
+    }
+    cash_share: float | None = view.cash / view.equity if view.equity else None;
+    <div className="grid grid-cols-2 gap-px border-t border-line bg-line sm:grid-cols-3">
+        <div className={CELL}>
+            <Stat
+                label="Total return"
+                value={signed_pct(view.total_return)}
+                tone={tone(view.total_return)}
+                sub={signed_money(view.total_pnl) + " since " + day_short(day_et(view.opened_at))}
+            />
+        </div>
+        <div className={CELL}>
+            <Stat
+                label="Against SPY"
+                value={signed_pct(lead)}
+                tone={tone(lead)}
+                sub={"SPY " + signed_pct(spy.total_return if spy is not None else None)}
+                hint="Team total return minus SPY buy-and-hold over the same sessions"
+            />
+        </div>
+        <div className={CELL}>
+            <Stat
+                label="Drawdown"
+                value={signed_pct(0.0 - drawdown) if drawdown is not None else MISSING}
+                tone={"text-down" if drawdown is not None and drawdown > 0.0001 else "text-text"}
+                sub={"Peak " + money(view.peak_equity)}
+                hint="From the highest close; new buys halt at 10%"
+            />
+        </div>
+        <div className={CELL}>
+            <Stat
+                label="Gross exposure"
+                value={pct(view.gross_exposure, 1)}
+                sub={money(view.positions_value, 0) + " invested"}
+            />
+        </div>
+        <div className={CELL}>
+            <Stat
+                label="Open P&L"
+                value={signed_money(open_pnl)}
+                tone={tone(open_pnl)}
+                sub={count(len(view.positions), "position")}
+            />
+        </div>
+        <div className={CELL}>
+            <Stat label="Cash" value={money(view.cash)} sub={pct(cash_share, 1) + " of equity"}/>
+        </div>
+    </div>
 }
 
 def stat_value(s: SeriesData, row: str) -> str {
@@ -154,7 +193,7 @@ def StatsTable(perf: PerformanceData, view: PortfolioData) -> JsxElement {
                 <tbody>
                     {for row in STAT_ROWS {
                         <tr key={row} className={ROW}>
-                            <td className="border-b border-line py-2 pl-4 pr-2 text-[13px] text-muted">{row}</td>
+                            <td className="whitespace-nowrap border-b border-line/60 py-2.5 pl-4 pr-2 text-[13px] text-muted">{row}</td>
                             {for s in perf.series {
                                 <td key={s.key} className={TD_NUM + " " + stat_tone(s, row) + (" font-semibold" if s.key == "team" else "")}>
                                     {stat_value(s, row)}
@@ -219,16 +258,15 @@ def PositionsTable(positions: list[PositionData]) -> JsxElement {
         opened = "" if opened == ticker else ticker;
     }
 
-    <Panel title="Open positions" aside={<span className="num text-[12px] text-faint">{str(len(positions))}</span>} pad={False}>
+    <Panel title="Open positions" aside={<span className="num">{count(len(positions), "position")}</span>} pad={False}>
         {if len(positions) == 0 {
             <p className="px-4 py-6 text-[13px] text-muted">No open positions.</p>
         } else {
             <div className="scroll-x">
-                <table className="w-full min-w-[980px]">
+                <table className="w-full min-w-[960px]">
                     <thead>
                         <tr>
-                            <th className={TH + " w-8"}></th>
-                            <th className={TH}>Ticker</th>
+                            <th className={TH + FROZEN_HEAD}>Ticker</th>
                             <th className={TH_NUM}>Qty</th>
                             <th className={TH_NUM}>Avg cost</th>
                             <th className={TH_NUM}>Last</th>
@@ -244,18 +282,23 @@ def PositionsTable(positions: list[PositionData]) -> JsxElement {
                     </thead>
                     <tbody>
                         {for p in positions {
-                            <tr key={p.ticker} className={ROW + " cursor-pointer"} onClick={lambda { toggle(p.ticker); }}>
-                                <td className={TD + " pr-0 text-faint"}>
-                                    <button
-                                        type="button"
-                                        className="grid size-5 place-items-center rounded hover:text-text"
-                                        aria-expanded={opened == p.ticker}
-                                        aria-label={"Thesis for " + p.ticker}
-                                    >
-                                        <ChevronRight size={14} className={"transition-transform " + ("rotate-90" if opened == p.ticker else "")}/>
-                                    </button>
+                            <tr key={p.ticker} className={ROW + " group cursor-pointer"} onClick={lambda { toggle(p.ticker); }}>
+                                <td className={TD + FROZEN_CELL}>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            className="press -ml-1 grid size-6 shrink-0 place-items-center rounded-[4px] text-faint hover:bg-panel-2 hover:text-text"
+                                            aria-expanded={opened == p.ticker}
+                                            aria-label={"Thesis for " + p.ticker}
+                                        >
+                                            <ChevronRight
+                                                size={14}
+                                                className={"transition-[rotate] duration-150 ease-out " + ("rotate-90" if opened == p.ticker else "")}
+                                            />
+                                        </button>
+                                        <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/>
+                                    </div>
                                 </td>
-                                <td className={TD}><TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/></td>
                                 <td className={TD_NUM}>{qty(p.qty)}</td>
                                 <td className={TD_NUM}>{money(p.avg_entry_price)}</td>
                                 <td className={TD_NUM}>{money(p.last_price)}</td>
@@ -269,15 +312,19 @@ def PositionsTable(positions: list[PositionData]) -> JsxElement {
                                 <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.opened_at))}</td>
                             </tr>
                             if opened == p.ticker {
-                                <tr key={p.ticker + "-thesis"} className="bg-panel-2/60">
-                                    <td className="border-b border-line"></td>
-                                    <td colSpan={12} className="border-b border-line px-3 py-3 pr-4">
-                                        <div className="max-w-4xl text-[13px] leading-relaxed text-muted">
-                                            <span className="mr-2 text-[11px] font-medium uppercase tracking-[0.06em] text-faint">Thesis</span>
-                                            {p.thesis or "No thesis was recorded for this position."}
+                                <tr key={p.ticker + "-thesis"} className="bg-panel-2/50">
+                                    <td colSpan={12} className="border-b border-line/60 py-3.5 pl-12 pr-4">
+                                        <div className="sticky left-12 max-w-[min(640px,calc(100vw-5rem))]">
+                                            <Overline>Thesis</Overline>
+                                            <p className="mt-1 text-[13px] leading-relaxed text-text">
+                                                {p.thesis or "No thesis was recorded for this position."}
+                                            </p>
                                         </div>
                                         {if p.decision_day {
-                                            <Link to={trail_link(p.decision_day, p.ticker)} className="mt-2 inline-block text-[12px] font-medium text-accent hover:underline">
+                                            <Link
+                                                to={trail_link(p.decision_day, p.ticker)}
+                                                className="sticky left-12 mt-2 inline-block text-[12px] font-medium text-accent hover:underline"
+                                            >
                                                 {"Open the " + day_short(p.decision_day) + " decision trail"}
                                             </Link>
                                         }}
@@ -300,12 +347,12 @@ def OrdersTable(orders: list[OrderData]) -> JsxElement {
     if len(orders) == 0 {
         return <p className="px-4 py-6 text-[13px] text-muted">No orders yet.</p>;
     }
-    <div className="max-h-[480px] overflow-auto">
+    <div className="max-h-[480px] overflow-auto overscroll-contain">
         <table className="w-full min-w-[900px]">
             <thead>
                 <tr>
+                    <th className={TH + FROZEN_HEAD}>Ticker</th>
                     <th className={TH}>Submitted</th>
-                    <th className={TH}>Ticker</th>
                     <th className={TH}>Side</th>
                     <th className={TH}>Purpose</th>
                     <th className={TH}>Type</th>
@@ -317,9 +364,9 @@ def OrdersTable(orders: list[OrderData]) -> JsxElement {
             </thead>
             <tbody>
                 {for o in orders {
-                    <tr key={o.client_order_id} className={ROW}>
+                    <tr key={o.client_order_id} className={ROW + " group"}>
+                        <td className={TD + FROZEN_CELL}><TickerCell ticker={o.ticker} day={o.run_day}/></td>
                         <td className={TD + " num text-muted"}>{stamp_et(o.submitted_at)}</td>
-                        <td className={TD}><TickerCell ticker={o.ticker} day={o.run_day}/></td>
                         <td className={TD + " font-semibold uppercase " + side_tone(o.side)}>{o.side}</td>
                         <td className={TD + " text-muted"}>{title(o.purpose)}</td>
                         <td className={TD + " text-muted"}>{title(o.order_type) + " · " + o.time_in_force.upper()}</td>
@@ -338,11 +385,11 @@ def ClosedTable(closed: list[PositionData]) -> JsxElement {
     if len(closed) == 0 {
         return <p className="px-4 py-6 text-[13px] text-muted">No closed trades yet.</p>;
     }
-    <div className="max-h-[480px] overflow-auto">
+    <div className="max-h-[480px] overflow-auto overscroll-contain">
         <table className="w-full min-w-[820px]">
             <thead>
                 <tr>
-                    <th className={TH}>Ticker</th>
+                    <th className={TH + FROZEN_HEAD}>Ticker</th>
                     <th className={TH_NUM}>Opened</th>
                     <th className={TH_NUM}>Closed</th>
                     <th className={TH_NUM}>Shares sold</th>
@@ -354,8 +401,8 @@ def ClosedTable(closed: list[PositionData]) -> JsxElement {
             </thead>
             <tbody>
                 {for p in closed {
-                    <tr key={p.ticker + p.opened_at} className={ROW}>
-                        <td className={TD}><TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/></td>
+                    <tr key={p.ticker + p.opened_at} className={ROW + " group"}>
+                        <td className={TD + FROZEN_CELL}><TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/></td>
                         <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.opened_at))}</td>
                         <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.closed_at))}</td>
                         <td className={TD_NUM}>{qty(p.entry_qty)}</td>
@@ -370,24 +417,25 @@ def ClosedTable(closed: list[PositionData]) -> JsxElement {
     </div>
 }
 
-def Tab(label: str, count: int, active: bool, pick: Callable[[], None]) -> JsxElement {
+"""One choice in a segmented control: a raised chip on an inset track when it is chosen."""
+def Segment(label: str, count: int, active: bool, pick: Callable[[], None]) -> JsxElement {
     <button
         type="button"
         onClick={lambda { pick(); }}
-        className={"rounded px-2 py-1 text-[12px] font-medium transition-colors " + ("bg-panel-2 text-text" if active else "text-muted hover:text-text")}
+        className={"press inline-flex h-full items-center gap-1.5 rounded-[4px] px-2.5 text-[12px] font-medium " + ("bg-panel text-text shadow-[0_1px_2px_rgb(0_0_0/0.12)]" if active else "text-muted hover:bg-hover hover:text-text")}
         aria-pressed={active}
     >
         {label}
-        <span className="num ml-1.5 text-faint">{str(count)}</span>
+        <span className={"num rounded-[3px] px-1 text-[10px] leading-4 " + ("bg-panel-2 text-muted" if active else "text-faint")}>{str(count)}</span>
     </button>
 }
 
 def Activity(view: PortfolioData) -> JsxElement {
     has tab: str = "orders";
 
-    tabs = <div className="flex items-center gap-1">
-        <Tab label="Orders" count={len(view.orders)} active={tab == "orders"} pick={lambda { tab = "orders"; }}/>
-        <Tab label="Closed trades" count={len(view.closed)} active={tab == "closed"} pick={lambda { tab = "closed"; }}/>
+    tabs = <div className="inline-flex h-8 items-center gap-0.5 rounded-md border border-line bg-panel-2 p-0.5">
+        <Segment label="Orders" count={len(view.orders)} active={tab == "orders"} pick={lambda { tab = "orders"; }}/>
+        <Segment label="Closed trades" count={len(view.closed)} active={tab == "closed"} pick={lambda { tab = "closed"; }}/>
     </div>;
     <Panel title="Activity" aside={tabs} pad={False}>
         {<OrdersTable orders={view.orders}/> if tab == "orders" else <ClosedTable closed={view.closed}/>}
@@ -420,21 +468,31 @@ def:pub PortfolioPage -> JsxElement {
         </Empty>;
     }
 
-    <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <h1 className="text-[18px] font-semibold tracking-tight">Team portfolio</h1>
-            <p className="num text-[12px] text-faint">{"Paper account · " + day_long(view.last_day) + " close"}</p>
-        </div>
-        <Headline view={view} perf={perf}/>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-            <div className="lg:col-span-8">
-                <Panel title="Return since start" fill={True} className="h-full">
-                    {if perf is not None and perf.started {
+    <div className="rise flex flex-col gap-6">
+        <header className="flex flex-col gap-2">
+            <Overline className="num">{"Paper account · " + day_long(view.last_day) + " close"}</Overline>
+            <h1 className="display text-[36px] leading-10 text-text">Team portfolio</h1>
+            <p className="max-w-[600px] text-[13px] leading-5 text-muted">
+                Five specialists research each stock, the Arbiter decides, and the risk gate sizes every order.
+                The account is marked at each close against SPY and an equal-weight basket of the same shortlist.
+            </p>
+        </header>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <Panel
+                title="Return since start"
+                aside={<span className="num">{"Since " + day_short(perf.start_day) if perf is not None and perf.started else ""}</span>}
+                pad={False}
+                fill={True}
+            >
+                <Hero view={view}/>
+                {if perf is not None and perf.started {
+                    <div className="flex flex-1 flex-col px-4 pb-4 pt-5">
                         <EquityChart series={perf.series} starting_cash={perf.starting_cash}/>
-                    }}
-                </Panel>
-            </div>
-            <div className="flex flex-col gap-4 lg:col-span-4">
+                    </div>
+                }}
+                <Figures view={view} perf={perf}/>
+            </Panel>
+            <div className="flex flex-col gap-6">
                 {if perf is not None and perf.started {
                     <StatsTable perf={perf} view={view}/>
                 }}
