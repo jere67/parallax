@@ -1,90 +1,104 @@
 /* The dashboard's whole stylesheet: Tailwind, the fonts, and the design tokens.
  *
+ * The look is a committee's ledger: warm ink and parchment, brass for the Arbiter and for
+ * whatever is selected, verdigris for gains and cinnabar for losses. Cards share the canvas
+ * and are drawn by a hairline, labels are muted and values bright, and color is kept for data.
+ *
  * Colors are tokens on :root, so every component reads them through Tailwind utilities such
  * as bg-panel or text-muted and the charts read them with getComputedStyle. The theme follows
- * the system unless the reader picks one, which sets data-theme on <html>. Gains are green and
- * losses red in both themes; every other color is a quiet neutral, so the numbers stand out.
+ * the system unless the reader picks one, which sets data-theme on <html>.
  */
 @import "tailwindcss";
-@import "@fontsource-variable/inter";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource/instrument-serif/400.css";
+@import "@fontsource/instrument-serif/400-italic.css";
 @import "@fontsource-variable/jetbrains-mono";
 
+/* Newsprint: the light theme. */
 :root {
     color-scheme: light;
-    --bg: #f6f7f9;
-    --panel: #ffffff;
-    --panel-2: #f1f3f6;
-    --hover: #f3f5f8;
-    --line: #e4e7ec;
-    --line-strong: #cdd2da;
-    --text: #0e1217;
-    --muted: #4b5462;
-    --faint: #7c8594;
-    --accent: #2c64d6;
-    --accent-soft: rgb(44 100 214 / 0.1);
-    --up: #0b875b;
-    --up-soft: rgb(11 135 91 / 0.1);
-    --down: #cf3339;
-    --down-soft: rgb(207 51 57 / 0.09);
-    --warn: #a86a12;
-    --warn-soft: rgb(196 132 29 / 0.12);
-    --series-team: #2c64d6;
-    --series-ew: #c47d14;
-    --series-spy: #8a93a3;
+    --bg: #f4f1e8;
+    --panel: #fbf9f4;
+    --panel-2: #eee9dd;
+    --hover: #f1ede3;
+    --line: #e0d9c9;
+    --line-strong: #c9c0ac;
+    --text: #1c1a15;
+    --muted: #5d584c;
+    --faint: #6a6456;
+    --accent: #80601a;
+    --accent-soft: rgb(128 96 26 / 0.12);
+    --up: #16735a;
+    --up-soft: rgb(22 115 90 / 0.11);
+    --down: #b3372f;
+    --down-soft: rgb(179 55 47 / 0.1);
+    --warn: #9c500d;
+    --warn-soft: rgb(168 86 15 / 0.11);
+    --series-team: #80601a;
+    --series-ew: #8a8473;
+    --series-spy: #4b6a91;
+    --overlay: #fffdf8;
+    --shadow-overlay: 0 0 0 1px oklch(0 0 0 / 0.06), 0 4px 8px -2px oklch(0 0 0 / 0.08), 0 12px 24px -4px oklch(0 0 0 / 0.08);
 }
 
+/* Ink: the dark theme, under the system preference and under the reader's choice alike. */
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
         color-scheme: dark;
-        --bg: #0a0c0f;
-        --panel: #101318;
-        --panel-2: #151920;
-        --hover: #161b22;
-        --line: #20262f;
-        --line-strong: #2c3440;
-        --text: #e4e8ee;
-        --muted: #a1a9b6;
-        --faint: #687282;
-        --accent: #5d8ff0;
-        --accent-soft: rgb(93 143 240 / 0.14);
-        --up: #2bbf85;
-        --up-soft: rgb(43 191 133 / 0.12);
-        --down: #f0636b;
-        --down-soft: rgb(240 99 107 / 0.12);
-        --warn: #e2a64a;
-        --warn-soft: rgb(226 166 74 / 0.13);
-        --series-team: #5d8ff0;
-        --series-ew: #e2a64a;
-        --series-spy: #7b8595;
+        --bg: #0c0b09;
+        --panel: #0c0b09;
+        --panel-2: #161411;
+        --hover: #1a1814;
+        --line: #2a2721;
+        --line-strong: #3a362e;
+        --text: #ece6d8;
+        --muted: #a39d8e;
+        --faint: #857f70;
+        --accent: #d4ad62;
+        --accent-soft: rgb(212 173 98 / 0.13);
+        --up: #4cb796;
+        --up-soft: rgb(76 183 150 / 0.12);
+        --down: #e5655c;
+        --down-soft: rgb(229 101 92 / 0.12);
+        --warn: #e8893a;
+        --warn-soft: rgb(232 137 58 / 0.12);
+        --series-team: #d4ad62;
+        --series-ew: #8f897a;
+        --series-spy: #7f9cc0;
+        --overlay: #13120f;
+        --shadow-overlay: 0 0 0 1px oklch(1 0 0 / 0.08), 0 12px 32px oklch(0 0 0 / 0.6);
     }
 }
 
 :root[data-theme="dark"] {
     color-scheme: dark;
-    --bg: #0a0c0f;
-    --panel: #101318;
-    --panel-2: #151920;
-    --hover: #161b22;
-    --line: #20262f;
-    --line-strong: #2c3440;
-    --text: #e4e8ee;
-    --muted: #a1a9b6;
-    --faint: #687282;
-    --accent: #5d8ff0;
-    --accent-soft: rgb(93 143 240 / 0.14);
-    --up: #2bbf85;
-    --up-soft: rgb(43 191 133 / 0.12);
-    --down: #f0636b;
-    --down-soft: rgb(240 99 107 / 0.12);
-    --warn: #e2a64a;
-    --warn-soft: rgb(226 166 74 / 0.13);
-    --series-team: #5d8ff0;
-    --series-ew: #e2a64a;
-    --series-spy: #7b8595;
+    --bg: #0c0b09;
+    --panel: #0c0b09;
+    --panel-2: #161411;
+    --hover: #1a1814;
+    --line: #2a2721;
+    --line-strong: #3a362e;
+    --text: #ece6d8;
+    --muted: #a39d8e;
+    --faint: #857f70;
+    --accent: #d4ad62;
+    --accent-soft: rgb(212 173 98 / 0.13);
+    --up: #4cb796;
+    --up-soft: rgb(76 183 150 / 0.12);
+    --down: #e5655c;
+    --down-soft: rgb(229 101 92 / 0.12);
+    --warn: #e8893a;
+    --warn-soft: rgb(232 137 58 / 0.12);
+    --series-team: #d4ad62;
+    --series-ew: #8f897a;
+    --series-spy: #7f9cc0;
+    --overlay: #13120f;
+    --shadow-overlay: 0 0 0 1px oklch(1 0 0 / 0.08), 0 12px 32px oklch(0 0 0 / 0.6);
 }
 
 @theme inline {
-    --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-display: "Instrument Serif", ui-serif, Georgia, "Times New Roman", serif;
     --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
     --color-bg: var(--bg);
     --color-panel: var(--panel);
@@ -103,23 +117,25 @@
     --color-down-soft: var(--down-soft);
     --color-warn: var(--warn);
     --color-warn-soft: var(--warn-soft);
+    --color-overlay: var(--overlay);
+    --shadow-overlay: var(--shadow-overlay);
 }
 
 html {
     background: var(--bg);
     color: var(--text);
     font-family: var(--font-sans);
-    font-feature-settings: "cv11", "ss03";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
 }
 
 body {
     margin: 0;
     background: var(--bg);
-    font-size: 14px;
-    line-height: 1.45;
+    font-size: 13px;
+    line-height: 1.5;
 }
 
 ::selection {
@@ -129,12 +145,21 @@ body {
 /* Figures line up in columns everywhere. */
 .num {
     font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum", "cv11", "ss03";
+    font-feature-settings: "tnum";
+}
+
+/* The display face: page titles, tickers, and the one headline figure on a page. Its digits
+ * are proportional, so it never sets a column of numbers. */
+.display {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.01em;
 }
 
 /* Wide tables scroll inside their panel on a phone, never the page. */
 .scroll-x {
     overflow-x: auto;
+    overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
 }
@@ -144,3 +169,44 @@ body {
     outline-offset: 2px;
     border-radius: 4px;
 }
+
+/* A button presses to 0.96, never when disabled. */
+.press {
+    transition-property: scale, background-color, color;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
+}
+
+.press:not(:disabled):active {
+    scale: 0.96;
+}
+
+/* A page's first paint: its sections rise in one after another, 100ms apart. Under reduced
+ * motion they only fade. */
+@keyframes rise-fade {
+    from {
+        opacity: 0;
+    }
+}
+
+@keyframes rise {
+    from {
+        opacity: 0;
+        filter: blur(4px);
+        translate: 0 12px;
+    }
+}
+
+.rise > * {
+    animation: rise-fade 300ms ease-out both;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .rise > * {
+        animation-name: rise;
+    }
+}
+
+.rise > :nth-child(2) { animation-delay: 100ms; }
+.rise > :nth-child(3) { animation-delay: 200ms; }
+.rise > :nth-child(n + 4) { animation-delay: 300ms; }
