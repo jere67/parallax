@@ -35,6 +35,8 @@ import from dashboard.ui.parts {
     Loading,
     Overline,
     Panel,
+    SEGMENTS,
+    Segment,
     Stat,
     StatusBadge
 }
@@ -417,23 +419,10 @@ def ClosedTable(closed: list[PositionData]) -> JsxElement {
     </div>
 }
 
-"""One choice in a segmented control: a raised chip on an inset track when it is chosen."""
-def Segment(label: str, count: int, active: bool, pick: Callable[[], None]) -> JsxElement {
-    <button
-        type="button"
-        onClick={lambda { pick(); }}
-        className={"press inline-flex h-full items-center gap-1.5 rounded-[4px] px-2.5 text-[12px] font-medium " + ("bg-panel text-text shadow-[0_1px_2px_rgb(0_0_0/0.12)]" if active else "text-muted hover:bg-hover hover:text-text")}
-        aria-pressed={active}
-    >
-        {label}
-        <span className={"num rounded-[3px] px-1 text-[10px] leading-4 " + ("bg-panel-2 text-muted" if active else "text-faint")}>{str(count)}</span>
-    </button>
-}
-
 def Activity(view: PortfolioData) -> JsxElement {
     has tab: str = "orders";
 
-    tabs = <div className="inline-flex h-8 items-center gap-0.5 rounded-md border border-line bg-panel-2 p-0.5">
+    tabs = <div className={SEGMENTS}>
         <Segment label="Orders" count={len(view.orders)} active={tab == "orders"} pick={lambda { tab = "orders"; }}/>
         <Segment label="Closed trades" count={len(view.closed)} active={tab == "closed"} pick={lambda { tab = "closed"; }}/>
     </div>;

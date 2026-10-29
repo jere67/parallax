@@ -5,12 +5,12 @@ A pill is its hue three ways: the text at full strength, the fill at 15%, and th
 35%, so a column of mixed pills reads at one weight."""
 import from "lucide-react" { Inbox }
 
-glob PILL_BASE: str = "inline-flex items-center gap-1 rounded-full border px-2 py-px text-[11px] font-medium leading-4 whitespace-nowrap";
-glob TONE_UP: str = "border-up/35 bg-up/15 text-up";
-glob TONE_DOWN: str = "border-down/35 bg-down/15 text-down";
-glob TONE_WARN: str = "border-warn/35 bg-warn/15 text-warn";
-glob TONE_ACCENT: str = "border-accent/40 bg-accent/15 text-accent";
-glob TONE_QUIET: str = "border-line-strong bg-panel-2 text-muted";
+glob:pub PILL_BASE: str = "inline-flex items-center gap-1 rounded-full border px-2 py-px text-[11px] font-medium leading-4 whitespace-nowrap";
+glob:pub TONE_UP: str = "border-up/35 bg-up/15 text-up";
+glob:pub TONE_DOWN: str = "border-down/35 bg-down/15 text-down";
+glob:pub TONE_WARN: str = "border-warn/35 bg-warn/15 text-warn";
+glob:pub TONE_ACCENT: str = "border-accent/40 bg-accent/15 text-accent";
+glob:pub TONE_QUIET: str = "border-line-strong bg-panel-2 text-muted";
 glob ACTION_TONES: dict[str, str] = {
     "BUY": TONE_UP,
     "ADD": TONE_UP,
@@ -55,9 +55,9 @@ def:pub Panel(
         className={"scroll-mt-16 overflow-hidden rounded-md border border-line bg-panel " + ("flex flex-col " if fill else "") + className}
     >
         {if title or aside {
-            <header className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-2">
+            <header className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line px-4 py-2">
                 <h2 className="shrink-0 text-[15px] font-medium leading-5 text-text">{title}</h2>
-                <div className="min-w-0 text-right text-[11px] leading-4 text-faint">{aside}</div>
+                <div className="ml-auto min-w-0 max-w-full text-right text-[11px] leading-4 text-faint">{aside}</div>
             </header>
         }}
         <div className={("p-4" if pad else "") + (" flex flex-1 flex-col" if fill else "")}>{children}</div>
@@ -144,15 +144,32 @@ def:pub ErrorBox(message: str) -> JsxElement {
 
 """Table cell classes, so every table lines up the same way. The header row sits on the inset
 fill and sticks to the top of a scrolling table; body rows part on faint hairlines."""
-glob TH: str = "sticky top-0 z-[1] bg-panel-2 whitespace-nowrap border-b border-line px-3 py-2 text-left text-[11px] font-medium uppercase tracking-[0.05em] text-muted first:pl-4 last:pr-4";
-glob TH_NUM: str = "sticky top-0 z-[1] bg-panel-2 whitespace-nowrap border-b border-line px-3 py-2 text-right text-[11px] font-medium uppercase tracking-[0.05em] text-muted first:pl-4 last:pr-4";
-glob TD: str = "whitespace-nowrap border-b border-line/60 px-3 py-2.5 text-[13px] first:pl-4 last:pr-4";
+glob:pub TH: str = "sticky top-0 z-[1] bg-panel-2 whitespace-nowrap border-b border-line px-3 py-2 text-left text-[11px] font-medium uppercase tracking-[0.05em] text-muted first:pl-4 last:pr-4";
+glob:pub TH_NUM: str = "sticky top-0 z-[1] bg-panel-2 whitespace-nowrap border-b border-line px-3 py-2 text-right text-[11px] font-medium uppercase tracking-[0.05em] text-muted first:pl-4 last:pr-4";
+glob:pub TD: str = "whitespace-nowrap border-b border-line/60 px-3 py-2.5 text-[13px] first:pl-4 last:pr-4";
 # A cell for prose, which wraps rather than widening the table.
-glob TD_TEXT: str = "min-w-[180px] border-b border-line/60 px-3 py-2.5 text-[13px] first:pl-4 last:pr-4";
-glob TD_NUM: str = "num whitespace-nowrap border-b border-line/60 px-3 py-2.5 text-right text-[13px] first:pl-4 last:pr-4";
-glob ROW: str = "transition-colors duration-150 hover:bg-hover [&:last-child>td]:border-b-0";
+glob:pub TD_TEXT: str = "min-w-[180px] border-b border-line/60 px-3 py-2.5 text-[13px] first:pl-4 last:pr-4";
+glob:pub TD_NUM: str = "num whitespace-nowrap border-b border-line/60 px-3 py-2.5 text-right text-[13px] first:pl-4 last:pr-4";
+glob:pub ROW: str = "transition-colors duration-150 hover:bg-hover [&:last-child>td]:border-b-0";
 # A table's first column, frozen at the left edge so the ticker stays in view while the rest
 # scrolls under it on a phone; appended to TH and TD. The cell is opaque, so it takes the
 # row's hover itself (the row needs "group").
-glob FROZEN_HEAD: str = " left-0 z-[2] max-md:border-r";
-glob FROZEN_CELL: str = " sticky left-0 z-[1] bg-panel transition-colors duration-150 group-hover:bg-hover max-md:border-r";
+glob:pub FROZEN_HEAD: str = " left-0 z-[2] max-md:border-r";
+glob:pub FROZEN_CELL: str = " sticky left-0 z-[1] bg-panel transition-colors duration-150 group-hover:bg-hover max-md:border-r";
+
+# A segmented control's inset track; its chips are Segment. The track's 6px corner is the
+# chip's 4px plus the 2px inset.
+glob:pub SEGMENTS: str = "inline-flex h-8 max-w-full items-center gap-0.5 overflow-x-auto rounded-md border border-line bg-panel-2 p-0.5";
+
+"""One choice in a segmented control: a raised chip on the inset track when it is chosen."""
+def:pub Segment(label: str, count: int, active: bool, pick: Callable[[], None]) -> JsxElement {
+    <button
+        type="button"
+        onClick={lambda { pick(); }}
+        className={"press inline-flex h-full shrink-0 items-center gap-1.5 rounded-[4px] px-2.5 text-[12px] font-medium " + ("bg-panel text-text shadow-[0_1px_2px_rgb(0_0_0/0.12)]" if active else "text-muted hover:bg-hover hover:text-text")}
+        aria-pressed={active}
+    >
+        {label}
+        <span className={"num rounded-[3px] px-1 text-[10px] leading-4 " + ("bg-panel-2 text-muted" if active else "text-faint")}>{str(count)}</span>
+    </button>
+}
