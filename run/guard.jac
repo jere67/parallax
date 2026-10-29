@@ -489,13 +489,17 @@ obj RunOutcome {
 Orchestrator: it drives the session through its tools and returns its final summary. With no
 driver, or when it raises, runs out the deadline, or ends without submitting, the session
 finishes in fixed order and the run is marked fallback. Never raises once the run is
-claimed: a failure is recorded on the run."""
+claimed: a failure is recorded on the run. A portfolio holding the local demo history is never
+run: its decisions are made up (dashboard/demo.jac)."""
 def daily_run(
     portfolio: Portfolio,
     run_day: str,
     driver: Callable[[RunSession], str] | None = None,
     limits: RunLimits = RunLimits()
 ) -> RunOutcome {
+    if portfolio.demo {
+        return RunOutcome(run_day=run_day, status=RunStatus.SKIPPED, note="the portfolio holds the demo history");
+    }
     checked = preflight(run_day, portfolio, limits);
     run = claim_run(portfolio, run_day);
     if run is None {

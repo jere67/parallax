@@ -1,0 +1,12 @@
+{
+  "name": "trading-agent-e2e",
+  "private": true,
+  "description": "The dashboard's device matrix (GAP-13): each page in a real browser against a server seeded with the demo history.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0"
+  }
+}

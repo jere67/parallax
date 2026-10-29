@@ -376,6 +376,7 @@ trading-agent/
   run/                     # DailyRun walker, Run Guard, scheduled jobs
   dashboard/               # client pages and components, beside the def:pub endpoints they call
   tests/                   # integration tests, recorded API fixtures, backtest harness, fake OpenRouter server
+  e2e/                     # the dashboard's browser checks on each device in the matrix (Playwright)
   .github/workflows/       # CI only; scheduling runs inside the app
 ```
 
@@ -792,7 +793,7 @@ The backing endpoints are `def:pub` functions that read `root.shared` explicitly
 | Page | Access | Shows | Backing endpoints |
 | --- | --- | --- | --- |
 | Portfolio | Public | Equity curve against SPY, Sharpe, max drawdown, open positions with entry, P&L, stop, and thesis | `get_portfolio`, `get_performance` |
-| Today | Public | The run's shortlist, each ticker's action and conviction, run status (normal or fallback), run summary | `get_run` |
+| Today | Public | The run's shortlist, each ticker's action and conviction, run status (normal or fallback), run summary, and the past runs | `get_run`, `list_runs` |
 | Decision detail | Public | The full trail for one ticker: research reports and sources → every specialist sample → consensus score, agreement, interval → Arbiter → risk gate → order and fill | `get_decision_trail` |
 | Specialists | Public | Hit rate, calibration curve, and recent votes per specialist | `get_specialist_stats` |
 | Reports | Signed in | Request a ticker report, view past reports, remaining daily quota | `request_report`, `list_reports` |
@@ -802,9 +803,21 @@ A Live committee page (real-time run progress through polling or a [streaming en
 
 ### Design notes
 
+- **UI method.** Tailwind CSS v4 through its Vite plugin, with every color a design token in `dashboard/theme.css`, so the light and dark themes share one set of components; the theme follows the system until the reader picks one.
+  Inter and JetBrains Mono are self-hosted through Fontsource, icons come from Lucide, the equity curves use TradingView's [Lightweight Charts](https://www.tradingview.com/lightweight-charts/), and the small figures (interval bars and vote dot plots) are plain SVG or HTML placed in percent, so they fill whatever width their column has.
+  The routes are a manual table in `dashboard/App.jac`, since file-based routing reads only a `pages/` directory at the project root.
+- **Quiet, dense, and exact.** One accent color, green for gains and red for losses, tabular figures, New York times, and no motion beyond hover states, so the numbers carry the page.
 - **Decision detail is the hero page.** It is the product's hook, so it gets the most design effort: a left-to-right trail from evidence to order, with each stage expandable.
 - **Disagreement is visible.** Vote distributions are shown as dot plots per specialist, so users see dissent rather than a single number.
 - **Mobile-first reading.** Portfolio, Today, and Decision detail must work on a phone, since most classmates will open the link from a shared message.
+- **Device matrix (GAP-13).** Every page must render its data, log no errors, and fit the screen without scrolling sideways at a minimum width of 360 CSS pixels, on iOS Safari (WebKit with Playwright's iPhone 15 profile) and Android Chrome (Chromium with its Pixel 7 profile), and on desktop Chrome at 1440 by 900.
+  Wide tables scroll inside their panel instead of widening the page.
+  The `e2e/` suite checks every page on all four in CI, against a production build seeded with the demo history (Section 14, Testing).
+- **Reads are served from a cache.** The persistent graph loads about one node per database query, so building a view from it takes a second or more and grows with history.
+  The endpoints answer from an in-process cache of built views (`dashboard/cache.jac`) that a static job rebuilds every minute, so pages load in milliseconds and show state at most two minutes old.
+- **Demo history for development.** A local server started with `TRADING_AGENT_DEMO=1` fills an empty team portfolio with a few weeks of made-up sessions (`dashboard/demo.jac`): random-walk prices and template research and votes, with every later number computed by the real consensus, sizing, risk gate, baselines, and scoring.
+  The portfolio is flagged `demo`, every page says so, and the scheduled jobs never run, trade, reconcile, or score it.
+  The variable is never set on a deployed server.
 - **No raw data redistribution.** Pages show derived analysis, short quotes of our own agents' text, and links to original sources.
 - **Pages never trigger model calls.** Public pages read state the pipeline already stored, so they load instantly and cannot spend the request budget.
 
@@ -1041,6 +1054,7 @@ The largest risks are untrusted text reaching agents, leaked credentials, and a 
 | Rate limiting | Every provider request passes the limiter; 429s back off; a model that stays rate limited falls back | `LimitedModel` against a fake OpenRouter server (Section 3) |
 | Collector | Parsing and rate limiting against recorded responses | Recorded fixtures, served through base-URL overrides such as `ALPACA_BASE_URL` |
 | Endpoint smoke | Every `def:pub` function and walker the dashboard uses answers a POST | `JacTestClient` ([testing reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/testing.md)) |
+| End-to-end UI | Every page renders its data, logs no console errors, and fits the width on each device in the matrix (Section 10) | [Playwright](https://playwright.dev/docs/emulation) in `e2e/`, against the production build seeded with the demo history, in CI |
 | Integration | Full run against Alpaca paper with a tiny shortlist and mock agents | Nightly CI job |
 | Failure drills | A source down, the LLM provider down, an Orchestrator timeout | Fault injection flags |
 
