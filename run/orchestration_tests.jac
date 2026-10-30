@@ -20,11 +20,12 @@ def full_script(s: RunSession) -> list[object] {
     return [
         MockToolCall(tool=s.get_run_context, args={}),
         MockToolCall(tool=s.dispatch_research, args={"tickers": ["AAPL", "MSFT"], "domains": ["market", "fundamentals", "news"]}),
-        [
-            MockToolCall(tool=s.request_followup, args={"ticker": "AAPL", "domain": "news", "question": "Is the recall priced in?"}),
-            MockToolCall(tool=s.request_followup, args={"ticker": "AAPL", "domain": "market", "question": "Is the breakout confirmed?"})
-        ],
-        MockToolCall(tool=s.request_followup, args={"ticker": "AAPL", "domain": "fundamentals", "question": "A third?"}),
+        MockToolCall(tool=s.request_followup, args={"followups": [
+            {"ticker": "AAPL", "domain": "news", "question": "Is the recall priced in?"},
+            {"ticker": "AAPL", "domain": "market", "question": "Is the breakout confirmed?"},
+            {"ticker": "MSFT", "domain": "fundamentals", "question": "Are margins sustainable?"}
+        ]}),
+        MockToolCall(tool=s.request_followup, args={"followups": [{"ticker": "AAPL", "domain": "fundamentals", "question": "A third?"}]}),
         MockToolCall(tool=s.convene_panel, args={"tickers": ["AAPL", "MSFT"]}),
         MockToolCall(tool=s.submit_decisions, args={"note": "Both covered."}),
         MockToolCall(tool=s.write_run_summary, args={"text": "Two buys on strong panels."}),
@@ -55,7 +56,7 @@ test "the Orchestrator runs the session through its tools, and the tools clamp i
     }
     assert said == "The committee bought AAPL and MSFT.";
     assert s.submitted and s.summary == "Two buys on strong panels.";
-    assert s.followups == {"AAPL": 2};
+    assert s.followups == {"AAPL": 2, "MSFT": 1};
     assert {t: a.action() for (t, a) in s.analyses.items()} == {"AAPL": TradeAction.BUY, "MSFT": TradeAction.BUY};
     prompts = model.seen_prompts;
     assert len(prompts) == 8;
@@ -63,6 +64,7 @@ test "the Orchestrator runs the session through its tools, and the tools clamp i
     assert "2026-10-16" in prompts[0] and "AAPL, MSFT" in prompts[0];
     assert "investment committee's morning run" in prompts[0] and "<bound method" not in prompts[0];
     # The refused third follow-up came back to the model as a tool result.
+    assert "AAPL news: complete" in prompts[3] and "MSFT fundamentals: complete" in prompts[3];
     assert "Refused: AAPL: already had 2 follow-ups." in prompts[4];
 }
 

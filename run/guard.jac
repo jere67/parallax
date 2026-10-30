@@ -17,7 +17,7 @@ import from datetime { date, datetime }
 import from zoneinfo { ZoneInfo }
 import from action.insights { publish_card }
 import from agents.models { FALLBACK_MODEL, FREE_REQUESTS_PER_DAY, LIMITER, PRIMARY_MODEL, model_error, provider_requests_left, request_total }
-import from agents.research { MacroResult, ResearchResult, macro_research, research }
+import from agents.research { MacroResult, ResearchResult, fallback, macro_research, research }
 import from analysis.consensus { CONSENSUS_VERSION, ConsensusConfig }
 import from models.agents { Domain }
 import from models.graph {
@@ -43,7 +43,7 @@ import from models.graph {
     TradeAction
 }
 import from research.alpaca { market_calendar }
-import from research.briefs { macro_brief, regime_inputs }
+import from research.briefs { Brief, macro_brief, regime_inputs }
 import from research.collector { run_budget, utc_now }
 import from research.screener { ScreenConfig }
 import from research.sources { SOURCES_VERSION }
@@ -88,6 +88,17 @@ obj Preflight {
         reduced: bool = False,
         run_requests: int = 0;
 }
+
+"""One targeted research question in an Orchestrator follow-up batch."""
+obj Followup {
+    has ticker: str,
+        domain: str,
+        question: str;
+}
+
+sem Followup.ticker = "A covered ticker, such as AAPL.";
+sem Followup.domain = "The research domain to re-run: market, fundamentals, or news.";
+sem Followup.question = "One specific question whose answer could change the decision.";
 
 """Check the market calendar and the day's request allowance (TDD §12, request controls)."""
 def preflight(run_day: str, portfolio: Portfolio, limits: RunLimits = RunLimits()) -> Preflight {
@@ -282,42 +293,67 @@ obj RunSession {
         }
     }
 
-    """Re-run one research sub-agent on one ticker with a targeted question, such as how to
-    square the news with the filings. At most two per ticker, only after that domain's first
-    report and before the ticker's panel. Returns the new report's status and summary."""
-    def request_followup(ticker: str, domain: str, question: str) -> str {
+    """Re-run research for a batch of targeted questions in parallel. Each followup contains
+    ticker, domain (market, fundamentals, news), and question. Put independent questions for
+    all tickers in one call. At most two follow-ups per ticker across all batches, only after
+    that domain's first report and before its panel. Each accepted item reserves one initial
+    request from the run budget; retries remain counted by the shared limiter. Invalid or
+    over-budget items are refused individually. Returns each item's status and summary in
+    input order; an empty list does nothing."""
+    def request_followup(followups: list[Followup]) -> str {
         with self._lock {
-            found = _domain(domain);
-            refusal = "";
-            if ticker not in self.tickers() {
-                refusal = f"{ticker}: not covered in this run";
-            } elif found is None {
-                refusal = f"{domain}: not a research domain; use market, fundamentals, or news";
-            } elif found not in self.latest.get(ticker, {}) {
-                refusal = f"{ticker} {found.value}: dispatch research first";
-            } elif ticker in self.analyses {
-                refusal = f"{ticker}: the panel has already ruled";
-            } elif self.followups.get(ticker, 0) >= self.limits.followups_per_ticker {
-                refusal = f"{ticker}: already had {self.limits.followups_per_ticker} follow-ups";
-            } elif not question.strip() {
-                refusal = "a follow-up needs a question";
-            } elif self.requests_left() < 1 {
-                refusal = "the run's request budget is spent";
+            replies = ["" for _ in followups];
+            jobs: list[tuple[int, str, Domain, str, Brief]] = [];
+            room = self.requests_left();
+            for (i, item) in enumerate(followups) {
+                ticker = item.ticker.strip().upper();
+                found = _domain(item.domain);
+                refusal = "";
+                if self.submitted {
+                    refusal = "decisions are already submitted";
+                } elif ticker not in self.tickers() {
+                    refusal = f"{ticker}: not covered in this run";
+                } elif found is None {
+                    refusal = f"{item.domain}: not a research domain; use market, fundamentals, or news";
+                } elif found not in self.latest.get(ticker, {}) {
+                    refusal = f"{ticker} {found.value}: dispatch research first";
+                } elif ticker in self.analyses {
+                    refusal = f"{ticker}: the panel has already ruled";
+                } elif self.followups.get(ticker, 0) >= self.limits.followups_per_ticker {
+                    refusal = f"{ticker}: already had {self.limits.followups_per_ticker} follow-ups";
+                } elif not item.question.strip() {
+                    refusal = "a follow-up needs a question";
+                } elif room < 1 {
+                    refusal = "the run's request budget is spent";
+                }
+                inputs = self.collection.inputs_for(ticker);
+                if not refusal and inputs is None {
+                    refusal = f"{ticker} has no collected data";
+                }
+                if refusal or found is None or inputs is None {
+                    self.actions.append(f"request_followup refused: {refusal}");
+                    replies[i] = f"Refused: {refusal}.";
+                    continue;
+                }
+                asked = _clip(item.question, MAX_QUESTION_CHARS);
+                brief = briefs_for(self.run_day, inputs)[found];
+                self.followups[ticker] = self.followups.get(ticker, 0) + 1;
+                room -= 1;
+                jobs.append((i, ticker, found, asked, brief));
             }
-            if refusal or found is None {
-                self.actions.append(f"request_followup refused: {refusal}");
-                return f"Refused: {refusal}.";
+            # Flat fan-out: submit the whole batch, then wait on the caller's thread.
+            pending = [(job, NETWORK.submit(research, job[4], job[3])) for job in jobs];
+            for ((i, ticker, domain, asked, brief), future) in pending {
+                try {
+                    answer = future.result();
+                } except Exception as e {
+                    answer = fallback(brief, model_error(e), time.monotonic());
+                }
+                self._keep(ticker, domain, answer, asked);
+                self.actions.append(f"request_followup: {ticker} {domain.value}");
+                replies[i] = f"{ticker} {domain.value}: {_report_line(answer)}\nSummary: {_clip(answer.body.summary, 600)}";
             }
-            inputs = self.collection.inputs_for(ticker);
-            if inputs is None {
-                return f"Refused: {ticker} has no collected data.";
-            }
-            asked = _clip(question, MAX_QUESTION_CHARS);
-            self.followups[ticker] = self.followups.get(ticker, 0) + 1;
-            answer = research(briefs_for(self.run_day, inputs)[found], asked);
-            self._keep(ticker, found, answer, asked);
-            self.actions.append(f"request_followup: {ticker} {found.value}");
-            return f"{ticker} {found.value}: {_report_line(answer)}\nSummary: {_clip(answer.body.summary, 600)}";
+            return "\n".join(replies) or "Nothing to run.";
         }
     }
 
@@ -473,6 +509,14 @@ obj RunSession {
         }
         return "; ".join(parts);
     }
+}
+
+with entry {
+    # Jac 0.37.12's Tool.parse_arguments reads annotations directly. Its attempt
+    # to resolve hints on a bound method cannot update that method's read-only
+    # __annotations__ attribute, leaving custom types as unresolved strings.
+    # Resolve our nested argument on the underlying function before tools bind it.
+    RunSession.request_followup.__annotations__["followups"] = list[Followup];
 }
 
 """How a run ended. `run` is None only when another firing had already claimed the date."""
