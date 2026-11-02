@@ -10,3 +10,6 @@ server.log
 storage/
 playwright-report/
 test-results/
+
+# The docs site (site/): VitePress cache
+.vitepress/cache/
