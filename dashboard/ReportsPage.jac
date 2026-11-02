@@ -1,9 +1,18 @@
 """Signed-in, insight-only reports: submit, poll, and read the stored card."""
-import from "@jac/runtime" { SignupResult, jacIsLoggedIn, jacLogin, jacLogout, jacSignup }
+import from "@jac/runtime" { SignupResult, __jacCallFunction, jacIsLoggedIn, jacLogin, jacLogout, jacSignup }
 import from "react" { useEffect }
-import from reports.api { list_reports, request_report }
 import from models.reports { ReportsView as ReportsData, ReportView as ReportData, ReportReply as Reply }
 import from dashboard.ui.parts { ErrorBox, Loading }
+
+# The pinned Jac build cannot seal implicit client bridges for private endpoints.
+# Call the same authenticated endpoint through the runtime RPC helper instead.
+async def list_reports -> ReportsData {
+    return await __jacCallFunction("list_reports", {}, {"contract": "[\"trading-agent\",\"reports/api.jac\",\"func\",\"list_reports\"]"});
+}
+
+async def request_report(ticker: str) -> Reply {
+    return await __jacCallFunction("request_report", {"ticker": ticker}, {"contract": "[\"trading-agent\",\"reports/api.jac\",\"func\",\"request_report\"]"});
+}
 
 glob INPUT: str = "rounded-md border border-line bg-panel px-3 py-2 text-text";
 glob BUTTON: str = "rounded-md bg-accent px-4 py-2 text-white disabled:opacity-50";
