@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { SiteConfig } from 'vitepress'
+import { SITE_ORIGIN } from './repo'
 
 // After the build, write /llms.txt (an index of every page) and /llms-full.txt (every page's
 // Markdown, concatenated), so an agent can read the docs without a browser.
@@ -12,7 +13,8 @@ export async function writeLlmsFiles(site: SiteConfig) {
     .filter((p) => p !== 'index.md' && !p.includes('[') && !generated.has(p))
     .filter((p) => fs.existsSync(path.join(site.srcDir, p)))
     .sort()
-  const base = site.site.base
+  // Absolute URLs, so an agent reading the file elsewhere can still follow them.
+  const base = SITE_ORIGIN + site.site.base
   const index: string[] = [`# ${site.site.title}`, '', `> ${site.site.description}`, '']
   const full: string[] = []
   for (const page of pages) {

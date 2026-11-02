@@ -8,6 +8,9 @@ An educational project using simulated money; nothing here is investment advice.
 
 ## Documents
 
+The [docs site](https://jere67.github.io/parallax/) covers the whole project: guides, how each layer works, the API reference, and these design documents.
+It is built from `site/` with VitePress; run it locally with `cd site && npm ci && npm run dev`.
+
 - [Technical design document](docs/TDD.md): architecture, data sources, agents, risk controls, and the build plan.
 - [Requirements](docs/requirements.md): what the system must do, and the open knowledge gaps.
 - [Contributing](CONTRIBUTING.md): how we branch, commit, review, and write Jac.
@@ -115,6 +118,7 @@ assets/         static files served at /static/assets/
 tests/          integration and smoke tests, fixtures, fakes
 e2e/            the dashboard's browser checks on each device (Playwright)
 docs/           design documents and spike findings
+site/           the docs site (VitePress)
 ```
 
 Folders appear as their first module lands.
