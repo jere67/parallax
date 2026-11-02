@@ -7,11 +7,7 @@ outline: 2
 The project is built in seven phases, one GitHub milestone each, following the [build plan](/design/tdd#_15-build-plan-and-milestones).
 Each phase has an exit criterion that is checked by an exit run before the next phase is called done.
 
-<Figure caption="The build plan: seven phases from foundations to the final evaluation.">
-
-![Build plan](../docs/figures/build_plan.png)
-
-</Figure>
+<Figure name="build_plan" alt="Build plan" caption="The build plan: seven phases from foundations to the final evaluation." />
 
 | Phase | Due | Exit criterion | Status |
 | --- | --- | --- | --- |

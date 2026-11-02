@@ -12,11 +12,7 @@ So the panel asks each of five specialists the same question three times, at a h
 The consensus engine then turns the votes into a score C, an agreement A, a 90% interval for C, and a draft action.
 It is plain code with no model calls, in [`analysis/consensus.jac`](https://github.com/jere67/parallax/blob/main/analysis/consensus.jac), versioned by `CONSENSUS_VERSION` (currently `2026-10-16`).
 
-<Figure caption="The stochastic consensus: five specialists, K samples each, aggregated by code and reviewed by the Arbiter.">
-
-![The stochastic consensus](../../docs/figures/stochastic_consensus.png)
-
-</Figure>
+<Figure name="stochastic_consensus" alt="The stochastic consensus" caption="The stochastic consensus: five specialists, K samples each, aggregated by code and reviewed by the Arbiter." />
 
 ## Where the randomness comes from
 

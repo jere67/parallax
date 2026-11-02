@@ -81,7 +81,7 @@ export const DOCS: MirroredDoc[] = [
 const byFile = new Map(DOCS.map((d) => [d.file, d]))
 // Personal addresses never reach the site; a placeholder keeps the sentence readable.
 const EMAIL = /[\w.+-]+@[\w-]+(\.[\w-]+)+/g
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const LINK = /(!?)\[([^\]]*)\]\(([^)\s]+)([^)]*)\)/g
 
 /** Prepare one repo Markdown file for the site: drop its H1, keep its personal details out,
@@ -95,8 +95,10 @@ export function rewriteDoc(src: string, file: string): string {
     const repoPath = path.posix.normalize(path.posix.join(dir, rel))
     const anchor = hash ? `#${hash}` : ''
     if (bang) {
-      // Figures: a path from the generated page (site/<section>/x.md) to the repo file.
-      return `![${text}](../../${repoPath}${rest})`
+      // A figure from docs/figures goes through the Figure component, which bundles it.
+      const figure = /^docs\/figures\/([\w-]+)\.png$/.exec(repoPath)
+      if (figure) return `<Figure name="${figure[1]}" alt="${text.replace(/"/g, '&quot;')}" />`
+      return `![${text}](${SOURCE_URL.replace('/blob/', '/raw/')}/${repoPath}${rest})`
     }
     const doc = byFile.get(repoPath)
     if (doc) return `[${text}](${doc.route}${anchor}${rest})`

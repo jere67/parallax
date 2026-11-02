@@ -277,8 +277,12 @@ body {
 
 .topbar-search .VPNavBarSearch {
   flex: 1;
-  max-width: 560px;
+  max-width: 480px;
   padding: 0;
+}
+
+.topbar-search .VPNavBarSearch > * {
+  flex: 1;
 }
 
 .topbar-search .DocSearch-Button {
@@ -390,7 +394,7 @@ body {
   transform: scale(0.96);
 }
 
-.tabs {
+.topbar-tabs {
   display: flex;
   align-items: stretch;
   gap: 24px;
@@ -398,7 +402,7 @@ body {
   padding: 0 calc(var(--gutter) + 24px);
 }
 
-.tab {
+.topbar-tab {
   position: relative;
   display: flex;
   align-items: center;
@@ -409,11 +413,11 @@ body {
   transition: color 0.15s;
 }
 
-.tab:hover {
+.topbar-tab:hover {
   color: var(--text);
 }
 
-.tab::after {
+.topbar-tab::after {
   content: '';
   position: absolute;
   inset: auto 0 -1px;
@@ -423,15 +427,15 @@ body {
   transition: background-color 0.15s;
 }
 
-.tab:hover::after {
+.topbar-tab:hover::after {
   background: var(--line-strong);
 }
 
-.tab.active {
+.topbar-tab.active {
   color: var(--text);
 }
 
-.tab.active::after {
+.topbar-tab.active::after {
   background: var(--accent);
 }
 
@@ -601,12 +605,12 @@ body {
 
 /* ---------------------------------------------------------------- main */
 
-.main {
+.docs-main {
   min-height: 100vh;
   padding-top: var(--topbar-h);
 }
 
-.has-sidebar .main {
+.has-sidebar .docs-main {
   padding-left: calc(var(--gutter) + var(--sidebar-w));
 }
 
@@ -2038,7 +2042,7 @@ body {
     display: none;
   }
 
-  .tabs {
+  .topbar-tabs {
     display: none;
   }
 
@@ -2130,7 +2134,7 @@ body {
     animation: fade 0.2s ease-out;
   }
 
-  .has-sidebar .main {
+  .has-sidebar .docs-main {
     padding-left: 0;
   }
 
@@ -2260,4 +2264,57 @@ body {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
   }
+}
+
+/* Inside a code group the tabs already name the language. */
+.vp-doc .vp-code-group [class*='language-'] > span.lang {
+  display: none;
+}
+
+/* Search excerpts are page HTML; keep page layouts from stretching them. */
+.VPLocalSearchBox .excerpt .api-grid {
+  display: block;
+}
+
+.VPLocalSearchBox .excerpt .api-examples,
+.VPLocalSearchBox .excerpt .figure {
+  display: none;
+}
+
+/* A code block's language is a header bar above the code, so long lines never run under it.
+ * The copy button sits in the same bar. Code groups name the language in their tabs instead. */
+.vp-doc div[class*='language-'] > span.lang {
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 34px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 8px 8px 0 0;
+  background: var(--panel-2);
+  color: var(--faint);
+  line-height: 34px;
+  text-align: left;
+  opacity: 1;
+}
+
+.vp-doc div[class*='language-']:hover > span.lang,
+.vp-doc div[class*='language-'] > button.copy:focus + span.lang {
+  opacity: 1;
+}
+
+.vp-doc div[class*='language-']:has(> span.lang) > pre {
+  margin-top: 34px;
+}
+
+.vp-doc div[class*='language-']:has(> span.lang) > button.copy {
+  top: 3px;
+  right: 4px;
+  width: 28px;
+  height: 28px;
+  background-size: 15px;
+}
+
+.vp-doc .vp-code-group div[class*='language-'] > pre {
+  margin-top: 0;
 }

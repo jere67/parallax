@@ -1,6 +1,7 @@
 ---
 layout: home
 title: Trading Agent docs
+titleTemplate: false
 description: How the Trading Agent screens the S&P 500, researches a shortlist, decides through a consensus of specialist agents, and trades on Alpaca paper accounts.
 ---
 
@@ -15,7 +16,7 @@ description: How the Trading Agent screens the S&P 500, researches a shortlist, 
 <a class="btn" href="./api/overview">API reference</a>
 </div>
 </div>
-<div class="hero-code">
+<div class="hero-code vp-doc">
 
 ```bash
 # Jac 0.37.12, then from the repo root

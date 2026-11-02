@@ -1,6 +1,18 @@
-import { defineConfig, type DefaultTheme } from 'vitepress'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { defineConfig, type DefaultTheme, type MarkdownOptions } from 'vitepress'
 import { REPO_URL } from './repo'
 import { writeLlmsFiles } from './llms'
+import { searchConfig } from './search'
+
+const here = path.dirname(fileURLToPath(import.meta.url))
+
+const markdown: MarkdownOptions = {
+  theme: { light: 'github-light', dark: 'vitesse-dark' },
+  // Shiki has no Jac grammar; Python's is the closest and keeps keywords and strings legible.
+  languageAlias: { jac: 'python' },
+  math: false
+}
 
 // The docs site: the repo's own Markdown (docs/, CONTRIBUTING.md) plus the guide, system, and
 // API pages under site/. The layout follows a two-row header of tabs over a sidebar per tab.
@@ -160,14 +172,10 @@ export default defineConfig({
     ['link', { rel: 'icon', type: 'image/svg+xml', href: `${process.env.DOCS_BASE ?? '/parallax/'}mark.svg` }],
     ['meta', { name: 'theme-color', content: '#0c0b09' }]
   ],
-  markdown: {
-    theme: { light: 'github-light', dark: 'vitesse-dark' },
-    // Shiki has no Jac grammar; Python's is the closest and keeps keywords and strings legible.
-    languageAlias: { jac: 'python' },
-    math: false
-  },
+  markdown,
   vite: {
-    // The design docs pull figures from ../docs/figures.
+    // Pages show figures from the repo's docs/figures as @repo/docs/figures/<name>.png.
+    resolve: { alias: { '@repo': path.resolve(here, '../..') } },
     server: { fs: { allow: ['..'] } }
   },
   themeConfig: {
@@ -185,10 +193,16 @@ export default defineConfig({
       '/design/': design,
       '/changelog': [{ text: 'Releases', items: [{ text: 'Changelog', link: '/changelog' }] }]
     },
-    search: { provider: 'local' },
+    search: searchConfig(path.resolve(here, '..'), markdown),
     outline: { level: [2, 3], label: 'On this page' },
     editLink: { pattern: `${REPO_URL}/edit/main/site/:path`, text: 'Edit this page' },
     socialLinks: [{ icon: 'github', link: REPO_URL }]
+  },
+  // Mirrored docs carry their title and description as route params; use them for <title>.
+  transformPageData(pageData) {
+    const params = pageData.params as { title?: string; description?: string } | undefined
+    if (params?.title) pageData.title = params.title
+    if (params?.description) pageData.description = params.description
   },
   buildEnd: writeLlmsFiles
 })

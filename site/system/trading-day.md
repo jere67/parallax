@@ -11,11 +11,7 @@ A trading day has two halves.
 The **morning run** starts at 7:30 a.m. New York time and decides what to do: it screens, researches, votes, and records a decision for every covered ticker.
 The **trading tick** runs every minute while the market is open and acts on those decisions: it executes orders at 9:45 a.m., watches fills and stops, cancels leftovers before the close, and checks the books after it.
 
-<Figure caption="The daily run, from the 7:30 a.m. screen to the post-close review.">
-
-![The daily run](../../docs/figures/daily_run.png)
-
-</Figure>
+<Figure name="daily_run" alt="The daily run" caption="The daily run, from the 7:30 a.m. screen to the post-close review." />
 
 ## Scheduled jobs
 

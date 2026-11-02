@@ -40,12 +40,12 @@ const repo = (theme.value.socialLinks ?? [])[0]?.link
       </div>
     </div>
 
-    <nav class="tabs" aria-label="Sections">
+    <nav class="topbar-tabs" aria-label="Sections">
       <a
         v-for="tab in tabs"
         :key="tab.link"
         :href="withBase(tab.link)"
-        class="tab"
+        class="topbar-tab"
         :class="{ active: activeTab?.link === tab.link }"
         :aria-current="activeTab?.link === tab.link ? 'location' : undefined"
       >

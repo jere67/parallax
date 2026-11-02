@@ -33,7 +33,7 @@ watch(() => route.path, () => (drawer.value = false))
       <SidebarNav :mobile="drawer" />
     </aside>
 
-    <main id="content" class="main">
+    <main id="content" class="docs-main">
       <NotFound v-if="page.isNotFound" />
       <Content v-else-if="isHome" class="home" />
       <div v-else class="page-grid">

@@ -30,7 +30,7 @@ function collect() {
 
 // The active heading is the last one above a line just under the top bar.
 function spy() {
-  const line = 96 + 32
+  const line = 96 + 48
   let current = headings.value[0]?.id ?? ''
   for (const h of headings.value) {
     const el = document.getElementById(h.id)

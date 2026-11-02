@@ -11,11 +11,7 @@ The Trading Agent is a centralized multi-agent system.
 One language-model Orchestrator directs three layers of work (Research, Analysis, and Action) through tools.
 Deterministic Jac code enforces every rule the Orchestrator must not break: the Orchestrator decides what to investigate and when the evidence is good enough, and code decides what is allowed.
 
-<Figure caption="Dashed boxes are deterministic code and solid boxes are language-model agents. The Orchestrator reaches Alpaca only through the risk gate.">
-
-![System architecture](../../docs/figures/system_architecture.png)
-
-</Figure>
+<Figure name="system_architecture" alt="System architecture" caption="Dashed boxes are deterministic code and solid boxes are language-model agents. The Orchestrator reaches Alpaca only through the risk gate." />
 
 ## Design principles
 
