@@ -38,8 +38,9 @@ import from models.agents { Specialist }
 import from tests.fakes.openrouter { FakeOpenRouter }
 
 glob VOTE_JSON: str = '{"stance": "BUY", "confidence": 0.7, "horizon_days": 10, "rationale": "r", "cited_evidence": [0]}';
-glob PROVIDER_PRIMARY: str = "nvidia/nemotron-3-super-120b-a12b:free";
-glob PROVIDER_FALLBACK: str = "dots-studio/dots-3-note-preview:free";
+# OpenRouter receives the model names without LiteLLM's "openrouter/" provider prefix.
+glob PROVIDER_PRIMARY: str = PRIMARY_MODEL.removeprefix("openrouter/");
+glob PROVIDER_FALLBACK: str = FALLBACK_MODEL.removeprefix("openrouter/");
 
 glob fake: FakeOpenRouter = FakeOpenRouter();
 glob test_limiter: RequestLimiter = RequestLimiter(per_minute=60000);

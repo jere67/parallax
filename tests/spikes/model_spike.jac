@@ -30,9 +30,10 @@ import from tests.fakes.source_server { serve_source }
 
 glob RUN_ENV: str = "TRADING_AGENT_RUN_SPIKE";
 glob CANDIDATES: list[str] = [
-    "inclusionai/ling-3.1-flash",
-    "thinkingmachines/inkling:free",
-    "thinkingmachines/inkling-small:free"
+    "nvidia/nemotron-3.5-super-vl:free",
+    "dots-studio/dots-3-note-preview:free",
+    "xingchen-agi/xing4.0-29b-a4b:free",
+    "openrouter/free"
 ];
 glob ROOT: Path = Path(__file__).resolve().parent.parent.parent;
 

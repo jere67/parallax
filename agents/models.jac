@@ -58,11 +58,12 @@ def model_error(error: Exception, previous: str = "") -> str {
     return "\nCaused by: ".join(parts);
 }
 
-# Chosen by spike #12 (docs/spikes/2026-10-08-free-models.md): the only free model with every
-# typed output valid on the first request and no provider errors. The fallback was the
-# runner-up; it is a preview that OpenRouter lists until 2026-12-31. The Free Models Router
-# is not a fallback: it sent a plain prompt to a content-safety classifier.
-glob PRIMARY_MODEL: str = "openrouter/nvidia/nemotron-3-super-120b-a12b:free";
+# The vetted order, from the free-model spike of 2026-11-02 (docs/spikes/2026-11-02-free-models.md),
+# rerun after Nemotron 3 Super left the free list: Nemotron 3.5 Super VL returned 11 of 12
+# typed outputs on the first request with no provider errors. The fallback needed a parse retry
+# on 8 of 12; it is a preview that OpenRouter lists until 2026-12-31. agents/catalog.jac checks
+# both against the live free list at each run and fills in behind them.
+glob PRIMARY_MODEL: str = "openrouter/nvidia/nemotron-3.5-super-vl:free";
 glob FALLBACK_MODEL: str = "openrouter/dots-studio/dots-3-note-preview:free";
 # OpenRouter's Free Models Router, the chain's last link: it picks some free model per request,
 # so it is used only after every chosen model has failed (agents/catalog.jac).
