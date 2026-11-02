@@ -12,8 +12,10 @@ import from tests.spikes.order_rules_spike { SYMBOL, Spike }
 test "the spike runs every step on a fake account and leaves it flat" {
     fake = FakeBroker(auto_fill=True);
     url = fake.start();
-    saved = {k: os.environ.get(k) for k in ["ALPACA_DATA_URL", "ALPACA_API_KEY", "ALPACA_SECRET_KEY"]};
+    saved = {k: os.environ.get(k) for k in ["ALPACA_DATA_URL", "ALPACA_API_KEY", "ALPACA_SECRET_KEY", "JAC_STORAGE_PATH"]};
     os.environ["ALPACA_DATA_URL"] = url;
+    # The fake's quotes go to a throwaway raw cache, never the project's storage/.
+    os.environ["JAC_STORAGE_PATH"] = tempfile.mkdtemp();
     os.environ["ALPACA_API_KEY"] = os.environ.get("ALPACA_API_KEY") or "test-key";
     os.environ["ALPACA_SECRET_KEY"] = os.environ.get("ALPACA_SECRET_KEY") or "test-secret";
     try {
@@ -49,8 +51,10 @@ test "the spike runs every step on a fake account and leaves it flat" {
 test "the closed-market part checks submission rules, fills nothing, and cancels every order" {
     fake = FakeBroker(is_open=False);
     url = fake.start();
-    saved = {k: os.environ.get(k) for k in ["ALPACA_DATA_URL", "ALPACA_API_KEY", "ALPACA_SECRET_KEY"]};
+    saved = {k: os.environ.get(k) for k in ["ALPACA_DATA_URL", "ALPACA_API_KEY", "ALPACA_SECRET_KEY", "JAC_STORAGE_PATH"]};
     os.environ["ALPACA_DATA_URL"] = url;
+    # The fake's quotes go to a throwaway raw cache, never the project's storage/.
+    os.environ["JAC_STORAGE_PATH"] = tempfile.mkdtemp();
     os.environ["ALPACA_API_KEY"] = os.environ.get("ALPACA_API_KEY") or "test-key";
     os.environ["ALPACA_SECRET_KEY"] = os.environ.get("ALPACA_SECRET_KEY") or "test-secret";
     try {
