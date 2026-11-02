@@ -39,12 +39,29 @@ jac run                    # serves the app with hot reload at http://localhost:
 The server trades only the team's Alpaca paper account, and only when the team portfolio is in auto mode.
 Two environment variables control it:
 
-- `TRADING_AGENT_FORWARD_TEST_START=YYYY-MM-DD` starts the forward test on that trading date, before 9:45 a.m. New York time.
+- `TRADING_AGENT_FORWARD_TEST_START=YYYY-MM-DD` starts the forward test on that trading date, at the first trading tick before that day's run executes and before 3:50 p.m. New York time.
+  A server started later than that starts it on the next trading day.
   The paper account must be flat.
   Its equity becomes the starting balance of the team portfolio and both baselines (equal-weight shortlist and SPY buy-and-hold), and the team portfolio switches to auto mode.
   Set it only with the team's go-ahead.
 - `TRADING_AGENT_DISABLE_ORDERS=1` stops every order.
   The executor still sizes and gates each morning's decisions and records the checks, but sends nothing.
+
+## Starting the morning run by hand
+
+The morning run starts by itself only between 7:30 and 7:45 a.m. New York time, so a server that was down then has no run that day.
+The admin account (`admin`, with the `ADMIN_PASSWORD` it was created with) can start it later:
+
+```bash
+TOKEN=$(curl -s localhost:8000/user/login -H 'Content-Type: application/json' \
+  -d "{\"identity\":{\"type\":\"username\",\"value\":\"admin\"},\"credential\":{\"type\":\"password\",\"password\":\"$ADMIN_PASSWORD\"}}" \
+  | python3 -c 'import sys, json; print(json.load(sys.stdin)["data"]["token"])')
+curl -s localhost:8000/function/start_morning_run -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{}'
+```
+
+The run starts within a minute and takes about 20 minutes.
+In auto mode, the next trading tick executes its orders, as long as that happens before 3:50 p.m.; after that, the run only publishes its decisions.
+Anyone else, signed in or not, is refused, and so is a weekend or a day that already has a run, including one that failed.
 
 ## Demo data
 

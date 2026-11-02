@@ -51,7 +51,8 @@ import from research.alpaca { Bar, bars_final }
 import from run.analysis { DEFAULT_HORIZON_DAYS, trading_day_after }
 import from run.public { public }
 
-# Set to the trading date the forward test starts; the first tick that morning starts it.
+# Set to the trading date the forward test starts; the first tick that day starts it, before the
+# day's run executes (run/trading.jac, start_due).
 glob FORWARD_TEST_ENV: str = "TRADING_AGENT_FORWARD_TEST_START";
 # Calendar days of bars read before the first session simulated, so a stock with no bar on a
 # session is still marked at its last close.
