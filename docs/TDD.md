@@ -144,7 +144,7 @@ jac-version = "==0.37.12"
 
 [byllm]
 [byllm.model]
-default_model = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"   # OPENROUTER_API_KEY exported in the environment
+default_model = "openrouter/nvidia/nemotron-3.5-super-vl:free"   # OPENROUTER_API_KEY exported in the environment
 
 [byllm.call_params]
 temperature = 0.2
@@ -166,8 +166,8 @@ import threading;
 import time;
 import from jaclang.byllm.lib { Model, RateLimitError }
 
-glob PRIMARY: str = "openrouter/nvidia/nemotron-3-super-120b-a12b:free";
-glob FALLBACK: str = "openrouter/dots-studio/dots-3-note-preview:free";   # the runner-up in spike #12
+glob PRIMARY: str = "openrouter/nvidia/nemotron-3.5-super-vl:free";
+glob FALLBACK: str = "openrouter/dots-studio/dots-3-note-preview:free";   # the runner-up in the 2026-11-02 spike
 glob RPM_LIMIT: int = 18;
 glob MAX_429_RETRIES: int = 3;
 
@@ -888,7 +888,7 @@ Sources: [deploy guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jac
 
 ## 12. LLM configuration and request budget
 
-Every agent runs on one free model, NVIDIA Nemotron 3 Super (`nvidia/nemotron-3-super-120b-a12b:free`), which byLLM reaches through OpenRouter, so the system pays nothing per token.
+Every agent runs on free models that byLLM reaches through OpenRouter, so the system pays nothing per token: NVIDIA Nemotron 3.5 Super VL (`nvidia/nemotron-3.5-super-vl:free`) first, chosen together with its fallbacks from OpenRouter's live free list at each run.
 The binding constraint is OpenRouter's free-model rate limit, which covers the whole account: 20 requests per minute, and 1,000 requests per day once the account has bought at least $10 of credits, or 50 per day otherwise ([OpenRouter limits](https://openrouter.ai/docs/api_reference/limits)).
 The team account has the 1,000-a-day allowance, and its key's credit limit is $0, so a paid model is refused rather than billed.
 Additional keys or accounts do not raise the limit, because OpenRouter governs capacity globally.
@@ -905,14 +905,22 @@ Spike #12 then ran the same research reports, votes, and Orchestrator tool loop 
 
 Three findings from the spike shape the design:
 - **Free-priced is not free.** A $0-priced model without a `:free` variant is refused by a key with a $0 credit limit, and some `:free` models answer only registered apps, so a candidate counts only after a real typed call succeeds.
-- **The Free Models Router is not a fallback.** Given a plain prompt, it chose a content-safety classifier, so a router fallback can fail silently; the fallback is a named second model instead.
+- **The Free Models Router is not a primary.** Given a plain prompt, it chose a content-safety classifier, so the fallback is a named second model; typed calls behave better (below), and the router became the last link.
 - **A loop's final summary ignores the task's limits.** After `ABORT_WITH_SUMMARY`, every model listed 9 to 12 follow-ups when told at most two, so the Orchestrator clamps every count in code.
 
+On November 2, Nemotron 3 Super itself left the free list during the first live run, and every call then spent a request on it before falling back, so the run overran its budget and decided nothing ([#150](https://github.com/jere67/parallax/issues/150)).
+The spike was rerun that day ([findings](spikes/2026-11-02-free-models.md)):
+- **Nemotron 3.5 Super VL** returned all 12 typed objects valid, 11 on the first request, with no provider errors; its median request took 9 seconds and its slowest 37, and it is the primary model.
+- **dots.3 Note preview** again returned all 12 but needed a parse retry on 8; it stays the fallback.
+- **The Free Models Router**, given byLLM's typed calls, which send a JSON schema, routed 25 requests to 8 different free models and never to the classifier, and all 12 typed objects were valid. It is the chain's last link, never its first, since one ticker's votes could come from several models.
+
 `LimitedModel` asks for low reasoning effort, which every candidate accepted.
-OpenRouter's free list changes without notice, so each model is one config value.
-If the primary model stays rate limited, fails, or leaves the free list, `LimitedModel` falls back to the second model.
+OpenRouter's free list changes without notice, so the models are not fixed in code.
+At each run's preflight, `agents/catalog.jac` reads OpenRouter's public models list, which costs no requests, and sets the chain every role calls: the vetted models still free, in order, then any other free model that takes a JSON schema and tools and has not expired (at most three), then the router.
+If a model stays rate limited, fails, or hangs, `LimitedModel` moves down the chain; if OpenRouter answers that a model is gone, it is retired for the rest of the run, so it costs one request, not one per call.
+The run records its chain, any model retired mid-run, and which models answered through the router.
 Through LiteLLM, OpenRouter model strings take the form `openrouter/<provider>/<model>` ([LiteLLM](https://docs.litellm.ai/docs/providers/openrouter)).
-The team re-checks the free list before Pitch Week and Launch Week, and reruns the spike (`tests/spikes/model_spike.jac`) on any change.
+The team reruns the spike (`tests/spikes/model_spike.jac`) whenever a vetted model leaves the list, and before Launch Week.
 The model configuration lives in the `jac.toml` and `agents/models.jac` shown in Section 3.
 
 | Role | Model instance | Temperature | Notes |
@@ -1212,7 +1220,7 @@ Every external claim in this document links its source where it is made; this li
 ### Model provider
 
 - [Limits](https://openrouter.ai/docs/api_reference/limits), [free variants](https://openrouter.ai/docs/guides/routing/model-variants/free), [Free Models Router](https://openrouter.ai/docs/guides/routing/routers/free-router), and [provider logging](https://openrouter.ai/docs/guides/privacy/provider-logging), OpenRouter
-- [Nemotron 3 Super (free)](https://openrouter.ai/nvidia/nemotron-3-super-120b-a12b:free), [dots.3 Note preview (free)](https://openrouter.ai/dots-studio/dots-3-note-preview:free), and the [models API](https://openrouter.ai/api/v1/models), OpenRouter
+- [Nemotron 3.5 Super VL (free)](https://openrouter.ai/nvidia/nemotron-3.5-super-vl:free), [dots.3 Note preview (free)](https://openrouter.ai/dots-studio/dots-3-note-preview:free), and the [models API](https://openrouter.ai/api/v1/models), OpenRouter
 - [OpenRouter provider](https://docs.litellm.ai/docs/providers/openrouter) and [routing](https://docs.litellm.ai/docs/routing), LiteLLM
 
 ### Broker
