@@ -201,7 +201,7 @@ def research_pass(run_day: str, open_positions: list[str], config: PassConfig = 
 
 """Screen the S&P 500 and collect every shortlisted ticker's data and the macro inputs, with
 no model calls. Never touches the graph."""
-def collect_pass(run_day: str, open_positions: list[str], config: PassConfig = PassConfig()) -> Collection {
+def collect_pass(run_day: str, open_positions: list[str], config: PassConfig = PassConfig(), requested_ticker: str = "") -> Collection {
     now = utc_now();
     phases: dict[str, float] = {};
     budget = run_budget();
@@ -209,9 +209,16 @@ def collect_pass(run_day: str, open_positions: list[str], config: PassConfig = P
 
     clock = time.monotonic();
     members = constituents(budget);
-    (candidates, screen_gaps) = gather(run_day, members, budget, config=config.screen);
-    gaps.extend(screen_gaps);
-    shortlist = screen(candidates, open_positions, config.screen);
+    shortlist: Shortlist;
+    if requested_ticker {
+        selected = [m for m in members if m.symbol == requested_ticker];
+        if not selected { raise ValueError("Ticker is not in the S&P 500."); }
+        shortlist = Shortlist(picks=[Pick(symbol=requested_ticker, sector=selected[0].sector, reason=PickReason.WILDCARD, note="On-demand research")], scores=[], excluded={});
+    } else {
+        (candidates, screen_gaps) = gather(run_day, members, budget, config=config.screen);
+        gaps.extend(screen_gaps);
+        shortlist = screen(candidates, open_positions, config.screen);
+    }
     phases["screen"] = time.monotonic() - clock;
 
     clock = time.monotonic();
@@ -239,7 +246,7 @@ def collect_pass(run_day: str, open_positions: list[str], config: PassConfig = P
     gaps.extend(calendar_gaps);
     ciks = company_ciks(symbols, members, budget, gaps);
     # Collect once before worker fan-out: the same quarter archive serves every ticker.
-    ctx.holdings = institutional_holdings({m.symbol: m.name for m in members}, run_day, budget);
+    ctx.holdings = institutional_holdings({m.symbol: m.name for m in members if m.symbol in symbols}, run_day, budget);
     pending = [NETWORK.submit(collect_ticker, p, releases.get(p.symbol), ciks.get(p.symbol, ""), ctx) for p in shortlist.picks];
     collected = [f.result() for f in pending];
     phases["collect"] = time.monotonic() - clock;

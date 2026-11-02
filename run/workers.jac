@@ -11,7 +11,14 @@ A task on this pool must never wait on another task on it: with every worker bus
 task would never start. Callers submit flat batches and wait on the caller's thread.
 Workers lose the request's graph context, so no task touches the graph (TDD §3, rule 6).
 """
-import from concurrent.futures { ThreadPoolExecutor }
+import from concurrent.futures { Future, ThreadPoolExecutor }
+import from contextvars { copy_context }
+
+class ContextPool(ThreadPoolExecutor) {
+    override def submit(self: ContextPool, fn: Callable, *args: any, **kwargs: any) -> Future {
+        return super.submit(copy_context().run, fn, *args, **kwargs);
+    }
+}
 
 glob NETWORK_WORKERS: int = 32;
-glob NETWORK: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=NETWORK_WORKERS, thread_name_prefix="network");
+glob NETWORK: ThreadPoolExecutor = ContextPool(max_workers=NETWORK_WORKERS, thread_name_prefix="network");

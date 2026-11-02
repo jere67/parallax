@@ -468,6 +468,10 @@ When a user requests a report on any S&P 500 ticker, the same Orchestrator runs 
 Reports are cached per ticker per trading day and shared across users, and tickers already on the day's shortlist reuse the morning's research without new model requests.
 Each user can request three new reports per day (proposed).
 A report takes minutes, so it never runs inside the HTTP request: the endpoint records a `ReportRequest` and returns a pending status, a scheduled interval job processes the queue in order, and the Reports page polls until the card is ready.
+The first implementation and its configuration are documented in [on-demand reports](on-demand-reports.md).
+It uses one application replica, a shared ticker/trading-date queue, and the existing committee in insight mode with no submission tool.
+Quotas remain proposed and configurable (GAP-06); interrupted work fails explicitly without automatic retries.
+
 
 ## 5. Universe selection: S&P 500 screen
 

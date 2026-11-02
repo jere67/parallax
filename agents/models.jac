@@ -18,6 +18,22 @@ import from jaclang.byllm.lib { AuthenticationError, ConfigurationError, Model, 
 import from jaclang.byllm.mtir { MTRuntime }
 import from jaclang.byllm.types { CompletionResult }
 
+"""Optional per-report ceiling, shared by its network tasks and including retries."""
+obj RequestBudget {
+    has remaining: int, deadline: float;
+    has used: int = 0;
+
+    def consume {
+        if self.remaining <= 0 or time.monotonic() >= self.deadline {
+            raise RuntimeError("Report model budget or deadline exhausted.");
+        }
+        self.remaining -= 1;
+        self.used += 1;
+    }
+}
+
+glob REQUEST_BUDGET: ContextVar[RequestBudget | None] = ContextVar("report_budget", `default=None);
+
 glob REQUEST_KINDS: tuple[str, ...] = ("first_attempt", "parse_retry", "transient_retry", "fallback");
 
 """One provider dispatch's state, isolated across threads, async tasks and nested tools."""
@@ -111,6 +127,8 @@ obj RequestLimiter {
                 # Space from the real wake-up, which can be late, not the scheduled slot.
                 now = time.monotonic();
             }
+            budget = REQUEST_BUDGET.get();
+            if budget is not None { budget.consume(); }
             self._next_slot = now + 60.0 / self.per_minute;
             self.sent += 1;
             day = datetime.now(timezone.utc).date().isoformat();
