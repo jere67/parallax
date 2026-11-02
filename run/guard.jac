@@ -610,12 +610,22 @@ def _close(run: Run, status: RunStatus, summary: str) {
 layer trades (#29), decisions are published, not executed. Its starting balance is set when
 the paper account is connected (GAP-09)."""
 def team_portfolio -> Portfolio {
+    found = find_team_portfolio();
+    if found is not None {
+        return found;
+    }
+    return public(root.shared ++> Portfolio(name=TEAM_PORTFOLIO, mode=PortfolioMode.INSIGHT, starting_cash=0.0, opened_at=utc_now().isoformat()));
+}
+
+"""The team portfolio on root.shared, or None before the first run creates it. Readers that
+must not create it (a request on a user's graph) use this instead of `team_portfolio`."""
+def find_team_portfolio -> Portfolio | None {
     for p in [root.shared -->[?:Portfolio]] {
         if p.name == TEAM_PORTFOLIO {
             return p;
         }
     }
-    return public(root.shared ++> Portfolio(name=TEAM_PORTFOLIO, mode=PortfolioMode.INSIGHT, starting_cash=0.0, opened_at=utc_now().isoformat()));
+    return None;
 }
 
 """Today's date in New York, the trading date a morning run decides."""
