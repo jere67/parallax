@@ -12,8 +12,10 @@ afternoon steps with it, and does whatever step is due and not yet done:
 - thirty minutes after the close (4:30 p.m., or 1:30): reconcile with Alpaca and mark the
   portfolio, once a day, then score the panel's votes whose windows have closed and simulate
   the forward-test baselines;
-- before 9:45 a.m. on or after the date the operator set in FORWARD_TEST_ENV, start the
-  forward test (action/baselines.jac), once.
+- on or after the date the operator set in FORWARD_TEST_ENV, start the forward test
+  (action/baselines.jac), once: at the first tick of a session day, as long as the day's run
+  has not executed and the cancel window has not begun, so a server started after 9:45 still
+  trades that day.
 
 Every step records that it ran, so a second firing does nothing. Nothing trades unless the
 team portfolio is in auto mode, but votes are scored in both modes. A daily bar is final
@@ -134,15 +136,18 @@ def evening_due(portfolio: Portfolio, run: Run) -> bool {
     return not run.votes_scored_at or (not run.baselines_at and bool(baselines_of(portfolio)));
 }
 
-"""Start the forward test on a session morning once the operator has set its date."""
-def start_due(portfolio: Portfolio, now: datetime, day: str, deps: TradingDeps) -> list[str] {
+"""Start the forward test once the operator has set its date, on a session day before the
+cancel window and before the day's run has executed, so the team still trades that day."""
+def start_due(portfolio: Portfolio, run: Run | None, now: datetime, day: str, deps: TradingDeps) -> list[str] {
     wanted = forward_test_day();
-    if not wanted or wanted > day or baselines_of(portfolio) or deps.session(day) is None {
+    if not wanted or wanted > day or baselines_of(portfolio) or (run is not None and run.executed_at) {
         return [];
     }
-    line = f"start: {start_forward_test(portfolio, deps.broker_client(), now, day)}";
-    LOG.info("%s %s", day, line);
-    return [line];
+    session = deps.session(day);
+    if session is None or now >= session_times(session).cancel_at {
+        return [];
+    }
+    return [f"start: {start_forward_test(portfolio, deps.broker_client(), now, day)}"];
 }
 
 """Do whatever step of `portfolio`'s trading day is due at `now`, and return what it did.
@@ -157,10 +162,24 @@ def trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = Tradin
     if local.weekday() >= 5 {
         return [];
     }
-    if local.time() < EXECUTION_START {
-        return start_due(portfolio, now, day, deps);
-    }
     run = run_for(portfolio, day);
+    lines = start_due(portfolio, run, now, day, deps);
+    if local.time() >= EXECUTION_START {
+        lines.extend(day_steps(portfolio, run, day, local, now, deps));
+    }
+    if lines and run is not None {
+        stamp = local.strftime("%H:%M");
+        run.action_log = (run.action_log + [f"{stamp} {line}" for line in lines])[-MAX_LOG_LINES:];
+    }
+    for line in lines {
+        LOG.info("%s %s", day, line);
+    }
+    return lines;
+}
+
+"""The steps due from 9:45 a.m.: trading in auto mode, then vote scoring and the baselines
+after the close."""
+def day_steps(portfolio: Portfolio, run: Run | None, day: str, local: datetime, now: datetime, deps: TradingDeps) -> list[str] {
     trading = portfolio.mode == PortfolioMode.AUTO;
     if not trading and (run is None or not evening_due(portfolio, run)) {
         return [];
@@ -182,13 +201,6 @@ def trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = Tradin
     if local >= times.reconcile_at and run is not None and not run.baselines_at and baselines_of(portfolio) {
         lines.extend(f"baseline: {line}" for line in advance_baselines(portfolio, now, deps.history or History()));
         run.baselines_at = now.isoformat();
-    }
-    if lines and run is not None {
-        stamp = local.strftime("%H:%M");
-        run.action_log = (run.action_log + [f"{stamp} {line}" for line in lines])[-MAX_LOG_LINES:];
-    }
-    for line in lines {
-        LOG.info("%s %s", day, line);
     }
     return lines;
 }
