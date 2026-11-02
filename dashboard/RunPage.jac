@@ -21,7 +21,14 @@ import from dashboard.ui.format {
     title
 }
 import from dashboard.ui.parts {
+    FROZEN_CELL,
+    FROZEN_HEAD,
+    PILL_BASE,
     ROW,
+    SEGMENTS,
+    TONE_DOWN,
+    TONE_QUIET,
+    TONE_UP,
     TD,
     TD_NUM,
     TH,
@@ -31,7 +38,9 @@ import from dashboard.ui.parts {
     ErrorBox,
     Field,
     Loading,
+    Overline,
     Panel,
+    Segment,
     StatusBadge
 }
 # Aliased: the endpoint bridge declares the wire classes under their own names.
@@ -44,10 +53,16 @@ import from models.views {
 
 glob REASONS: dict[str, str] = {"screen": "Screen", "held": "Held", "wildcard": "Wildcard", "user_request": "Request"};
 glob REGIMES: dict[str, str] = {"RISK_ON": "Risk on", "NEUTRAL": "Neutral", "RISK_OFF": "Risk off"};
-glob REGIME_TONES: dict[str, str] = {"RISK_ON": "bg-up-soft text-up", "NEUTRAL": "bg-panel-2 text-muted", "RISK_OFF": "bg-down-soft text-down"};
+glob REGIME_TONES: dict[str, str] = {"RISK_ON": TONE_UP, "NEUTRAL": TONE_QUIET, "RISK_OFF": TONE_DOWN};
 glob BUYS: list[str] = ["BUY", "ADD"];
 glob SELLS: list[str] = ["SELL", "TRIM"];
 glob LOG_PREVIEW: int = 8;
+# The shortlist's filters: a name, its label, and the actions it keeps ("" is no decision).
+glob GROUPS: list[tuple[str, str, list[str]]] = [
+    ("buys", "Buys", BUYS),
+    ("sells", "Sells", SELLS),
+    ("holds", "Holds", ["HOLD", "NO_ACTION", ""])
+];
 
 def count_of(actions: dict[str, int], names: list[str]) -> int {
     total = 0;
@@ -58,40 +73,59 @@ def count_of(actions: dict[str, int], names: list[str]) -> int {
 }
 
 def DayLink(day: str, label: str, forward: bool) -> JsxElement {
-    base = "grid size-8 place-items-center rounded-md border border-line ";
+    base = "grid size-8 place-items-center ";
     icon = <ChevronRight size={16}/> if forward else <ChevronLeft size={16}/>;
     if not day {
-        return <span className={base + "text-faint opacity-50"} aria-hidden="true">{icon}</span>;
+        return <span className={base + "text-faint opacity-40"} aria-hidden="true">{icon}</span>;
     }
-    <Link to={"/runs/" + day} className={base + "bg-panel text-muted hover:bg-hover hover:text-text"} aria-label={label} title={day_long(day)}>
+    <Link to={"/runs/" + day} className={base + "press text-muted hover:bg-hover hover:text-text"} aria-label={label} title={day_long(day)}>
         {icon}
     </Link>
 }
 
+"""The run's title: its day in the display face, its status, and the summary as the page's
+description, with the previous and next runs at the right."""
 def Header(run: RunData) -> JsxElement {
-    tokens = run.prompt_tokens + run.completion_tokens;
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-            <DayLink day={run.previous_day} label="Previous run" forward={False}/>
-            <div>
-                <h1 className="text-[18px] font-semibold tracking-tight">{day_long(run.run_date)}</h1>
-                <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                    <StatusBadge status={run.status}/>
-                    {if run.reduced_mode {
-                        <StatusBadge status="fallback" label="Reduced mode"/>
-                    }}
-                    <span className="text-[12px] text-faint">{title(run.mode) + " mode"}</span>
-                </div>
-            </div>
-            <DayLink day={run.next_day} label="Next run" forward={True}/>
+    <header className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-4">
+            <Overline>{"Morning run · " + title(run.mode) + " mode"}</Overline>
+            <nav className="flex shrink-0 overflow-hidden rounded-md border border-line bg-panel" aria-label="Runs">
+                <DayLink day={run.previous_day} label="Previous run" forward={False}/>
+                <span className="w-px bg-line" aria-hidden="true"></span>
+                <DayLink day={run.next_day} label="Next run" forward={True}/>
+            </nav>
         </div>
-        <dl className="num flex flex-wrap gap-x-6 gap-y-1 text-[12px]">
-            <div className="flex gap-1.5 whitespace-nowrap"><dt className="text-faint">Analysis</dt><dd>{time_range_et(run.started_at, run.finished_at)}</dd></div>
-            <div className="flex gap-1.5 whitespace-nowrap"><dt className="text-faint">Executed</dt><dd>{time_et(run.executed_at)}</dd></div>
-            <div className="flex gap-1.5 whitespace-nowrap"><dt className="text-faint">Reconciled</dt><dd>{time_et(run.reconciled_at)}</dd></div>
-            <div className="flex gap-1.5 whitespace-nowrap"><dt className="text-faint">Model</dt><dd>{count(run.model_requests, "call") + ", " + compact(float(tokens)) + " tokens"}</dd></div>
-        </dl>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <h1 className="display text-[36px] leading-10 text-text">{day_long(run.run_date)}</h1>
+            <StatusBadge status={run.status}/>
+            {if run.reduced_mode {
+                <StatusBadge status="fallback" label="Reduced mode"/>
+            }}
+        </div>
+        <p className="max-w-[600px] text-[13px] leading-5 text-muted">{run.summary or "No summary was recorded."}</p>
+    </header>
+}
+
+"""One fact in the run's strip: a label, a value, and a quieter line under it."""
+def Fact(label: str, value: str, sub: str = "") -> JsxElement {
+    <div className="min-w-0 bg-panel px-4 py-3">
+        <Overline className="truncate">{label}</Overline>
+        <div className="num mt-1 text-[15px] font-medium leading-5 text-pretty">{value}</div>
+        <div className="num mt-0.5 truncate text-[11px] text-faint">{sub or "\u00a0"}</div>
     </div>
+}
+
+def Facts(run: RunData) -> JsxElement {
+    screened = len([r for r in run.rows if r.reason == "screen"]);
+    tokens = run.prompt_tokens + run.completion_tokens;
+    <section className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-3 lg:grid-cols-6" aria-label="Run">
+        <Fact label="Covered" value={count(len(run.rows), "ticker")} sub={str(screened) + " from the screen"}/>
+        <Fact label="Risk gate" value={run.execution_note or MISSING}/>
+        <Fact label="Analysis" value={time_range_et(run.started_at, run.finished_at)}/>
+        <Fact label="Executed" value={time_et(run.executed_at)}/>
+        <Fact label="Reconciled" value={time_et(run.reconciled_at)}/>
+        <Fact label="Model" value={count(run.model_requests, "call")} sub={compact(float(tokens)) + " tokens"}/>
+    </section>
 }
 
 def Macro(macro: MacroData | None) -> JsxElement {
@@ -102,45 +136,27 @@ def Macro(macro: MacroData | None) -> JsxElement {
     if macro.spy_close is not None and macro.spy_sma_200 is not None {
         above = macro.spy_close >= macro.spy_sma_200;
     }
-    regime = <span className={"inline-flex items-center rounded px-1.5 py-px text-[11px] font-semibold " + REGIME_TONES.get(macro.regime, "bg-panel-2 text-muted")}>
+    regime = <span className={PILL_BASE + " " + REGIME_TONES.get(macro.regime, TONE_QUIET)}>
         {REGIMES.get(macro.regime, macro.regime) + " · " + pct(macro.confidence, 0)}
     </span>;
-    <Panel title="Market" aside={regime} className="h-full">
-        <div className="grid grid-cols-3 gap-3 border-b border-line pb-3">
-            <div>
-                <div className="text-[11px] uppercase tracking-[0.06em] text-faint">SPY close</div>
-                <div className="num mt-0.5 text-[15px] font-semibold">{money(macro.spy_close)}</div>
-            </div>
-            <div>
-                <div className="text-[11px] uppercase tracking-[0.06em] text-faint">200-day avg</div>
-                <div className="num mt-0.5 text-[15px] font-semibold">{money(macro.spy_sma_200)}</div>
-                {if above is not None {
-                    <div className={"text-[11px] " + ("text-up" if above else "text-down")}>{"SPY above" if above else "SPY below"}</div>
-                }}
-            </div>
-            <div>
-                <div className="text-[11px] uppercase tracking-[0.06em] text-faint">20-day vol</div>
-                <div className="num mt-0.5 text-[15px] font-semibold">{pct(macro.spy_vol_20, 1)}</div>
-                <div className="text-[11px] text-faint">annualized</div>
-            </div>
+    <Panel title="Market" aside={regime} pad={False}>
+        <div className="grid grid-cols-3 gap-px border-b border-line bg-line">
+            <Fact label="SPY close" value={money(macro.spy_close)}/>
+            <Fact label="200-day avg" value={money(macro.spy_sma_200)} sub={("SPY above" if above else "SPY below") if above is not None else ""}/>
+            <Fact label="20-day vol" value={pct(macro.spy_vol_20, 1)} sub="annualized"/>
         </div>
-        <p className="mt-3 text-[13px] leading-relaxed text-muted">{macro.summary}</p>
-        {if len(macro.risks) > 0 {
-            <ul className="mt-2 flex flex-col gap-1 text-[12px] text-muted">
-                {for risk in macro.risks {
-                    <li key={risk} className="flex gap-2"><span className="text-warn">!</span><span>{risk}</span></li>
-                }}
-            </ul>
-        }}
-    </Panel>
-}
-
-def Summary(run: RunData) -> JsxElement {
-    <Panel title="Summary" className="h-full">
-        <p className="text-[13px] leading-relaxed">{run.summary or "No summary was recorded."}</p>
-        <div className="mt-3 border-t border-line pt-2">
-            <Field label="Covered">{count(len(run.rows), "ticker")}</Field>
-            <Field label="Risk gate">{run.execution_note or MISSING}</Field>
+        <div className="p-4">
+            <p className="text-[13px] leading-relaxed text-text">{macro.summary}</p>
+            {if len(macro.risks) > 0 {
+                <ul className="mt-3 flex flex-col gap-1.5 text-[12px] text-muted">
+                    {for risk in macro.risks {
+                        <li key={risk} className="flex gap-2">
+                            <span className="mt-[7px] size-1 shrink-0 rounded-full bg-warn" aria-hidden="true"></span>
+                            <span>{risk}</span>
+                        </li>
+                    }}
+                </ul>
+            }}
         </div>
     </Panel>
 }
@@ -204,17 +220,43 @@ def OrderCell(row: CoverageData) -> JsxElement {
     </div>
 }
 
+def in_group(row: CoverageData, group: str) -> bool {
+    for (name, _, actions) in GROUPS {
+        if name == group {
+            return row.action in actions;
+        }
+    }
+    return True;
+}
+
 def CoverageTable(run: RunData) -> JsxElement {
+    has group: str = "all";
+
     nav = useNavigate();
-    <Panel title="Shortlist" aside={<span className="text-[11px] text-faint">By conviction</span>} pad={False}>
+    rows = [r for r in run.rows if in_group(r, group)];
+    filters = <div className={SEGMENTS}>
+        <Segment label="All" count={len(run.rows)} active={group == "all"} pick={lambda { group = "all"; }}/>
+        {for (name, label, _) in GROUPS {
+            <Segment
+                key={name}
+                label={label}
+                count={len([r for r in run.rows if in_group(r, name)])}
+                active={group == name}
+                pick={lambda { group = name; }}
+            />
+        }}
+    </div>;
+    <Panel title="Shortlist" aside={filters} pad={False}>
         {if len(run.rows) == 0 {
             <p className="px-4 py-6 text-[13px] text-muted">This run covered no tickers.</p>
+        } elif len(rows) == 0 {
+            <p className="px-4 py-6 text-[13px] text-muted">No ticker in this run came to that decision.</p>
         } else {
             <div className="scroll-x">
-                <table className="w-full min-w-[960px]">
+                <table className="w-full min-w-[1040px]">
                     <thead>
                         <tr>
-                            <th className={TH}>Ticker</th>
+                            <th className={TH + FROZEN_HEAD}>Ticker</th>
                             <th className={TH}>Decision</th>
                             <th className={TH_NUM}>Conviction</th>
                             <th className={TH}>Consensus</th>
@@ -226,13 +268,13 @@ def CoverageTable(run: RunData) -> JsxElement {
                         </tr>
                     </thead>
                     <tbody>
-                        {for row in run.rows {
+                        {for row in rows {
                             <tr
                                 key={row.ticker}
-                                className={ROW + " cursor-pointer"}
+                                className={ROW + " group cursor-pointer"}
                                 onClick={lambda { nav("/runs/" + run.run_date + "/" + row.ticker); }}
                             >
-                                <td className={TD}>
+                                <td className={TD + FROZEN_CELL}>
                                     <Link to={"/runs/" + run.run_date + "/" + row.ticker} className="font-semibold hover:text-accent">{row.ticker}</Link>
                                     <div className="max-w-[160px] truncate text-[11px] text-faint">{row.sector}</div>
                                 </td>
@@ -274,9 +316,9 @@ def ActionLog(lines: list[str]) -> JsxElement {
         {if len(lines) == 0 {
             <p className="px-4 py-6 text-[13px] text-muted">Nothing was logged.</p>
         } else {
-            <ol className="font-mono text-[12px] leading-6">
+            <ol className="scroll-x font-mono text-[12px] leading-6 [&>li]:whitespace-nowrap">
                 {for (i, line) in enumerate(shown) {
-                    <li key={str(i)} className="border-b border-line px-4 py-0.5 text-muted last:border-b-0">{line}</li>
+                    <li key={str(i)} className="border-b border-line/60 px-4 py-1 text-muted last:border-b-0">{line}</li>
                 }}
             </ol>
         }}
@@ -285,7 +327,7 @@ def ActionLog(lines: list[str]) -> JsxElement {
 
 def RunList(runs: list[RunSummaryData], current: str) -> JsxElement {
     <Panel title="Runs" aside={<span className="num text-[12px] text-faint">{str(len(runs))}</span>} pad={False}>
-        <ol className="max-h-[640px] overflow-y-auto">
+        <ol className="max-h-[352px] overflow-y-auto overscroll-contain">
             {for r in runs {
                 buys = count_of(r.actions, BUYS);
                 sells = count_of(r.actions, SELLS);
@@ -293,7 +335,7 @@ def RunList(runs: list[RunSummaryData], current: str) -> JsxElement {
                 <li key={r.run_date}>
                     <Link
                         to={"/runs/" + r.run_date}
-                        className={"flex items-center justify-between gap-3 border-b border-line px-4 py-2 text-[13px] transition-colors " + ("bg-accent-soft" if active else "hover:bg-hover")}
+                        className={"relative flex items-center justify-between gap-3 border-b border-line/60 px-4 py-2 text-[13px] transition-colors duration-150 " + ("bg-accent-soft before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-accent" if active else "hover:bg-hover")}
                         aria-current={"page" if active else None}
                     >
                         <span className="flex items-center gap-2">
@@ -312,7 +354,7 @@ def RunList(runs: list[RunSummaryData], current: str) -> JsxElement {
                 </li>
             }}
         </ol>
-        <p className="px-4 py-2 text-[11px] text-faint">Buys and adds, sells and trims, and orders that filled.</p>
+        <p className="border-t border-line px-4 py-2.5 text-[11px] text-faint">Buys and adds, sells and trims, and orders that filled.</p>
     </Panel>
 }
 
@@ -353,20 +395,14 @@ def:pub RunPage -> JsxElement {
         return <Empty title="No runs yet">The first morning run appears here once the forward test starts.</Empty>;
     }
 
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <div className="flex min-w-0 flex-col gap-4 xl:col-span-9">
-            <Header run={run}/>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <Summary run={run}/>
-                <Macro macro={run.macro}/>
-            </div>
-            <CoverageTable run={run}/>
-            <ActionLog lines={run.action_log}/>
+    <div className="rise flex flex-col gap-6">
+        <Header run={run}/>
+        <Facts run={run}/>
+        <CoverageTable run={run}/>
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <Macro macro={run.macro}/>
+            <RunList runs={runs} current={run.run_date}/>
         </div>
-        <aside className="xl:col-span-3">
-            <div className="xl:sticky xl:top-16">
-                <RunList runs={runs} current={run.run_date}/>
-            </div>
-        </aside>
+        <ActionLog lines={run.action_log}/>
     </div>
 }
