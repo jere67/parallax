@@ -17,6 +17,7 @@ obj Committee {
     has tools: list[Callable],
         on_iteration: Callable[[IterationContext], IterationAction],
         max_iterations: int;
+    has report_mode: bool = False;
 
     override def __repr__ -> str {
         return "the investment committee's morning run";
@@ -33,7 +34,7 @@ obj Committee {
        ticker, domain, and question. Batch questions across tickers; use follow-ups only where
        the answer could change the decision. Flag a ticker whose data is unreliable today.
     4. Convene the panel for every covered ticker.
-    5. Submit the decisions.
+    5. Submit the decisions, except in report_mode: then no submit tool exists and you must never trade.
     6. Write the run summary: three to five plain-English sentences on what the committee
        decided and why, and anything that went wrong.
 

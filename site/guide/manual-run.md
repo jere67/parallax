@@ -1,0 +1,86 @@
+---
+title: Starting a run by hand
+description: Start the day's morning run later than 7:30 a.m., as the admin, after a server was down at the scheduled time.
+related:
+  - { text: start_morning_run, link: /api/start-morning-run }
+  - { text: Authentication, link: /api/authentication }
+  - { text: Run Guard, link: /system/run-guard }
+---
+
+The morning run starts by itself only between 7:30 and 7:45 a.m. New York time.
+A server that was down then has no run that day.
+The admin account can start it later with one request.
+
+## Start the run
+
+You need the admin password, which the server read from `ADMIN_PASSWORD` when it created the admin account.
+
+<Steps>
+
+1. **Sign in as the admin.**
+   The login answers with a token.
+
+   ```bash
+   TOKEN=$(curl -s localhost:8000/user/login -H 'Content-Type: application/json' \
+     -d "{\"identity\":{\"type\":\"username\",\"value\":\"admin\"},\"credential\":{\"type\":\"password\",\"password\":\"$ADMIN_PASSWORD\"}}" \
+     | python3 -c 'import sys, json; print(json.load(sys.stdin)["data"]["token"])')
+   ```
+
+2. **Ask for the run.**
+
+   ```bash
+   curl -s localhost:8000/function/start_morning_run \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{}'
+   ```
+
+3. **Wait.**
+   The run starts within a minute and takes about 20 minutes.
+   Follow it on the dashboard's [Runs page](/guide/dashboard#runs).
+
+</Steps>
+
+A request that is accepted answers like this:
+
+```json
+{
+  "started": true,
+  "run_day": "2026-11-02",
+  "message": "The morning run for 2026-11-02 starts within a minute and takes about 20 minutes. The trading tick executes it once it finishes, if the team portfolio is in auto mode."
+}
+```
+
+## When it trades
+
+In auto mode, the next trading tick executes the run's orders, as long as that happens before the cancel time (3:50 p.m. on a normal day).
+After that, the run only publishes its decisions.
+In insight mode, it publishes its decisions as insight cards, as usual.
+
+## When it is refused
+
+The request answers with `started: false` and a reason when:
+
+| Reason | Message |
+| --- | --- |
+| The caller is signed in, but not as the admin | `Only the admin can start a run.` |
+| It is a weekend in New York | `2026-11-07 is a weekend; the market is closed.` |
+| The team portfolio holds demo history | `The team portfolio holds the demo history, which never runs.` |
+| The day already has a run, including a failed or skipped one | `The run for 2026-11-02 has already started (status: normal).` |
+
+A request without a token never reaches the endpoint: `start_morning_run` is private, so the server rejects it first.
+A market holiday is not refused here.
+The run starts, finds no trading session, and is recorded as SKIPPED.
+
+## How it works
+
+The endpoint does not run anything itself.
+It leaves a one-time request in the app's token store, valid until midnight in New York, and returns.
+A scheduled job, `manual_run_job`, checks for a request every minute, takes it, and runs the morning run in the server's own context, where the team portfolio lives.
+Taking the request deletes it, so two servers or two firings can never start two runs.
+
+This design keeps three things true:
+
+- A request from a user's session cannot attach a run to the team portfolio, since the team graph is reachable only from the server's own context.
+- It does not depend on dynamic scheduler jobs, which stop after a hot reload in Jac 0.37.12.
+- It does not expose the scheduler's job API, which any signed-in user could call.
+
+The [Run Guard](/system/run-guard) still checks everything a scheduled run checks, including the request budget and whether the day already has a run.

@@ -242,3 +242,36 @@ test "the forward test starts before 9:45 on the operator's date, and its baseli
         fake.stop();
     }
 }
+
+test "a server started after 9:45 still starts the forward test and trades the day's run on the same tick" {
+    fake = FakeBroker();
+    os.environ[FORWARD_TEST_ENV] = DAY;
+    try {
+        deps = deps_for(fake);
+        portfolio = team(PortfolioMode.INSIGHT);
+        fake.set_price("AAA", 100.0);
+        run = finished_run(portfolio, DAY, [Call(ticker="AAA", action=TradeAction.BUY)]);
+        lines = tick_at(fake, portfolio, deps, "11:05");
+        assert lines[0].startswith("start: forward test started on 2026-10-21") and lines[1].startswith("execute: 1 checks, 1 approved");
+        assert portfolio.mode == PortfolioMode.AUTO and run.executed_at;
+        assert run.action_log[0].startswith("11:05 start: forward test started");
+    } finally {
+        os.environ.pop(FORWARD_TEST_ENV, None);
+        fake.stop();
+    }
+}
+
+test "the forward test waits for the next session once the cancel window has begun" {
+    fake = FakeBroker();
+    os.environ[FORWARD_TEST_ENV] = DAY;
+    try {
+        deps = deps_for(fake);
+        portfolio = team(PortfolioMode.INSIGHT);
+        assert tick_at(fake, portfolio, deps, "15:50") == [] and tick_at(fake, portfolio, deps, "16:30") == [];
+        assert portfolio.mode == PortfolioMode.INSIGHT and not baselines_of(portfolio);
+        assert tick_at(fake, portfolio, deps, "08:00", "2026-10-22")[0].startswith("start: forward test started on 2026-10-22");
+    } finally {
+        os.environ.pop(FORWARD_TEST_ENV, None);
+        fake.stop();
+    }
+}

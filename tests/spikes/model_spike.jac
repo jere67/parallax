@@ -18,7 +18,7 @@ import from pathlib { Path }
 import httpx;
 import from jaclang.byllm.types { IterationAction, IterationContext }
 import from jaclang.data.storage.storage { Storage }
-import from agents.models { LIMITER, LimitedModel, RequestLimiter }
+import from agents.models { LIMITER, LimitedModel, ModelChain, RequestLimiter }
 import from models.agents { Domain, ResearchReport, Specialist, Vote }
 import from models.research { Stamp }
 import from research.alpaca { Bar, BarSeries }
@@ -30,9 +30,10 @@ import from tests.fakes.source_server { serve_source }
 
 glob RUN_ENV: str = "TRADING_AGENT_RUN_SPIKE";
 glob CANDIDATES: list[str] = [
-    "inclusionai/ling-3.1-flash",
-    "thinkingmachines/inkling:free",
-    "thinkingmachines/inkling-small:free"
+    "nvidia/nemotron-3.5-super-vl:free",
+    "dots-studio/dots-3-note-preview:free",
+    "xingchen-agi/xing4.0-29b-a4b:free",
+    "openrouter/free"
 ];
 glob ROOT: Path = Path(__file__).resolve().parent.parent.parent;
 
@@ -86,6 +87,7 @@ obj SpikeModel(LimitedModel) {
 glob spike_llm: SpikeModel = SpikeModel(
     model_name="openrouter/" + CANDIDATES[0],  # jac:ignore[E1052]
     limiter=RequestLimiter(per_minute=60000),
+    chain=ModelChain(models=["openrouter/" + CANDIDATES[0]]),
     max_429_retries=2,
     backoff_s=5.0
 );
@@ -219,7 +221,7 @@ def free_requests_used -> dict[str, object] {
 
 def run_model(model: str, samples: int, data: str, evidence: list[str]) -> dict[str, object] {
     spike_llm.model_name = "openrouter/" + model;
-    spike_llm.fallback_model = "openrouter/" + model;
+    spike_llm.chain.reset(["openrouter/" + model]);
     start = len(spike_llm.log);
     reports = [attempt(lambda { write_report("AAPL", Domain.MARKET if i % 2 == 0 else Domain.NEWS, data); }) for i in range(samples)];
     votes = [attempt(lambda { cast_vote("AAPL", Specialist.TECHNICAL if i % 2 == 0 else Specialist.NEWS, evidence); }) for i in range(samples)];

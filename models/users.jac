@@ -24,7 +24,8 @@ node ReportRequest {
         trading_date: str,
         requested_at: str;
     has status: ReportStatus = ReportStatus.PENDING,
-        error: str = "";
+        error: str = "",
+        charged: bool = False;
 }
 
 edge Uses: ReportRequest --> Coverage {}

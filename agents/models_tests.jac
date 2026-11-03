@@ -15,7 +15,11 @@ import from agents.models {
     LIMITER,
     OPENROUTER_API_BASE_ENV,
     LimitedModel,
+    ModelChain,
     ModelsDisabledError,
+    FALLBACK_MODEL,
+    ROUTER_MODEL,
+    model_gone,
     PRIMARY_MODEL,
     RequestLimiter,
     model_error,
@@ -34,23 +38,28 @@ import from models.agents { Specialist }
 import from tests.fakes.openrouter { FakeOpenRouter }
 
 glob VOTE_JSON: str = '{"stance": "BUY", "confidence": 0.7, "horizon_days": 10, "rationale": "r", "cited_evidence": [0]}';
-glob PROVIDER_PRIMARY: str = "nvidia/nemotron-3-super-120b-a12b:free";
-glob PROVIDER_FALLBACK: str = "dots-studio/dots-3-note-preview:free";
+# OpenRouter receives the model names without LiteLLM's "openrouter/" provider prefix.
+glob PROVIDER_PRIMARY: str = PRIMARY_MODEL.removeprefix("openrouter/");
+glob PROVIDER_FALLBACK: str = FALLBACK_MODEL.removeprefix("openrouter/");
 
 glob fake: FakeOpenRouter = FakeOpenRouter();
 glob test_limiter: RequestLimiter = RequestLimiter(per_minute=60000);
+# The tests' own chain, reset before each scripted call, so a model one test retires does not
+# leak into the next or into the shared CHAIN.
+glob test_chain: ModelChain = ModelChain(models=[PRIMARY_MODEL, FALLBACK_MODEL]);
 glob test_llm: LimitedModel = LimitedModel(
     model_name=PRIMARY_MODEL,
     api_key="test-key",
     config={"base_url": fake.start()},
     limiter=test_limiter,
+    chain=test_chain,
     role="specialist",
     backoff_s=0.0,
     request_timeout_s=1.0
 );
 glob test_retry_llm: LimitedModel = LimitedModel(
     model_name=PRIMARY_MODEL, api_key="test-key", config=test_llm.config,
-    limiter=test_limiter, role="retry", backoff_s=0.0, request_timeout_s=1.0
+    limiter=test_limiter, chain=test_chain, role="retry", backoff_s=0.0, request_timeout_s=1.0
 );
 
 def cast_vote(ticker: str) -> Vote by test_llm(max_output_retries=1);
@@ -58,8 +67,10 @@ async def cast_vote_async(ticker: str) -> Vote by test_llm(max_output_retries=1)
 
 """Run one scripted call and return the vote, the requests the fake saw, and the limiter count."""
 def scripted_vote(script: list[tuple[int, str]]) -> tuple[Vote, list[dict[str, object]], int] {
+    test_chain.reset([PRIMARY_MODEL, FALLBACK_MODEL]);
     fake.script = script;
     fake.requests = [];
+    test_chain.reset([PRIMARY_MODEL, FALLBACK_MODEL]);
     before = test_limiter.sent;
     vote = cast_vote("AAPL");
     return (vote, fake.requests, test_limiter.sent - before);
@@ -110,6 +121,7 @@ test "a primary model not found falls back to the second free model" {
 test "the kill switch stops calls before any request" {
     fake.script = [(200, VOTE_JSON)];
     fake.requests = [];
+    test_chain.reset([PRIMARY_MODEL, FALLBACK_MODEL]);
     before = test_limiter.sent;
     os.environ[KILL_SWITCH_ENV] = "1";
     try {
@@ -193,6 +205,7 @@ test "an outer transient retry restarts on the primary and remains counted" {
 test "the async typed retry path has the same request classification" {
     fake.script = [(200, "not json"), (200, VOTE_JSON)];
     fake.requests = [];
+    test_chain.reset([PRIMARY_MODEL, FALLBACK_MODEL]);
     before = test_limiter.snapshot();
     result = asyncio.run(cast_vote_async("AAPL"));
     assert result.stance == Stance.BUY;
@@ -202,6 +215,7 @@ test "the async typed retry path has the same request classification" {
 test "concurrent calls start independently and snapshots cannot mutate limiter counts" {
     fake.script = [(200, VOTE_JSON)] * 8;
     fake.requests = [];
+    test_chain.reset([PRIMARY_MODEL, FALLBACK_MODEL]);
     before = test_limiter.snapshot();
     with ThreadPoolExecutor(max_workers=4) as workers {
         votes = list(workers.map(cast_vote, ["AAPL"] * 8));
@@ -228,6 +242,7 @@ test "the known Flow citation failure takes four requests while a verified gap H
     legacy = {"stance": "HOLD", "confidence": 0.2, "horizon_days": 10, "rationale": "Missing flow inputs.", "cited_evidence": []};
     fake.script = [(200, json.dumps(legacy))] * 4 + [(200, json.dumps({**legacy, "cited_gaps": [gap]}))];
     fake.requests = [];
+    test_chain.reset([PRIMARY_MODEL, FALLBACK_MODEL]);
     saved = (specialists_module.specialist_llm, specialists_module.retry_llm);
     setattr(specialists_module, "specialist_llm", test_llm);
     setattr(specialists_module, "retry_llm", test_retry_llm);
@@ -337,4 +352,60 @@ test "an unreadable or missing count, or no key, gives None" {
     assert requests_left_from_fake(None) is None;
     assert requests_left_from_fake({"used": 5}) is None;
     assert requests_left_from_fake({"remaining": 9}, key="") is None;
+}
+
+test "a model OpenRouter says is gone is retired, so the next call goes straight to the next model" {
+    (vote, sent, counted) = scripted_vote([(404, ""), (200, VOTE_JSON), (200, VOTE_JSON)]);
+    assert vote.stance == Stance.BUY;
+    assert [r["model"] for r in sent] == [PROVIDER_PRIMARY, PROVIDER_FALLBACK];
+    assert list(test_chain.retired) == [PRIMARY_MODEL];
+    before = test_limiter.snapshot();
+    second = cast_vote("AAPL");
+    assert second.stance == Stance.BUY;
+    assert [r["model"] for r in fake.requests] == [PROVIDER_PRIMARY, PROVIDER_FALLBACK, PROVIDER_FALLBACK];
+    # The model now first in service is a first attempt, not a fallback.
+    assert test_limiter.since(before) == {"specialist": {"first_attempt": 1, "parse_retry": 0, "transient_retry": 0, "fallback": 0}};
+}
+
+test "a model that is only down or rate limited stays in service" {
+    (vote, sent, counted) = scripted_vote([(503, ""), (200, VOTE_JSON), (200, VOTE_JSON)]);
+    assert test_chain.retired == {};
+    cast_vote("AAPL");
+    assert [r["model"] for r in fake.requests] == [PROVIDER_PRIMARY, PROVIDER_FALLBACK, PROVIDER_PRIMARY];
+}
+
+test "only a gone answer counts as gone, wherever it sits in the exception chain" {
+    assert model_gone(RuntimeError('OpenrouterException - {"error":{"message":"This model is unavailable for free. The paid version is available now"}}'));
+    assert model_gone(RuntimeError("No endpoints found for nvidia/x:free."));
+    wrapped = RuntimeError("the call failed");
+    wrapped.__cause__ = ValueError("This model is unavailable for free.");
+    assert model_gone(wrapped);
+    assert not model_gone(RuntimeError("Service temporarily overloaded"));
+    assert not model_gone(TimeoutError("timed out"));
+}
+
+test "a chain keeps its order, skips retired models, and offers all of them once every one is retired" {
+    chain = ModelChain(models=["a", "b", "c"]);
+    chain.retire("b", "gone");
+    assert chain.live() == ["a", "c"];
+    chain.retire("a", "gone");
+    chain.retire("c", "gone");
+    assert chain.live() == ["a", "b", "c"];
+    chain.reset(["d", "a"]);
+    assert chain.live() == ["d", "a"];
+    assert chain.retired == {};
+    with testraises(ValueError) {
+        chain.reset([]);
+    }
+}
+
+test "an answer through the Free Models Router records which model gave it" {
+    test_chain.reset([PRIMARY_MODEL, ROUTER_MODEL]);
+    fake.script = [(503, ""), (200, VOTE_JSON)];
+    fake.requests = [];
+    routed = cast_vote("AAPL");
+    assert routed.stance == Stance.BUY;
+    assert [r["model"] for r in fake.requests] == [PROVIDER_PRIMARY, "openrouter/free"];
+    # The fake answers with the model it was asked for; OpenRouter names the model it picked.
+    assert test_chain.routed == {"openrouter/free": 1};
 }

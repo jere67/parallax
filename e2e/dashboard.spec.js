@@ -80,3 +80,33 @@ test("the theme switch changes the theme and keeps it on reload", async ({ page 
   await page.reload();
   await expect(html).toHaveAttribute("data-theme", next);
 });
+
+// Uses the demo server's existing reports; no model or broker calls.
+test("reports: sign in, request a cached insight, and retain private history", async ({ page }, info) => {
+  test.setTimeout(180_000);
+  await page.goto("/runs");
+  const latestTicker = page.locator('a[href^="/runs/"][href*="/"]').filter({ hasText: /^[A-Z.]+$/ }).first();
+  const symbol = (await latestTicker.textContent()).trim();
+  await page.getByRole("link", { name: "Reports", exact: true }).click();
+  await page.getByRole("button", { name: "New here? Create an account" }).click();
+  const email = `reports-${info.project.name}-${Date.now()}@example.test`;
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill("local-report-test-password");
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Stock reports", exact: true })).toBeVisible();
+  const request = page.getByRole("button", { name: "Request report", exact: true });
+  await expect(request).toBeEnabled({ timeout: 90_000 });
+  await page.getByLabel("S&P 500 stock").fill(symbol);
+  await request.click();
+  await expect(page.getByRole("heading", { name: "Specialist votes", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sources", exact: true })).toBeVisible();
+  await expect(page.getByText("Demo report — invented prices and research.")).toBeVisible();
+  await fitsWidth(page);
+  await request.click();
+  await expect(page.locator("article")).toHaveCount(1);
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill("local-report-test-password");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.locator("article")).toHaveCount(1);
+});

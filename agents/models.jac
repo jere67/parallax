@@ -5,18 +5,40 @@ m's call params, so roles that share an instance leak settings into each other's
 concurrent calls (TDD §3, rules 1 to 3). Every provider request goes through
 LimitedModel.model_call_no_stream: byLLM's parse retries, transient-error retries, ReAct
 iterations, and compaction summaries all call it again.
+
+Every role calls the same ordered chain of free models, CHAIN. agents/catalog.jac sets it
+from OpenRouter's live free list at each run's preflight, and a model OpenRouter answers is
+gone or no longer free is retired for the rest of the run, so later requests skip it instead
+of spending a request on it first.
 """
 import asyncio;
 import from contextvars { ContextVar }
+import logging;
 import os;
 import threading;
 import time;
 import from datetime { datetime, timezone }
 import from importlib { import_module }
 import httpx;
-import from jaclang.byllm.lib { AuthenticationError, ConfigurationError, Model, RateLimitError }
+import from jaclang.byllm.lib { AuthenticationError, ConfigurationError, Model, ModelNotFoundError, RateLimitError }
 import from jaclang.byllm.mtir { MTRuntime }
 import from jaclang.byllm.types { CompletionResult }
+
+"""Optional per-report ceiling, shared by its network tasks and including retries."""
+obj RequestBudget {
+    has remaining: int, deadline: float;
+    has used: int = 0;
+
+    def consume {
+        if self.remaining <= 0 or time.monotonic() >= self.deadline {
+            raise RuntimeError("Report model budget or deadline exhausted.");
+        }
+        self.remaining -= 1;
+        self.used += 1;
+    }
+}
+
+glob REQUEST_BUDGET: ContextVar[RequestBudget | None] = ContextVar("report_budget", `default=None);
 
 glob REQUEST_KINDS: tuple[str, ...] = ("first_attempt", "parse_retry", "transient_retry", "fallback");
 
@@ -52,12 +74,16 @@ def model_error(error: Exception, previous: str = "") -> str {
     return "\nCaused by: ".join(parts);
 }
 
-# Chosen by spike #12 (docs/spikes/2026-10-08-free-models.md): the only free model with every
-# typed output valid on the first request and no provider errors. The fallback was the
-# runner-up; it is a preview that OpenRouter lists until 2026-12-31. The Free Models Router
-# is not a fallback: it sent a plain prompt to a content-safety classifier.
-glob PRIMARY_MODEL: str = "openrouter/nvidia/nemotron-3-super-120b-a12b:free";
+# The vetted order, from the free-model spike of 2026-11-02 (docs/spikes/2026-11-02-free-models.md),
+# rerun after Nemotron 3 Super left the free list: Nemotron 3.5 Super VL returned 11 of 12
+# typed outputs on the first request with no provider errors. The fallback needed a parse retry
+# on 8 of 12; it is a preview that OpenRouter lists until 2026-12-31. agents/catalog.jac checks
+# both against the live free list at each run and fills in behind them.
+glob PRIMARY_MODEL: str = "openrouter/nvidia/nemotron-3.5-super-vl:free";
 glob FALLBACK_MODEL: str = "openrouter/dots-studio/dots-3-note-preview:free";
+# OpenRouter's Free Models Router, the chain's last link: it picks some free model per request,
+# so it is used only after every chosen model has failed (agents/catalog.jac).
+glob ROUTER_MODEL: str = "openrouter/openrouter/free";
 glob REQUESTS_PER_MINUTE: int = 18;
 # Spike #12's slowest successful request took 153 s; LiteLLM's default would wait 600 s.
 glob REQUEST_TIMEOUT_S: float = 180.0;
@@ -83,6 +109,84 @@ obj ModelsDisabledError(Exception) {}
 def models_disabled -> bool {
     return os.environ.get(KILL_SWITCH_ENV, "").strip().lower() in ("1", "true", "yes");
 }
+
+glob LOG: logging.Logger = logging.getLogger("trading_agent.models");
+# What OpenRouter says about a model that has left the free list or has no provider left
+# (2026-11-02: "This model is unavailable for free"), besides byLLM's ModelNotFoundError.
+glob GONE_MARKERS: tuple[str, ...] = ("unavailable for free", "No endpoints found", "is not a valid model");
+
+"""True when `error` says the model is gone, not merely busy, so retrying it is a waste."""
+def model_gone(error: Exception) -> bool {
+    current: BaseException | None = error;
+    seen: set[int] = set();
+    while current is not None and id(current) not in seen {
+        seen.add(id(current));
+        if isinstance(current, ModelNotFoundError) or "NotFound" in type(current).__name__ {
+            return True;
+        }
+        if any(marker in str(current) for marker in GONE_MARKERS) {
+            return True;
+        }
+        current = current.__cause__ or current.__context__;
+    }
+    return False;
+}
+
+"""The free models every role calls, in order: a request goes to the first model in service,
+then to each next one when it stays rate limited, fails, or hangs. A model OpenRouter says is
+gone is retired until the next `reset`, at the next run's preflight. `routed` counts which
+models answered through the Free Models Router, since its name says nothing about that."""
+obj ModelChain {
+    has models: list[str];
+    has retired: dict[str, str] = {},
+        routed: dict[str, int] = {},
+        _lock: threading.Lock | None = None;
+
+    def postinit {
+        self._lock = threading.Lock();
+    }
+
+    """Use `models`, in order, and bring every retired model back."""
+    def reset(models: list[str]) {
+        if not models {
+            raise ValueError("a model chain needs at least one model");
+        }
+        with self._lock {
+            self.models = list(models);
+            self.retired = {};
+            self.routed = {};
+        }
+    }
+
+    """Count an answer the router got from `answered_by`."""
+    def note_routed(answered_by: str) {
+        with self._lock {
+            self.routed[answered_by] = self.routed.get(answered_by, 0) + 1;
+        }
+    }
+
+    """The models in service, in order. When every model is retired, all of them, so a request
+    still reaches a provider and fails with its own error rather than ours."""
+    def live -> list[str] {
+        with self._lock {
+            found = [m for m in self.models if m not in self.retired];
+            return found or list(self.models);
+        }
+    }
+
+    """Take `model` out of service until the next reset."""
+    def retire(model: str, reason: str) {
+        with self._lock {
+            if model in self.retired {
+                return;
+            }
+            self.retired[model] = reason;
+        }
+        LOG.warning("model %s retired for this run: %s", model, reason);
+    }
+}
+
+glob CHAIN: ModelChain = ModelChain(models=[PRIMARY_MODEL, FALLBACK_MODEL, ROUTER_MODEL]);
 
 """Paces requests evenly to at most `per_minute`, across every thread, and counts them per UTC
 day, along with how many went to the fallback model."""
@@ -111,6 +215,8 @@ obj RequestLimiter {
                 # Space from the real wake-up, which can be late, not the scheduled slot.
                 now = time.monotonic();
             }
+            budget = REQUEST_BUDGET.get();
+            if budget is not None { budget.consume(); }
             self._next_slot = now + 60.0 / self.per_minute;
             self.sent += 1;
             day = datetime.now(timezone.utc).date().isoformat();
@@ -164,8 +270,8 @@ def provider_requests_left -> int | None {
 }
 
 """A byLLM model whose every provider request passes the limiter, backs off on 429, times
-out, and falls back to a second free model when the primary model stays rate limited, is
-down, hangs, or has left the free list.
+out, and falls back down its model chain when a model stays rate limited, is down, hangs, or
+has left the free list. A model that has left the free list is retired for the run.
 
 byLLM maps only 401, 429, and 404 to ByLLMError; a 5xx, an overloaded provider, a dropped
 connection, or a timeout arrives as LiteLLM's own exception, so every error but an
@@ -173,7 +279,7 @@ authentication or configuration one falls back (#53)."""
 obj LimitedModel(Model) {
     has limiter: RequestLimiter = LIMITER,
         role: str = "unknown",
-        fallback_model: str = FALLBACK_MODEL,
+        chain: ModelChain = CHAIN,
         max_429_retries: int = 3,
         backoff_s: float = 2.0,
         request_timeout_s: float = REQUEST_TIMEOUT_S,
@@ -221,27 +327,49 @@ obj LimitedModel(Model) {
         };
         params["timeout"] = self.request_timeout_s;
         state = _ATTEMPT.get() or RequestAttempt();
-        for attempt in range(self.max_429_retries + 1) {
-            self.limiter.acquire(self.role, "transient_retry" if state.sent else state.kind);
-            state.sent += 1;
-            try {
-                return super.model_call_no_stream(params);
-            } except AuthenticationError {
-                raise;
-            } except ConfigurationError {
-                raise;
-            } except RateLimitError {
-                if attempt < self.max_429_retries {
-                    time.sleep(self.backoff_s * (2 ** attempt));
+        models = self.chain.live();
+        for (index, model) in enumerate(models) {
+            params["model"] = model;
+            last = index == len(models) - 1;
+            # The first model in service backs off on 429s; each later one gets one request.
+            tries = self.max_429_retries + 1 if index == 0 else 1;
+            for attempt in range(tries) {
+                if index == 0 {
+                    self.limiter.acquire(self.role, "transient_retry" if state.sent else state.kind);
+                } else {
+                    self.limiter.acquire(self.role, "fallback");
                 }
-            } except Exception {
-                break;
+                state.sent += 1;
+                try {
+                    response = super.model_call_no_stream(params);
+                    if model == ROUTER_MODEL {
+                        answered_by = str(getattr(response, "model", "") or "unknown");
+                        self.chain.note_routed(answered_by);
+                        LOG.warning("every chosen model failed; the Free Models Router answered with %s", answered_by);
+                    }
+                    return response;
+                } except AuthenticationError {
+                    raise;
+                } except ConfigurationError {
+                    raise;
+                } except RateLimitError {
+                    if attempt < tries - 1 {
+                        time.sleep(self.backoff_s * (2 ** attempt));
+                    } elif last {
+                        raise;
+                    }
+                } except Exception as e {
+                    if model_gone(e) {
+                        self.chain.retire(model, model_error(e)[:300]);
+                    }
+                    if last {
+                        raise;
+                    }
+                    break;
+                }
             }
         }
-        params["model"] = self.fallback_model;
-        self.limiter.acquire(self.role, "fallback");
-        state.sent += 1;
-        return super.model_call_no_stream(params);
+        raise RuntimeError("the model chain is empty");
     }
 
     """Model's async path calls the provider directly, so route it through the sync one."""

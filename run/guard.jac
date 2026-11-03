@@ -16,7 +16,8 @@ import from concurrent.futures { Future }
 import from datetime { date, datetime }
 import from zoneinfo { ZoneInfo }
 import from action.insights { publish_card }
-import from agents.models { FALLBACK_MODEL, FREE_REQUESTS_PER_DAY, LIMITER, PRIMARY_MODEL, model_error, provider_requests_left, request_total }
+import from agents.catalog { resolve_models }
+import from agents.models { CHAIN, FREE_REQUESTS_PER_DAY, LIMITER, model_error, provider_requests_left, request_total }
 import from agents.research { MacroResult, ResearchResult, fallback, macro_research, research }
 import from analysis.consensus { CONSENSUS_VERSION, ConsensusConfig }
 import from models.agents { Domain }
@@ -75,9 +76,9 @@ obj RunLimits {
         reduced_samples: int = 1;
 }
 
-"""What preflight found: whether the market trades on the run date, and how many free-model
+"""What preflight found: whether the market trades on the run date, how many free-model
 requests the day has left by the app's own count and by OpenRouter's, the lower of which
-sets the run's budget and whether it runs reduced."""
+sets the run's budget and whether it runs reduced, and which free models the run calls."""
 obj Preflight {
     has run_day: str;
     has trading_day: bool = True,
@@ -86,7 +87,9 @@ obj Preflight {
         provider_left: int | None = None,
         requests_left: int = 0,
         reduced: bool = False,
-        run_requests: int = 0;
+        run_requests: int = 0,
+        models: list[str] = [],
+        models_note: str = "";
 }
 
 """One targeted research question in an Orchestrator follow-up batch."""
@@ -100,7 +103,8 @@ sem Followup.ticker = "A covered ticker, such as AAPL.";
 sem Followup.domain = "The research domain to re-run: market, fundamentals, or news.";
 sem Followup.question = "One specific question whose answer could change the decision.";
 
-"""Check the market calendar and the day's request allowance (TDD §12, request controls)."""
+"""Check the market calendar, the day's request allowance, and the free models still listed
+(TDD §12, request controls)."""
 def preflight(run_day: str, portfolio: Portfolio, limits: RunLimits = RunLimits()) -> Preflight {
     found = Preflight(run_day=run_day);
     try {
@@ -119,6 +123,7 @@ def preflight(run_day: str, portfolio: Portfolio, limits: RunLimits = RunLimits(
     found.requests_left = max(0, min(left, found.provider_left) if found.provider_left is not None else left);
     found.reduced = found.requests_left < limits.reduced_below;
     found.run_requests = min(limits.run_requests, found.requests_left);
+    (found.models, found.models_note) = resolve_models(run_day);
     return found;
 }
 
@@ -596,6 +601,20 @@ def default_summary(s: RunSession, status: RunStatus) -> str {
     return f"{len(s.tickers())} tickers decided by {how}: " + ", ".join(f"{n} {a}" for (a, n) in sorted(counts.items())) + f". {s.requests_used()} model requests.";
 }
 
+"""The run's free models for its record: the first two in the chain as `primary` and
+`fallback`, the whole chain, each model retired mid-run with OpenRouter's reason, and which
+models answered through the router."""
+def model_chain_versions -> dict[str, str] {
+    found = {"primary": CHAIN.models[0], "fallback": CHAIN.models[1] if len(CHAIN.models) > 1 else "", "chain": ", ".join(CHAIN.models)};
+    if CHAIN.retired {
+        found["retired"] = "; ".join(f"{m}: {why}" for (m, why) in CHAIN.retired.items());
+    }
+    if CHAIN.routed {
+        found["routed"] = ", ".join(f"{m} ({n})" for (m, n) in sorted(CHAIN.routed.items()));
+    }
+    return found;
+}
+
 """Write a finished session under its claimed run: the run's totals, the macro record, and a
 coverage per ticker with every research report, its votes, consensus, and decision, each
 granted READ. Call it on the caller's thread, never on a worker thread."""
@@ -627,7 +646,7 @@ def record_run(portfolio: Portfolio, run: Run, s: RunSession, status: RunStatus)
         record_analysis(cov, s.analyses[pick.symbol]);
         publish_card(cov, s.run_day, portfolio.mode.value, finished);
     }
-    run.model_versions = {"primary": PRIMARY_MODEL, "fallback": FALLBACK_MODEL, "sources": SOURCES_VERSION, "screen": s.collection.shortlist.version, "consensus": CONSENSUS_VERSION};
+    run.model_versions = {**model_chain_versions(), "sources": SOURCES_VERSION, "screen": s.collection.shortlist.version, "consensus": CONSENSUS_VERSION};
     run.model_requests_by_role = LIMITER.since(s.request_counts_at_start);
     run.model_requests = request_total(run.model_requests_by_role);
     count_requests(portfolio, utc_now().date().isoformat(), run.model_requests);
@@ -654,12 +673,22 @@ def _close(run: Run, status: RunStatus, summary: str) {
 layer trades (#29), decisions are published, not executed. Its starting balance is set when
 the paper account is connected (GAP-09)."""
 def team_portfolio -> Portfolio {
+    found = find_team_portfolio();
+    if found is not None {
+        return found;
+    }
+    return public(root.shared ++> Portfolio(name=TEAM_PORTFOLIO, mode=PortfolioMode.INSIGHT, starting_cash=0.0, opened_at=utc_now().isoformat()));
+}
+
+"""The team portfolio on root.shared, or None before the first run creates it. Readers that
+must not create it (a request on a user's graph) use this instead of `team_portfolio`."""
+def find_team_portfolio -> Portfolio | None {
     for p in [root.shared -->[?:Portfolio]] {
         if p.name == TEAM_PORTFOLIO {
             return p;
         }
     }
-    return public(root.shared ++> Portfolio(name=TEAM_PORTFOLIO, mode=PortfolioMode.INSIGHT, starting_cash=0.0, opened_at=utc_now().isoformat()));
+    return None;
 }
 
 """Today's date in New York, the trading date a morning run decides."""
