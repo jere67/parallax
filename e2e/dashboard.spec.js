@@ -101,6 +101,17 @@ test("reports: sign in, request a cached insight, and retain private history", a
   await expect(page.getByRole("heading", { name: "Specialist votes", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Sources", exact: true })).toBeVisible();
   await expect(page.getByText("Demo report — invented prices and research.")).toBeVisible();
+  const votes = page.getByRole("button", { name: /Specialist votes/ });
+  await expect(votes).toHaveAttribute("aria-expanded", "true");
+  await votes.click();
+  await expect(votes).toHaveAttribute("aria-expanded", "false");
+  await votes.click();
+  await expect(votes).toHaveAttribute("aria-expanded", "true");
+  const sources = page.getByRole("button", { name: /Sources/ });
+  await sources.click();
+  await expect(sources).toHaveAttribute("aria-expanded", "false");
+  await sources.click();
+  await expect(sources).toHaveAttribute("aria-expanded", "true");
   await fitsWidth(page);
   await request.click();
   await expect(page.locator("article")).toHaveCount(1);
