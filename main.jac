@@ -1,3 +1,4 @@
+import from reports.worker { reports_job }
 import from reports.api { request_report, list_reports, get_report }
 import from models.health { Health }
 import from run.health { health }
