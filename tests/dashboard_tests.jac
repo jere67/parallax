@@ -23,6 +23,7 @@ test "anonymous readers get the portfolio, its runs, and a decision trail" {
         runs = call(client, "list_runs");
         run = call(client, "get_run");
         trail = call(client, "get_decision_trail", {"run_date": "2026-10-21", "ticker": "aapl"});
+        specialists = call(client, "get_specialists");
         missing = call(client, "get_decision_trail", {"run_date": "2026-10-21", "ticker": "MSFT"});
     } finally {
         client.close();
@@ -33,5 +34,6 @@ test "anonymous readers get the portfolio, its runs, and a decision trail" {
     assert [r["run_date"] for r in runs] == ["2026-10-21"] and runs[0]["actions"] == {"BUY": 1};
     assert run["run_date"] == "2026-10-21" and [r["ticker"] for r in run["rows"]] == ["AAPL"];
     assert trail["ticker"] == "AAPL" and trail["decision"]["action"] == "BUY" and trail["disclaimer"];
+    assert len(specialists) == 5 and all(s["votes"] == 0 and s["hit_rate"] is None for s in specialists);
     assert missing is None;
 }

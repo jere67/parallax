@@ -73,6 +73,8 @@ import from models.views {
     SampleView,
     Series,
     SpecialistView,
+    SpecialistSummaryView,
+    SpecialistVoteView,
     TrailView
 }
 import from run.guard { TEAM_PORTFOLIO }
@@ -81,6 +83,9 @@ glob TRADING_DAYS: int = 252;
 glob RECENT_ORDERS: int = 60;
 glob RECENT_CLOSED: int = 40;
 glob MAX_RUNS: int = 250;
+glob SPECIALIST_RUNS: int = 60;
+glob RECENT_SPECIALIST_VOTES: int = 8;
+glob SPECIALIST_ROLES: list[Specialist] = [Specialist.FUNDAMENTALS, Specialist.TECHNICAL, Specialist.NEWS, Specialist.MACRO, Specialist.FLOW];
 glob SERIES_LABELS: dict[str, str] = {"team": "Team portfolio", "equal_weight": "Equal-weight shortlist", "spy": "SPY buy-and-hold"};
 # Research is shown nearest the price first, as on the insight cards (action/insights.jac).
 glob DOMAIN_ORDER: list[Domain] = [Domain.MARKET, Domain.FUNDAMENTALS, Domain.NEWS, Domain.MACRO];
@@ -146,6 +151,15 @@ def:pub get_decision_trail(run_date: str, ticker: str) -> TrailView | None {
     return VIEWS.get(view_key(team, "trail", run_date, symbol), trail_view, team, run_date, symbol);
 }
 
+"""The five roles' recent votes and outcomes, drawn only from stored team runs."""
+def:pub get_specialists -> list[SpecialistSummaryView] {
+    team = find_team();
+    if team is None {
+        return [SpecialistSummaryView(specialist=s.value) for s in SPECIALIST_ROLES];
+    }
+    return VIEWS.get(view_key(team, "specialists"), specialist_summaries, team);
+}
+
 """Rebuild the views every page opens with, so no reader waits for them (dashboard/cache.jac).
 A static job runs as the system user, which reaches root.shared."""
 @schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * *")
@@ -156,6 +170,7 @@ def refresh_job {
         VIEWS.put(view_key(team, "performance"), performance_view(team));
         VIEWS.put(view_key(team, "runs"), run_summaries(team));
         VIEWS.put(view_key(team, "run", ""), run_view(team, ""));
+        VIEWS.put(view_key(team, "specialists"), specialist_summaries(team));
     }
 }
 
@@ -361,6 +376,35 @@ def series(key: str, marks: list[DailyMark], starting_cash: float) -> Series {
 
 def runs_by_day(portfolio: Portfolio) -> dict[str, Run] {
     return {r.run_date: r for r in [portfolio ->:Ran:->[?:Run]]};
+}
+
+def specialist_summaries(portfolio: Portfolio) -> list[SpecialistSummaryView] {
+    by_role = {s.value: SpecialistSummaryView(specialist=s.value) for s in SPECIALIST_ROLES};
+    runs = runs_by_day(portfolio);
+    for day in sorted(runs, reverse=True)[:SPECIALIST_RUNS] {
+        for cov in sorted([c for c in [runs[day] ->:Covers:->[?:Coverage]]], key=lambda (c: Coverage) { c.ticker; }) {
+            for v in sorted([v for v in [cov ->:Voted:->[?:VoteRecord]]], key=lambda (v: VoteRecord) { (v.specialist.value, v.sample); }) {
+                row = by_role[v.specialist.value];
+                row.votes += 1;
+                result = hit(v);
+                if result is not None {
+                    row.scored += 1;
+                    if result { row.hits += 1; }
+                }
+                if len(row.recent) < RECENT_SPECIALIST_VOTES {
+                    row.recent.append(SpecialistVoteView(
+                        run_date=day, ticker=cov.ticker, sample=v.sample,
+                        stance=v.body.stance.value, confidence=v.body.confidence,
+                        rationale=v.body.rationale, scored_at=v.scored_at, hit=result
+                    ));
+                }
+            }
+        }
+    }
+    for row in by_role.values() {
+        row.hit_rate = row.hits / row.scored if row.scored else None;
+    }
+    return [by_role[s.value] for s in SPECIALIST_ROLES];
 }
 
 def first_of[T](items: list[T]) -> T | None {
@@ -608,14 +652,14 @@ def packet_sources(records: list[ResearchRecord], macro: MacroRecord | None, tic
         newest[r.domain] = r.body;
     }
     body = macro.body if macro is not None else None;
-    return {s.value: [evidence_view(e) for e in packet(s, ticker, run_date, newest, body).evidence] for s in list(Specialist)};
+    return {s.value: [evidence_view(e) for e in packet(s, ticker, run_date, newest, body).evidence] for s in SPECIALIST_ROLES};
 }
 
 """Each specialist's samples in panel order, with its mean signed score, its weight, and the
 evidence each sample cited."""
 def specialist_views(votes: list[VoteRecord], weights: dict[str, float], sources: dict[str, list[EvidenceView]] = {}) -> list[SpecialistView] {
     found: list[SpecialistView] = [];
-    for s in list(Specialist) {
+    for s in SPECIALIST_ROLES {
         mine = sorted([v for v in votes if v.specialist == s], key=lambda (v: VoteRecord) { v.sample; });
         if not mine {
             continue;

@@ -12,8 +12,10 @@ glob:pub TONE_WARN: str = "border-warn/35 bg-warn/15 text-warn";
 glob:pub TONE_ACCENT: str = "border-accent/40 bg-accent/15 text-accent";
 glob:pub TONE_QUIET: str = "border-line-strong bg-panel-2 text-muted";
 glob ACTION_TONES: dict[str, str] = {
+    "STRONG_BUY": TONE_UP,
     "BUY": TONE_UP,
     "ADD": TONE_UP,
+    "STRONG_SELL": TONE_DOWN,
     "SELL": TONE_DOWN,
     "TRIM": TONE_DOWN,
     "HOLD": TONE_QUIET,
@@ -98,7 +100,7 @@ def:pub Delta(text: str, value: float | None = None) -> JsxElement {
 
 def:pub ActionBadge(action: str) -> JsxElement {
     tone = ACTION_TONES.get(action, TONE_QUIET);
-    <span className={PILL_BASE + " tracking-[0.03em] " + tone}>{"No action" if action == "NO_ACTION" else action}</span>
+    <span className={PILL_BASE + " tracking-[0.03em] " + tone}>{"No action" if action == "NO_ACTION" else action.replace("_", " ")}</span>
 }
 
 """Alpaca's names for an order still working at the broker."""

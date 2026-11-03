@@ -67,14 +67,15 @@ def:pub Layout -> JsxElement {
 
     <div className="flex min-h-dvh flex-col">
         <header className="sticky top-0 z-20 border-b border-line bg-bg/90 backdrop-blur-md">
-            <div className="mx-auto flex h-12 max-w-[1200px] items-center gap-6 px-4 sm:px-6 lg:px-8">
+            <div className="mx-auto flex h-12 max-w-[1200px] items-center gap-3 px-4 sm:gap-6 sm:px-6 lg:px-8">
                 <Link to="/" className="flex items-center gap-2" aria-label="Trading Agent, home">
                     <Mark/>
                     <span className="display hidden text-[19px] leading-none sm:inline">Trading Agent</span>
                 </Link>
-                <nav className="flex items-center gap-6">
+                <nav className="flex items-center gap-3 sm:gap-6">
                     <NavLink to="/" active={path == "/"}>Portfolio</NavLink>
                     <NavLink to="/reports" active={path.startsWith("/reports")}>Reports</NavLink>
+                    <NavLink to="/specialists" active={path.startsWith("/specialists")}>Specialists</NavLink>
                     <NavLink to="/runs" active={path.startsWith("/runs")}>Runs</NavLink>
                 </nav>
                 <div className="ml-auto flex items-center gap-3">

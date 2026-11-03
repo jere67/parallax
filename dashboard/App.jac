@@ -5,6 +5,7 @@ import from dashboard.Layout { Layout }
 import from dashboard.NotFound { NotFound }
 import from dashboard.PortfolioPage { PortfolioPage }
 import from dashboard.ReportsPage { ReportsPage }
+import from dashboard.SpecialistsPage { SpecialistsPage }
 import from dashboard.RunPage { RunPage }
 import from dashboard.DecisionPage { DecisionPage }
 import from dashboard.ui.theme { restore_theme }
@@ -16,6 +17,7 @@ def:pub App -> JsxElement {
             <Route path="/" element={<Layout/>}>
                 <Route index={True} element={<PortfolioPage/>}/>
                 <Route path="reports" element={<ReportsPage/>}/>
+                <Route path="specialists" element={<SpecialistsPage/>}/>
                 <Route path="runs" element={<RunPage/>}/>
                 <Route path="runs/:day" element={<RunPage/>}/>
                 <Route path="runs/:day/:ticker" element={<DecisionPage/>}/>
