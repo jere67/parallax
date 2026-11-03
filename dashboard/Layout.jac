@@ -74,6 +74,7 @@ def:pub Layout -> JsxElement {
                 </Link>
                 <nav className="flex items-center gap-6">
                     <NavLink to="/" active={path == "/"}>Portfolio</NavLink>
+                    <NavLink to="/reports" active={path.startsWith("/reports")}>Reports</NavLink>
                     <NavLink to="/runs" active={path.startsWith("/runs")}>Runs</NavLink>
                 </nav>
                 <div className="ml-auto flex items-center gap-3">

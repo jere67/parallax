@@ -38,3 +38,16 @@ A failed or interrupted job remains failed for that ticker/date, with a safe err
 After fifteen minutes an abandoned running claim becomes failed.
 Pending work from a previous trading date expires instead of generating a misleading current report.
 The worker uses a process-local future, so deploy one application replica for this first implementation; a multi-replica durable worker is outside this scoped feature.
+
+## Reports page
+
+Open `/reports` or use **Reports** in the dashboard navigation.
+Create an email/password account or sign in, choose a ticker, and request its report.
+The page refreshes every five seconds and shows queued, running, ready, and failed requests in your own history.
+Ready cards include the thesis, risks, exit condition, specialist votes, and source links.
+Signing out hides the history; signing back in restores it.
+
+For local review, run the app with `TRADING_AGENT_DEMO=1 TRADING_AGENT_DISABLE_MODELS=1 TRADING_AGENT_DISABLE_ORDERS=1`.
+After the demo and report jobs run, requests for tickers covered on the latest demo day return clearly labeled cached demo cards.
+This checks the UI without consuming provider credits.
+The existing browser device matrix also checks sign-up, a cached request, duplicate reuse, and sign-in history restoration.
