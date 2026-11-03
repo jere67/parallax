@@ -4,7 +4,8 @@ Requests are answered from a script of (status, content) pairs in order and reco
 test can count exactly how many requests reached the provider. A request beyond the script
 gets a 500, which makes an unexpected extra request fail loudly. `delays` holds seconds to
 wait before answering each request in order, to make a request time out. `key_usage` is
-what GET /key reports as `free_model_daily_requests` (None answers 500).
+what GET /key reports as `free_model_daily_requests` (None answers 500), and `models` the rows
+GET /models lists (None answers 500).
 """
 import json;
 import threading;
@@ -16,7 +17,8 @@ obj FakeOpenRouter {
         delays: list[float] = [],
         requests: list[dict] = [],
         key_usage: dict[str, int] | None = None,
-        key_requests: list[str] = [];
+        key_requests: list[str] = [],
+        models: list[dict] | None = None;
     has _server: ThreadingHTTPServer | None = None,
         _lock: threading.Lock | None = None;
 
@@ -76,6 +78,8 @@ class _Handler(BaseHTTPRequestHandler) {
         fake.key_requests.append(self.headers.get("Authorization", ""));
         if self.path.endswith("/key") and fake.key_usage is not None {
             (status, payload) = (200, {"data": {"label": "fake", "free_model_daily_requests": fake.key_usage}});
+        } elif self.path.endswith("/models") and fake.models is not None {
+            (status, payload) = (200, {"data": fake.models});
         } else {
             (status, payload) = (500, {"error": {"message": "fake status 500", "code": 500}});
         }
