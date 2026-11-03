@@ -426,11 +426,17 @@ The Macro sub-agent runs before the loop starts, so the run context already carr
 | --- | --- | --- |
 | `get_run_context()` | Returns the shortlist, portfolio, macro brief, and budget remaining | Read only |
 | `dispatch_research(tickers, domains)` | Runs the named research sub-agents for a batch of tickers in parallel | Once per ticker per domain |
-| `request_followup(ticker, domain, question)` | Re-runs one sub-agent with a targeted question, such as resolving a conflict between news and filings | Two per ticker |
+| `request_followup(followups)` | Re-runs research for a list of `{ticker, domain, question}` items together on the network pool; returns each item’s status in input order | Two per ticker across all calls; one initial-request budget slot reserved per accepted item |
 | `flag_ticker(ticker, reason)` | Marks a ticker as unreliable today; forces HOLD | Logged and shown on the dashboard |
 | `convene_panel(tickers)` | Runs the specialist panel, consensus engine, and Arbiter for a batch of tickers | Once per ticker; requires verified reports |
 | `submit_decisions(decisions)` | Sends the decision set to the Action layer | Once per run; passes through the risk gate |
 | `write_run_summary(text)` | Stores the day's plain-English summary | Once per run |
+
+Independent follow-up questions are batched in one tool call, including several tickers or domains (#72).
+The Run Guard validates each item and reserves ticker-cap and initial-request slots under its session lock before starting any accepted work.
+All accepted calls are submitted to the network pool before waiting, and research history is updated on the caller’s thread in input order.
+An invalid, over-cap, or over-budget item is refused individually; a failed answer does not discard the other results.
+Provider retries still pass the shared limiter and count toward the run’s request total; admission reserves initial calls rather than a worst-case retry allowance.
 
 ### Run Guard invariants
 

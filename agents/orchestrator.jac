@@ -30,8 +30,9 @@ obj Committee {
     1. Read the run context.
     2. Dispatch market, fundamentals, and news research for every covered ticker.
     3. Read the results. Where reports conflict, miss something material, or rest on stale
-       data, request a follow-up with one specific question; use follow-ups only where the
-       answer could change the decision. Flag a ticker whose data is unreliable today.
+       data, call request_followup once with a list of independent questions, each containing
+       ticker, domain, and question. Batch questions across tickers; use follow-ups only where
+       the answer could change the decision. Flag a ticker whose data is unreliable today.
     4. Convene the panel for every covered ticker.
     5. Submit the decisions, except in report_mode: then no submit tool exists and you must never trade.
     6. Write the run summary: three to five plain-English sentences on what the committee
