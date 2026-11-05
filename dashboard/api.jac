@@ -614,7 +614,8 @@ def packet_sources(records: list[ResearchRecord], macro: MacroRecord | None, tic
 """Each specialist's samples in panel order, with its mean signed score over the samples that
 count, its weight, and the evidence each sample cited. A specialist whose samples all abstain
 scores 0 and has no weight."""
-def specialist_views(votes: list[VoteRecord], weights: dict[str, float], sources: dict[str, list[EvidenceView]] = {}) -> list[SpecialistView] {
+def specialist_views(votes: list[VoteRecord], weights: dict[str, float], sources: dict[str, list[EvidenceView]] | None = None) -> list[SpecialistView] {
+    sources = sources or {};
     found: list[SpecialistView] = [];
     for s in list(Specialist) {
         mine = sorted([v for v in votes if v.specialist == s], key=lambda (v: VoteRecord) { v.sample; });
