@@ -8,6 +8,10 @@ scores, and A is the weighted share of each specialist's samples that point the 
 C; a HOLD vote (x = 0) points neither way, so it never agrees. The interval resamples whole
 specialists, each with all of its samples, since a specialist's samples share one prompt and
 one evidence set and are not independent.
+
+A vote that cites only data gaps abstains: missing inputs are uncertainty, not a view, so it
+adds nothing to C, A, or the interval, and a specialist whose samples all abstain is left out
+like one with no valid vote. Only a Flow HOLD can cite gaps alone (models/agents.jac, Vote).
 """
 import random;
 import zlib;
@@ -16,19 +20,21 @@ import from models.graph { TradeAction }
 
 # Bump when a threshold, the band, or the aggregation changes; runs store it with their
 # model versions so a decision can be traced to the rule that made it.
-glob CONSENSUS_VERSION: str = "2026-10-16";
+glob CONSENSUS_VERSION: str = "2026-11-04";
 
 """The panel's sampling settings and the decision thresholds.
 
-The thresholds are TDD §7's starting values, and `ambiguity_band` is proposed (GAP-04): all
-are tuned on history and frozen before the forward test. A result is ambiguous when moving C,
+The thresholds are TDD §7's starting values, except the buy pair: three live runs (November
+2 to 4, 2026) bought nothing at C ≥ 0.35 and A ≥ 0.6, so it is now 0.2 and 0.5
+(docs/spikes/2026-11-04-decision-backtest.md). `ambiguity_band` is proposed (GAP-04). All are
+retuned as the forward test adds history. A result is ambiguous when moving C,
 its interval, or A by up to the band would change the draft action; such a ticker gets
 `extra_samples` more samples per specialist."""
 obj ConsensusConfig {
     has samples: int = 3,
         extra_samples: int = 2,
-        buy_score: float = 0.35,
-        buy_agreement: float = 0.6,
+        buy_score: float = 0.2,
+        buy_agreement: float = 0.5,
         sell_score: float = -0.25,
         trim_agreement: float = 0.5,
         min_success: float = 0.6,
@@ -46,12 +52,18 @@ obj Consensus {
         ci_high: float;
     has specialist_scores: dict[str, float] = {},
         weights: dict[str, float] = {},
-        samples_used: int = 0;
+        samples_used: int = 0,
+        abstained: int = 0;
 
     """How strongly the panel backs its direction: |C| × A (TDD §7, decision rule)."""
     def conviction -> float {
         return abs(self.score) * self.agreement;
     }
+}
+
+"""True when a vote cites only data gaps, so it takes no part in the consensus."""
+def abstains(v: Vote) -> bool {
+    return not v.cited_evidence;
 }
 
 """A vote's signed score in [-1, 1]: its stance's score (-2 to +2) halved, times its
@@ -64,11 +76,13 @@ def sign(x: float) -> int {
     return 1 if x > 0 else (-1 if x < 0 else 0);
 }
 
-"""Aggregate the panel's valid votes, or None when no specialist has one. Specialists with no
-valid vote are left out. Every specialist weighs the same in the core build; `seed` fixes the
-bootstrap's draws, so the same votes always give the same interval."""
+"""Aggregate the panel's valid votes, or None when no specialist has one that counts.
+Specialists with no valid vote, or whose votes all abstain, are left out. Every specialist
+weighs the same in the core build; `seed` fixes the bootstrap's draws, so the same votes
+always give the same interval."""
 def consensus(votes: dict[Specialist, list[Vote]], seed: str, config: ConsensusConfig = ConsensusConfig()) -> Consensus | None {
-    scored = {s: [signed_score(v) for v in vs] for (s, vs) in votes.items() if vs};
+    counted = {s: [v for v in vs if not abstains(v)] for (s, vs) in votes.items()};
+    scored = {s: [signed_score(v) for v in vs] for (s, vs) in counted.items() if vs};
     if not scored {
         return None;
     }
@@ -89,7 +103,8 @@ def consensus(votes: dict[Specialist, list[Vote]], seed: str, config: ConsensusC
         ci_high=high,
         specialist_scores={s.value: means[s] for s in order},
         weights={s.value: weights[s] for s in order},
-        samples_used=sum(len(xs) for xs in scored.values())
+        samples_used=sum(len(xs) for xs in scored.values()),
+        abstained=sum(len(vs) for vs in votes.values()) - sum(len(vs) for vs in counted.values())
     );
 }
 
