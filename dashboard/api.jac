@@ -19,7 +19,7 @@ import from action.insights { DISCLAIMER }
 import from action.reconcile { marks_of }
 import from agents.specialists { packet }
 import from dashboard.cache { VIEWS }
-import from analysis.consensus { signed_score }
+import from analysis.consensus { abstains, signed_score }
 import from analysis.scoring { hit }
 import from models.agents { Domain, Evidence, ResearchReport, Specialist }
 import from models.graph {
@@ -611,8 +611,9 @@ def packet_sources(records: list[ResearchRecord], macro: MacroRecord | None, tic
     return {s.value: [evidence_view(e) for e in packet(s, ticker, run_date, newest, body).evidence] for s in list(Specialist)};
 }
 
-"""Each specialist's samples in panel order, with its mean signed score, its weight, and the
-evidence each sample cited."""
+"""Each specialist's samples in panel order, with its mean signed score over the samples that
+count, its weight, and the evidence each sample cited. A specialist whose samples all abstain
+scores 0 and has no weight."""
 def specialist_views(votes: list[VoteRecord], weights: dict[str, float], sources: dict[str, list[EvidenceView]] = {}) -> list[SpecialistView] {
     found: list[SpecialistView] = [];
     for s in list(Specialist) {
@@ -631,11 +632,13 @@ def specialist_views(votes: list[VoteRecord], weights: dict[str, float], sources
                 cited=v.body.cited_evidence,
                 sources=[sources[s.value][i] for i in v.body.cited_evidence if s.value in sources and 0 <= i < len(sources[s.value])],
                 excess_return=v.excess_return,
-                hit=hit(v)
+                hit=hit(v),
+                abstained=abstains(v.body)
             )
             for v in mine
         ];
-        found.append(SpecialistView(specialist=s.value, score=statistics.fmean(x.signed for x in samples), weight=weights.get(s.value), samples=samples));
+        counted = [x.signed for x in samples if not x.abstained];
+        found.append(SpecialistView(specialist=s.value, score=statistics.fmean(counted) if counted else 0.0, weight=weights.get(s.value), samples=samples));
     }
     return found;
 }

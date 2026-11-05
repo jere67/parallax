@@ -347,7 +347,7 @@ def SampleRow(s: SampleData) -> JsxElement {
             <span>
                 <span className="num text-faint">{"#" + str(s.sample + 1) + "  "}</span>
                 <StanceText stance={s.stance}/>
-                <span className="num text-faint">{" · " + pct(s.confidence, 0) + " sure · " + count(s.horizon_days, "session") + " · signed " + signed(s.signed)}</span>
+                <span className="num text-faint">{" · " + pct(s.confidence, 0) + " sure · " + count(s.horizon_days, "session") + (" · abstained, no data" if s.abstained else " · signed " + signed(s.signed))}</span>
             </span>
             <Outcome s={s}/>
         </div>
@@ -374,7 +374,7 @@ def SpecialistRow(s: SpecialistData) -> JsxElement {
         >
             <span className="flex items-baseline gap-2">
                 <span className="text-[13px] font-medium">{title(s.specialist)}</span>
-                <span className="num text-[11px] text-faint">{("weight " + num(s.weight)) if s.weight is not None else ""}</span>
+                <span className="num text-[11px] text-faint">{("weight " + num(s.weight)) if s.weight is not None else ("abstained" if len(s.samples) > 0 and all(x.abstained for x in s.samples) else "")}</span>
             </span>
             <span className="order-3 col-span-2 sm:order-none sm:col-span-1">
                 <DotPlot values={[x.signed for x in s.samples]} mean={s.score}/>
