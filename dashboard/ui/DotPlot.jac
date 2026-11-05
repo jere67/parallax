@@ -16,7 +16,7 @@ def:pub DotPlot(values: list[float], mean: float | None = None) -> JsxElement {
     <div
         className="relative mx-1.5 h-[22px]"
         role="img"
-        aria-label={"Samples " + ", ".join([str(round(v, 2)) for v in values]) + ("; mean " + str(round(mean, 2)) if mean is not None else "")}
+        aria-label={("Samples " + ", ".join([str(round(v, 2)) for v in values]) if values else "No counted samples") + ("; mean " + str(round(mean, 2)) if mean is not None else "")}
     >
         <div className="absolute inset-x-0 top-1/2 h-px bg-line-strong"></div>
         {for t in TICKS {

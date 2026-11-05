@@ -89,6 +89,10 @@ glob WARMUP_SESSIONS: int = 30;
 glob STARTING_CASH: float = 100000.0;
 glob SHORTLIST: int = 6;
 glob SAMPLES: int = 3;
+# The fundamentals gap that leaves Flow no view, and the share of reports that carry it. Live
+# runs on November 2 to 4, 2026 abstained on most Flow samples for want of insider data.
+glob FLOW_GAP: str = "No insider transactions or institutional holdings were reported in the window.";
+glob FLOW_GAP_SHARE: float = 0.4;
 # Which session (counting from the first) the Orchestrator ran out of budget on.
 glob FALLBACK_SESSION: int = 9;
 
@@ -467,7 +471,7 @@ obj DemoSim {
                 confidence=round(self.rng.uniform(0.5, 0.8), 2),
                 evidence=evidence,
                 risks=[self.rng.choice(["A broad market pullback.", "Valuation compresses if rates rise.", "A guidance cut at the next report.", "Sector rotation away from the group."])],
-                data_gaps=["No intraday data."] if domain == Domain.MARKET and self.rng.random() < 0.2 else []
+                data_gaps=["No intraday data."] if domain == Domain.MARKET and self.rng.random() < 0.2 else ([FLOW_GAP] if domain == Domain.FUNDAMENTALS and self.rng.random() < FLOW_GAP_SHARE else [])
             );
             public(c +>:Researched():+> ResearchRecord(ticker=t, domain=domain, as_of=at(day, "07:50"), model=PRIMARY_MODEL, body=bodies[domain]));
         }
@@ -482,6 +486,13 @@ obj DemoSim {
                 x = lean + self.rng.gauss(0.0, 0.12);
                 stance = stance_for(x);
                 direction = 1 if x > 0.14 else (-1 if x < -0.14 else 0);
+                if spec == Specialist.FLOW and FLOW_GAP in bodies[Domain.FUNDAMENTALS].data_gaps {
+                    # No flow data, so Flow abstains on the supplied gap, as a live run does.
+                    v = Vote(stance=Stance.HOLD, confidence=0.5, horizon_days=DEFAULT_HORIZON_DAYS, rationale="No insider or institutional flow data is available, so there is no view.", cited_gaps=[FLOW_GAP]);
+                    mine.append(v);
+                    public(c +>:Voted():+> VoteRecord(ticker=t, specialist=spec, sample=k, model=PRIMARY_MODEL, body=v));
+                    continue;
+                }
                 v = Vote(
                     stance=stance,
                     confidence=round(min(0.92, max(0.45, 0.62 + abs(x) * 0.3 + self.rng.gauss(0.0, 0.05))), 2),

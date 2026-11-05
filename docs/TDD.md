@@ -626,7 +626,9 @@ The stance is a string enum that code maps to a score from −2 to +2 (Section 3
 A vote that cites no evidence fails the parse and is retried with feedback; code then maps the 1-based numbers a sample was shown back to the packet's own 0-based order, and a vote that still cites nothing in range is discarded.
 The explicit exception is a Flow HOLD: it may copy a supplied missing-input statement verbatim into `cited_gaps`, without inventing a factual citation (#71).
 Code accepts such gaps only for Flow HOLD votes, keeps them distinct from sourced evidence, and rejects invented gaps; a gap-only vote can never be directional.
-These abstentions score zero and do not count as directional agreement, like every other HOLD.
+Such a vote abstains: it takes no part in the consensus (Aggregation).
+The prompt asks each specialist to take a side whenever its evidence tilts either way, with confidence carrying the doubt, and to vote HOLD only when the evidence is balanced or says nothing about direction.
+A vote's score already scales with its confidence, so the earlier instruction to prefer HOLD on weak or mixed evidence counted doubt twice: in the first three live runs about 90% of samples were HOLD and no ticker reached a buy ([decision backtest](spikes/2026-11-04-decision-backtest.md)).
 Prompts and Vote field semantics state the citation numbering, confidence bounds, and minimum horizon before the first request.
 Output retry limits remain at one until an instrumented live run establishes the largest retry source; the prompt/contract correction is a targeted hypothesis, not a measured reduction.
 
@@ -645,6 +647,7 @@ C = \frac{\sum_s w_s\, m_s}{\sum_s w_s}, \qquad A = \frac{\sum_{s,k} w_s\, \math
 $$
 
 A HOLD vote (x = 0) points neither way, so it counts as not agreeing with C.
+A vote that cites only data gaps abstains: it is left out of m_s, C, A, and the interval, and a specialist whose samples all abstain is left out like one with no valid vote, so missing inputs never pull C toward zero.
 Weights are equal in the core build.
 A 1,000-draw bootstrap gives a 90% interval for C by resampling whole specialists, each with all of its samples, rather than individual samples.
 A specialist's K samples share one prompt and one evidence set, so resampling them as if independent would make the interval too narrow.
@@ -655,12 +658,13 @@ The bootstrap is seeded from the ticker and run date, so the same votes always g
 
 | Condition (starting values, tuned on history) | Draft action |
 | --- | --- |
-| C ≥ 0.35, A ≥ 0.6, and the 90% interval excludes zero | BUY (or ADD if held) |
+| C ≥ 0.2, A ≥ 0.5, and the 90% interval excludes zero | BUY (or ADD if held) |
 | Ticker held and C ≤ −0.25, or its exit condition triggered | SELL (exit) |
-| Ticker held and −0.25 < C < 0.35 | HOLD, with a possible trim if agreement falls below 0.5 |
+| Ticker held and −0.25 < C < 0.2 | HOLD, with a possible trim if agreement falls below 0.5 |
 | Anything else | NO ACTION (a held position stays unchanged) |
 
 Conviction is |C| × A.
+The buy thresholds started at C ≥ 0.35 and A ≥ 0.6, and no ticker reached them in the first three live runs (November 2 to 4, 2026), so they are now 0.2 and 0.5 ([decision backtest](spikes/2026-11-04-decision-backtest.md)); all thresholds are retuned as the forward test adds history.
 In code, a held position's exit condition triggers when its time stop has passed; price exits are the stop orders the Action layer places (Section 8), and an event exit is the Arbiter's text for the next run's research to test.
 The thresholds, the ambiguity band, and the 60% minimum share of valid samples live in `ConsensusConfig` (`analysis/consensus.jac`), versioned with `CONSENSUS_VERSION`, which each run records.
 The Action layer turns conviction into position size (Section 8).

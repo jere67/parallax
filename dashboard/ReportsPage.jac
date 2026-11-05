@@ -6,7 +6,13 @@ import from dashboard.ui.parts { ErrorBox, Loading }
 
 # The pinned Jac build cannot seal implicit client bridges for private endpoints.
 # Call the same authenticated endpoint through the runtime RPC helper instead.
-async def list_reports -> ReportsData {
+#
+# None once signed out. A private call sent without a token gets a 401, and the runtime answers
+# any 401 by dropping the stored token and reloading the page, which would cancel a sign-in
+# already under way. A poll or a request that finishes just after "Sign out" must not send one.
+# The runtime reads the token synchronously when the call starts, so checking first is enough.
+async def list_reports -> ReportsData | None {
+    if not jacIsLoggedIn() { return None; }
     return await __jacCallFunction("list_reports", {}, {"contract": "[\"trading-agent\",\"reports/api.jac\",\"func\",\"list_reports\"]"});
 }
 
@@ -97,7 +103,7 @@ def ReportList(logout: Callable[[], None]) -> JsxElement {
             fresh: ReportsData | None = None;
             try {
                 fresh = await list_reports();
-                if active { data = fresh; error = ""; }
+                if active and fresh is not None { data = fresh; error = ""; }
             } except Exception {
                 if active { error = "Could not load reports. Your session may have expired; sign in again."; }
             } finally { loading = False; }
@@ -112,10 +118,12 @@ def ReportList(logout: Callable[[], None]) -> JsxElement {
         busy = True;
         message = "";
         answer: Reply | None = None;
+        fresh: ReportsData | None = None;
         try {
             answer = await request_report(ticker);
             message = answer.message;
-            data = await list_reports();
+            fresh = await list_reports();
+            if fresh is not None { data = fresh; }
         } except Exception { error = "Could not submit the request. Please try again."; }
         finally { busy = False; }
     }

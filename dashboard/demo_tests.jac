@@ -1,11 +1,13 @@
 """The demo history (dashboard/demo.jac): a consistent record that the dashboard can show, made
 by the project's own consensus, sizing, gate, baseline, and scoring code."""
 import from datetime { date }
+import from analysis.consensus { abstains }
 import from action.baselines { baselines_of, sim_marks }
 import from action.fixtures { team }
 import from action.reconcile { marks_of }
 import from dashboard.api { performance_view, portfolio_view, run_summaries, run_view, trail_view }
 import from dashboard.demo { DEMO_SESSIONS, DemoSim, seed_demo, weekdays_before }
+import from models.agents { Specialist }
 import from models.graph { Coverage, Covers, Decided, Decision, Holds, Order, PortfolioMode, Position, Ran, Run, Sent, VoteRecord, Voted }
 
 glob TODAY: date = date(2026, 10, 22);
@@ -45,7 +47,10 @@ test "the demo history is consistent, and every page's view can be built from it
     trail = trail_view(portfolio, latest.run_date, latest.rows[0].ticker);
     assert trail is not None and len(trail.specialists) == 5 and len(trail.research) == 3;
     # Every cited position names evidence in the packet the specialist read.
-    assert all(x.sources and len(x.sources) == len(x.cited) for s in trail.specialists for x in s.samples);
+    assert all(x.sources and len(x.sources) == len(x.cited) for s in trail.specialists for x in s.samples if not x.abstained);
+    # Some Flow samples abstain on the supplied gap, as live runs do, and no other specialist does.
+    assert any(abstains(v.body) for v in votes if v.specialist == Specialist.FLOW);
+    assert not any(abstains(v.body) for v in votes if v.specialist != Specialist.FLOW);
 }
 
 test "the seed writes into an empty team portfolio once, and never over history" {

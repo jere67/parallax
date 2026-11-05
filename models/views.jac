@@ -221,7 +221,9 @@ obj SampleView {
     has cited: list[int] = [],
         sources: list[EvidenceView] = [],
         excess_return: float | None = None,
-        hit: bool | None = None;
+        hit: bool | None = None,
+        abstained: bool = False,
+        gaps: list[str] = [];
 }
 
 obj SpecialistView {

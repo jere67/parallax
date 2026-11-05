@@ -130,6 +130,13 @@ A vote that cites nothing in range is discarded, and the consensus counts it as 
 The one exception is a Flow HOLD.
 When missing insider or holdings data prevents a directional view, Flow may copy supplied data-gap statements verbatim into `cited_gaps` instead.
 Code accepts gaps only on a Flow HOLD, only when they match a supplied gap exactly, and never on a directional vote.
+Such a vote abstains in the [consensus](/system/consensus#consensus-score-c): it is shown on the decision trail but adds nothing to C.
+
+### Taking a side
+
+The prompt asks a specialist to take a side whenever its evidence tilts either way, and to let confidence say how sure it is: a weak lean is a BUY or SELL at low confidence, not a HOLD.
+HOLD is for evidence that is balanced or says nothing about direction, and STRONG_BUY or STRONG_SELL for a clear, well-supported call.
+A vote's score is already its stance times its confidence, so asking for HOLD on weak evidence, as the prompt did until November 4, 2026, counted doubt twice; in the first three live runs about 90% of samples were HOLD.
 
 ## Arbiter
 
