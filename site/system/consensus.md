@@ -10,7 +10,7 @@ related:
 One model call is noisy: ask the same question twice and the answer can change.
 So the panel asks each of five specialists the same question three times, at a high temperature and with the evidence shuffled, and treats the spread of answers as information.
 The consensus engine then turns the votes into a score C, an agreement A, a 90% interval for C, and a draft action.
-It is plain code with no model calls, in [`analysis/consensus.jac`](https://github.com/jere67/parallax/blob/main/analysis/consensus.jac), versioned by `CONSENSUS_VERSION` (currently `2026-10-16`).
+It is plain code with no model calls, in [`analysis/consensus.jac`](https://github.com/jere67/parallax/blob/main/analysis/consensus.jac), versioned by `CONSENSUS_VERSION` (currently `2026-11-04`).
 
 <Figure name="stochastic_consensus" alt="The stochastic consensus" caption="The stochastic consensus: five specialists, K samples each, aggregated by code and reviewed by the Arbiter." />
 
@@ -43,6 +43,10 @@ C is the weighted mean of the specialists' scores.
 In the current build every weight is 1, so C is the plain mean of five specialist means.
 A specialist with no valid vote is left out.
 
+A vote that cites only data gaps abstains.
+Only a Flow HOLD can do that, when missing insider or holdings data leaves it no view; see [Agents](/system/agents#citations).
+An abstaining vote is left out of the specialist's mean, of A, and of the interval, and a specialist whose samples all abstain is left out entirely, so missing data never pulls C toward zero.
+
 ### Agreement A
 
 For each specialist, take the share of its samples whose sign matches the sign of C.
@@ -68,8 +72,8 @@ The draft action follows these rules, in order:
 | Step | Condition | Draft action |
 | --- | --- | --- |
 | 1 | Held, and the exit fired or C ≤ -0.25 | SELL |
-| 2 | C ≥ 0.35, A ≥ 0.6, and the interval's low end is above 0 | ADD if held, else BUY |
-| 3 | Held, and C below 0.35 | TRIM if A is below 0.5, else HOLD |
+| 2 | C ≥ 0.2, A ≥ 0.5, and the interval's low end is above 0 | ADD if held, else BUY |
+| 3 | Held, and C below 0.2 | TRIM if A is below 0.5, else HOLD |
 | 4 | Anything else | NO_ACTION |
 
 A held position's exit fires when its time stop has passed, that is, when the run date reaches the stored date.
@@ -79,14 +83,16 @@ NO_ACTION on a held stock keeps the position exactly as it is.
 ### Configuration
 
 `ConsensusConfig` holds every threshold.
-They are the design's starting values, to be tuned on history and frozen before the forward test.
+They are the design's starting values, except the buy pair.
+That started at C ≥ 0.35 and A ≥ 0.6, and no ticker reached it in the first three live runs, so on November 4, 2026 it became 0.2 and 0.5 ([decision backtest](https://github.com/jere67/parallax/blob/main/docs/spikes/2026-11-04-decision-backtest.md)).
+All of them are retuned as the forward test adds history.
 
 | Setting | Value | Meaning |
 | --- | --- | --- |
 | `samples` | 3 | K, samples per specialist |
 | `extra_samples` | 2 | More samples per specialist for an ambiguous result |
-| `buy_score` | 0.35 | C needed for BUY or ADD |
-| `buy_agreement` | 0.6 | A needed for BUY or ADD |
+| `buy_score` | 0.2 | C needed for BUY or ADD |
+| `buy_agreement` | 0.5 | A needed for BUY or ADD |
 | `sell_score` | -0.25 | C at or below which a held stock is sold |
 | `trim_agreement` | 0.5 | A below which a weak hold is trimmed |
 | `min_success` | 0.6 | Share of samples that must be valid |
@@ -122,7 +128,7 @@ Here are 15 made-up votes on MSFT, not held, in a run on 2026-10-16:
 - C = (0.192 + 0.458 + 0.208 + 0.433 + 0.625) / 5 = **0.383**.
 - A = (0.667 + 1 + 0.667 + 1 + 1) / 5 = **0.867**.
 - The bootstrap with seed `MSFT:2026-10-16` gives a 90% interval of **[0.250, 0.508]**.
-- C ≥ 0.35, A ≥ 0.6, and 0.250 > 0, so the draft is **BUY**, with conviction 0.383 × 0.867 = **0.332**.
+- C ≥ 0.2, A ≥ 0.5, and 0.250 > 0, so the draft is **BUY**, with conviction 0.383 × 0.867 = **0.332**.
 
 But C is only 0.033 above the buy threshold.
 Moving C down by 0.05 gives 0.333, which would make the draft NO_ACTION, so the result is ambiguous and each specialist is sampled twice more before the draft is final.
@@ -146,6 +152,6 @@ All of them appear on the [decision trail](/api/get-decision-trail).
 
 ::: info Where the code differs from the TDD
 The TDD describes weights based on each specialist's track record; the core build uses equal weights, and track-record weights remain a stretch goal, as the TDD itself notes.
-The TDD's decision table lists the held-stock HOLD band as -0.25 < C < 0.35; the code reaches the same result by checking SELL first.
+The TDD's decision table lists the held-stock HOLD band as -0.25 < C < 0.2; the code reaches the same result by checking SELL first.
 See [TDD §7](/design/tdd#aggregation).
 :::
