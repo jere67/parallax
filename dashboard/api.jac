@@ -634,7 +634,8 @@ def specialist_views(votes: list[VoteRecord], weights: dict[str, float], sources
                 sources=[sources[s.value][i] for i in v.body.cited_evidence if s.value in sources and 0 <= i < len(sources[s.value])],
                 excess_return=v.excess_return,
                 hit=hit(v),
-                abstained=abstains(v.body)
+                abstained=abstains(v.body),
+                gaps=v.body.cited_gaps
             )
             for v in mine
         ];

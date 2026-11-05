@@ -201,6 +201,7 @@ test "a Flow sample that cites only data gaps shows as abstained and leaves Flow
     buy = Vote(stance=Stance.BUY, confidence=0.8, horizon_days=10, rationale="Insiders bought.", cited_evidence=[0]);
     [mixed] = specialist_views([record(0, gap), record(1, buy)], {"flow": 1.0});
     assert [x.abstained for x in mixed.samples] == [True, False];
+    assert [x.gaps for x in mixed.samples] == [["no insider data"], []];
     assert abs(mixed.score - 0.4) < 1e-12 and mixed.weight == 1.0;
     [silent] = specialist_views([record(0, gap), record(1, gap)], {});
     assert silent.score == 0.0 and silent.weight is None and all(x.abstained for x in silent.samples);

@@ -222,7 +222,8 @@ obj SampleView {
         sources: list[EvidenceView] = [],
         excess_return: float | None = None,
         hit: bool | None = None,
-        abstained: bool = False;
+        abstained: bool = False,
+        gaps: list[str] = [];
 }
 
 obj SpecialistView {
