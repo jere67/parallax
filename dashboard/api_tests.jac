@@ -5,7 +5,7 @@ import from datetime { datetime, timezone }
 import from action.executor { execute_run, keep_stops, sync_orders }
 import from action.fixtures { Call, broker_for, finished_run, market, team }
 import from action.reconcile { marks_of, reconcile }
-import from dashboard.api { performance_view, portfolio_view, run_summaries, run_view, series, specialist_summaries, trail_view }
+import from dashboard.api { performance_view, portfolio_view, run_summaries, run_view, series, specialist_summaries, specialist_views, trail_view }
 import from models.agents { Domain, Evidence, ResearchReport, Specialist, Stance, Vote }
 import from models.graph {
     Concluded,
@@ -215,4 +215,18 @@ test "a portfolio that has not started shows no figures" {
     view = portfolio_view(portfolio);
     assert not view.started and view.equity is None and view.positions == [] and view.orders == [];
     assert not performance_view(portfolio).started and run_view(portfolio, "") is None;
+}
+
+test "a Flow sample that cites only data gaps shows as abstained and leaves Flow's score" {
+    def record(sample: int, body: Vote) -> VoteRecord {
+        return VoteRecord(ticker="AAA", specialist=Specialist.FLOW, sample=sample, model="m", body=body);
+    }
+    gap = Vote(stance=Stance.HOLD, confidence=0.5, horizon_days=10, rationale="No insider data.", cited_gaps=["no insider data"]);
+    buy = Vote(stance=Stance.BUY, confidence=0.8, horizon_days=10, rationale="Insiders bought.", cited_evidence=[0]);
+    [mixed] = specialist_views([record(0, gap), record(1, buy)], {"flow": 1.0});
+    assert [x.abstained for x in mixed.samples] == [True, False];
+    assert [x.gaps for x in mixed.samples] == [["no insider data"], []];
+    assert abs(mixed.score - 0.4) < 1e-12 and mixed.weight == 1.0;
+    [silent] = specialist_views([record(0, gap), record(1, gap)], {});
+    assert silent.score == 0.0 and silent.weight is None and all(x.abstained for x in silent.samples);
 }

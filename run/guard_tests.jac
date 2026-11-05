@@ -24,7 +24,7 @@ import from models.graph {
     RunStatus,
     TradeAction
 }
-import from run.guard { RunLimits, RunOutcome, RunSession, claim_run, count_requests, daily_run, holdings_of, preflight, stored_requests }
+import from run.guard { Followup, RunLimits, RunOutcome, RunSession, claim_run, count_requests, daily_run, holdings_of, preflight, stored_requests }
 import from run.stubs { RUN_DAY, Stubs, collection }
 
 def team -> Portfolio {
@@ -48,7 +48,7 @@ and a summary."""
 def scripted_driver(s: RunSession) -> str {
     s.get_run_context();
     s.dispatch_research(s.tickers(), ["market", "fundamentals", "news"]);
-    s.request_followup("AAPL", "news", "Is the recall priced in?");
+    s.request_followup([Followup(ticker="AAPL", domain="news", question="Is the recall priced in?")]);
     s.convene_panel(s.tickers());
     s.submit_decisions("All covered.");
     s.write_run_summary("Two buys on strong panels.");
@@ -219,15 +219,15 @@ test "every tool enforces its limits and says why it refuses" {
         s = session_with(stubs);
         assert "NVDA: not covered in this run" in s.dispatch_research(["NVDA"], ["market"]);
         assert "options: not a research domain" in s.dispatch_research(["AAPL"], ["options"]);
-        assert s.request_followup("AAPL", "news", "Why?") == "Refused: AAPL news: dispatch research first.";
+        assert s.request_followup([Followup(ticker="AAPL", domain="news", question="Why?")]) == "Refused: AAPL news: dispatch research first.";
         assert "dispatch market, fundamentals, and news research first" in s.convene_panel(["AAPL"]);
         first = s.dispatch_research(["aapl", "AAPL"], ["market", "fundamentals", "news"]);
         assert "AAPL: market complete" in first;
         assert "AAPL market: already researched" in s.dispatch_research(["AAPL"], ["market"]);
-        assert s.request_followup("AAPL", "news", "  ") == "Refused: a follow-up needs a question.";
-        assert s.request_followup("AAPL", "news", "One?").startswith("AAPL news: complete");
-        assert s.request_followup("AAPL", "market", "Two?").startswith("AAPL market: complete");
-        assert s.request_followup("AAPL", "news", "Three?") == "Refused: AAPL: already had 2 follow-ups.";
+        assert s.request_followup([Followup(ticker="AAPL", domain="news", question="  ")]) == "Refused: a follow-up needs a question.";
+        assert s.request_followup([Followup(ticker="AAPL", domain="news", question="One?")]).startswith("AAPL news: complete");
+        assert s.request_followup([Followup(ticker="AAPL", domain="market", question="Two?")]).startswith("AAPL market: complete");
+        assert s.request_followup([Followup(ticker="AAPL", domain="news", question="Three?")]) == "Refused: AAPL: already had 2 follow-ups.";
         assert s.submit_decisions("early").startswith("Refused: no decision yet for AAPL, MSFT");
         assert "AAPL: BUY" in s.convene_panel(["AAPL"]);
         assert "AAPL: already decided" in s.convene_panel(["AAPL"]);

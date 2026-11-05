@@ -347,11 +347,14 @@ def SampleRow(s: SampleData) -> JsxElement {
             <span>
                 <span className="num text-faint">{"#" + str(s.sample + 1) + "  "}</span>
                 <StanceText stance={s.stance}/>
-                <span className="num text-faint">{" · " + pct(s.confidence, 0) + " sure · " + count(s.horizon_days, "session") + " · signed " + signed(s.signed)}</span>
+                <span className="num text-faint">{" · " + pct(s.confidence, 0) + " sure · " + count(s.horizon_days, "session") + (" · abstained, no data" if s.abstained else " · signed " + signed(s.signed))}</span>
             </span>
             <Outcome s={s}/>
         </div>
         <p className="text-[13px] leading-relaxed text-muted">{s.rationale}</p>
+        {if len(s.gaps) > 0 {
+            <p className="text-[12px] leading-relaxed text-faint">{"Missing data: " + "; ".join(s.gaps)}</p>
+        }}
         {if len(s.sources) > 0 {
             <div className="-mx-2 flex flex-col">
                 {for (i, e) in enumerate(s.sources) {
@@ -364,6 +367,10 @@ def SampleRow(s: SampleData) -> JsxElement {
 
 def SpecialistRow(s: SpecialistData) -> JsxElement {
     has open: bool = False;
+    # Abstained samples take no part in the mean, so they get no dot; a specialist with no
+    # counted sample has no score to show.
+    counted = [x.signed for x in s.samples if not x.abstained];
+    all_abstained = len(s.samples) > 0 and not counted;
 
     <li className="border-b border-line/60 last:border-b-0">
         <button
@@ -374,12 +381,12 @@ def SpecialistRow(s: SpecialistData) -> JsxElement {
         >
             <span className="flex items-baseline gap-2">
                 <span className="text-[13px] font-medium">{title(s.specialist)}</span>
-                <span className="num text-[11px] text-faint">{("weight " + num(s.weight)) if s.weight is not None else ""}</span>
+                <span className="num text-[11px] text-faint">{("weight " + num(s.weight)) if s.weight is not None else ("abstained" if all_abstained else "")}</span>
             </span>
             <span className="order-3 col-span-2 sm:order-none sm:col-span-1">
-                <DotPlot values={[x.signed for x in s.samples]} mean={s.score}/>
+                <DotPlot values={counted} mean={None if all_abstained else s.score}/>
             </span>
-            <span className={"num text-right text-[13px] font-semibold " + tone(s.score)}>{signed(s.score)}</span>
+            <span className={"num text-right text-[13px] font-semibold " + ("text-faint" if all_abstained else tone(s.score))}>{"-" if all_abstained else signed(s.score)}</span>
             <ChevronRight size={14} className={"hidden text-faint transition-[rotate] duration-150 ease-out motion-reduce:transition-none sm:block " + ("rotate-90" if open else "")}/>
         </button>
         {if open {

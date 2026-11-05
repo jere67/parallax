@@ -7,6 +7,7 @@ import from models.graph { TradeAction }
 import from analysis.consensus {
     Consensus,
     ConsensusConfig,
+    abstains,
     ambiguous,
     bootstrap_interval,
     consensus,
@@ -21,6 +22,11 @@ glob CONFIG: ConsensusConfig = ConsensusConfig();
 
 def vote(stance: Stance, confidence: float) -> Vote {
     return Vote(stance=stance, confidence=confidence, horizon_days=10, rationale="r", cited_evidence=[0]);
+}
+
+"""A Flow HOLD that cites only a supplied data gap."""
+def gap_hold(confidence: float = 0.5) -> Vote {
+    return Vote(stance=Stance.HOLD, confidence=confidence, horizon_days=10, rationale="r", cited_gaps=["no insider data"]);
 }
 
 def close_to(a: float, b: float) -> bool {
@@ -96,6 +102,30 @@ test "a specialist with no valid vote is left out, and no votes give no consensu
     assert consensus({}, "AAPL") is None;
 }
 
+test "a vote that cites only data gaps abstains, and its specialist drops out when all do" {
+    assert abstains(gap_hold()) and not abstains(vote(Stance.HOLD, 0.5));
+    votes = example_votes();
+    votes[Specialist.FLOW] = [gap_hold(), gap_hold(0.9), gap_hold(0.2)];
+    c = consensus(votes, "AAPL");
+    assert c is not None and "flow" not in c.specialist_scores and "flow" not in c.weights;
+    # The same as leaving Flow out: C = 0.95 / 4, and the agreeing shares are 2/3, 1, 1/3, 1.
+    assert close_to(c.score, 0.95 / 4);
+    assert close_to(c.agreement, (2 / 3 + 1 + 1 / 3 + 1) / 4);
+    assert (c.samples_used, c.abstained) == (12, 3);
+    # A factual HOLD still counts, and pulls C toward zero.
+    with_flow = consensus(example_votes(), "AAPL");
+    assert with_flow is not None and with_flow.score < c.score and with_flow.abstained == 0;
+}
+
+test "abstaining samples leave the rest of their specialist's samples counted" {
+    votes = example_votes();
+    votes[Specialist.FLOW] = [gap_hold(), vote(Stance.BUY, 0.8)];
+    c = consensus(votes, "AAPL");
+    assert c is not None and close_to(c.specialist_scores["flow"], 0.4);
+    assert (c.samples_used, c.abstained) == (13, 1);
+    assert consensus({Specialist.FLOW: [gap_hold()]}, "AAPL") is None;
+}
+
 test "an all-HOLD panel has C = 0 and no agreement" {
     c = consensus({s: [vote(Stance.HOLD, 0.8)] * 3 for s in list(Specialist)}, "AAPL");
     assert c is not None;
@@ -128,10 +158,14 @@ test "the decision rule follows TDD §7's table" {
     # BUY needs C, A, and an interval above zero; held, it is an ADD.
     assert decide(0.4, 0.7, 0.1, False, False, CONFIG) == TradeAction.BUY;
     assert decide(0.4, 0.7, 0.1, True, False, CONFIG) == TradeAction.ADD;
-    assert decide(0.35, 0.6, 0.01, False, False, CONFIG) == TradeAction.BUY;
-    assert decide(0.34, 0.7, 0.1, False, False, CONFIG) == TradeAction.NO_ACTION;
-    assert decide(0.4, 0.59, 0.1, False, False, CONFIG) == TradeAction.NO_ACTION;
+    assert decide(0.2, 0.5, 0.01, False, False, CONFIG) == TradeAction.BUY;
+    assert decide(0.19, 0.7, 0.1, False, False, CONFIG) == TradeAction.NO_ACTION;
+    assert decide(0.4, 0.49, 0.1, False, False, CONFIG) == TradeAction.NO_ACTION;
     assert decide(0.4, 0.7, 0.0, False, False, CONFIG) == TradeAction.NO_ACTION;
+    # The thresholds before November 4, 2026 still apply when configured.
+    before = ConsensusConfig(buy_score=0.35, buy_agreement=0.6);
+    assert decide(0.3, 0.7, 0.1, False, False, before) == TradeAction.NO_ACTION;
+    assert decide(0.3, 0.7, 0.1, False, False, CONFIG) == TradeAction.BUY;
     # A held ticker exits at C <= -0.25 or when its exit fires, whatever the panel says.
     assert decide(-0.25, 0.9, -0.5, True, False, CONFIG) == TradeAction.SELL;
     assert decide(0.8, 0.9, 0.5, True, True, CONFIG) == TradeAction.SELL;
@@ -145,9 +179,9 @@ test "the decision rule follows TDD §7's table" {
 }
 
 test "a result near a threshold is ambiguous, and one far from every threshold is not" {
-    near = Consensus(score=0.37, agreement=0.8, ci_low=0.2, ci_high=0.5);
+    near = Consensus(score=0.22, agreement=0.8, ci_low=0.1, ci_high=0.4);
     assert draft_action(near, False) == TradeAction.BUY and ambiguous(near, False);
-    weak_agreement = Consensus(score=0.6, agreement=0.62, ci_low=0.3, ci_high=0.8);
+    weak_agreement = Consensus(score=0.6, agreement=0.52, ci_low=0.3, ci_high=0.8);
     assert ambiguous(weak_agreement, False);
     interval_near_zero = Consensus(score=0.6, agreement=0.9, ci_low=0.03, ci_high=0.8);
     assert ambiguous(interval_near_zero, False);
@@ -199,7 +233,7 @@ test "the decision rule never trades against its own conditions" {
         (held, fired) = (rng.random() < 0.5, rng.random() < 0.2);
         action = decide(score, agreement, low, held, fired, CONFIG);
         if action in (TradeAction.BUY, TradeAction.ADD) {
-            assert score >= 0.35 and agreement >= 0.6 and low > 0 and not (held and fired);
+            assert score >= CONFIG.buy_score and agreement >= CONFIG.buy_agreement and low > 0 and not (held and fired);
         }
         if not held {
             assert action in (TradeAction.BUY, TradeAction.NO_ACTION);

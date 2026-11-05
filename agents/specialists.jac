@@ -8,7 +8,13 @@ another specialist's votes, nor the research sub-agents' own views and confidenc
 panel's errors stay independent. Every sample shows the evidence in a different seeded order
 to reduce position bias; code maps the numbers a vote cites back to the packet's own order,
 and a vote that cites nothing in range is discarded (FR-06), except for a Flow HOLD
-that cites an exact supplied data gap separately from factual evidence.
+that cites an exact supplied data gap separately from factual evidence. Such a vote abstains
+in the consensus engine (analysis/consensus.jac).
+
+The prompt asks for a side whenever the evidence tilts, with confidence carrying the doubt.
+A vote's score is already its stance times its confidence, so asking for HOLD on weak
+evidence counted doubt twice: in the first three live runs (November 2 to 4, 2026) about 90%
+of samples were HOLD and no ticker reached a buy (docs/spikes/2026-11-04-decision-backtest.md).
 
 Every call site follows TDD §4: a parse that still fails after `max_output_retries` is tried
 once more through `retry_llm` at temperature 0.2, and any other error, or a second failure,
@@ -58,7 +64,10 @@ Rules:
   Other specialists must cite factual evidence. Never invent a gap or a citation.
 - Judge only your specialty; other committee members cover the rest.
 - horizon_days counts trading days; never work out calendar dates.
-- With weak, stale, or mixed evidence, prefer HOLD and a lower confidence."""
+- Take a side whenever your specialty's evidence tilts either way: vote BUY or SELL and let
+  confidence say how sure you are, so a weak lean is a BUY or SELL at low confidence, not a
+  HOLD. Vote HOLD only when the evidence is balanced or says nothing about direction, and
+  STRONG_BUY or STRONG_SELL only for a clear, well-supported call."""
 def cast_vote(ticker: str, focus: str, as_of: str, research: str, evidence: str) -> Vote by specialist_llm(temperature=0.8, max_output_retries=1);
 
 """You are a specialist analyst on an investment committee. Vote on `ticker` from your
@@ -73,7 +82,10 @@ Rules:
   Other specialists must cite factual evidence. Never invent a gap or a citation.
 - Judge only your specialty; other committee members cover the rest.
 - horizon_days counts trading days; never work out calendar dates.
-- With weak, stale, or mixed evidence, prefer HOLD and a lower confidence."""
+- Take a side whenever your specialty's evidence tilts either way: vote BUY or SELL and let
+  confidence say how sure you are, so a weak lean is a BUY or SELL at low confidence, not a
+  HOLD. Vote HOLD only when the evidence is balanced or says nothing about direction, and
+  STRONG_BUY or STRONG_SELL only for a clear, well-supported call."""
 def cast_vote_retry(ticker: str, focus: str, as_of: str, research: str, evidence: str) -> Vote by retry_llm(temperature=0.2, max_output_retries=1);
 
 sem cast_vote.focus = "Your specialty and what it judges.";
