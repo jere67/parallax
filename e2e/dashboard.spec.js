@@ -402,6 +402,35 @@ test("mobile: tables are cards on a phone, and each card opens what it should", 
   await noSidewaysPanels(page);
 });
 
+// A phone stacks its cards, so a long list must not run the page on for screens. Past that length
+// WebKit on Linux also cannot take the full-page shot every test attaches.
+test("mobile: a long list shows its newest cards, and more on request", async ({ page }) => {
+  await page.goto("/");
+  if (page.viewportSize().width >= 768) {
+    return;
+  }
+  const orders = page.getByTestId("order-card");
+  await expect(orders.first()).toBeVisible();
+  await expect(orders).toHaveCount(10);
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  expect(height / page.viewportSize().height, "screens of scrolling").toBeLessThan(10);
+
+  await page.getByRole("button", { name: "Show 10 more orders" }).click();
+  await expect(orders).toHaveCount(20);
+  await fitsWidth(page);
+
+  const closedTab = page.getByRole("button", { name: /^Closed trades/ });
+  await closedTab.click();
+  const total = Number((await closedTab.textContent()).match(/\d+/)[0]);
+  const closed = page.getByTestId("closed-card");
+  await expect(closed).toHaveCount(Math.min(total, 10));
+  const more = page.getByRole("button", { name: /^Show \d+ more closed trades?$/ });
+  while (await more.isVisible()) {
+    await more.click();
+  }
+  await expect(closed).toHaveCount(total);
+});
+
 test("mobile: the app can be installed and opens offline", async ({ page, request, browserName }) => {
   const manifest = await (await request.get("/manifest.json")).json();
   expect(manifest.display).toBe("standalone");

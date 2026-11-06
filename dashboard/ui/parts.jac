@@ -179,6 +179,20 @@ def:pub Segment(label: str, count: int, active: bool, pick: Callable[[], None]) 
 glob:pub WIDE_ONLY: str = "hidden md:block";
 glob:pub CARD_LIST: str = "divide-y divide-line/60 md:hidden";
 glob:pub CARD: str = "block px-4 py-3";
+# A long list on a phone shows this many cards, and this many more on each press, so its page
+# does not run on for screens. A wide screen scrolls the same rows inside a box instead.
+glob:pub CARD_STEP: int = 10;
+
+"""The button under a phone's shortened list, or nothing once every card shows. `label` says
+what it adds."""
+def:pub MoreCards(left: int, label: str, more: Callable[[], None]) -> JsxElement {
+    if left <= 0 {
+        return <></>;
+    }
+    <div className="border-t border-line/60 px-4 py-3 md:hidden">
+        <button type="button" onClick={lambda { more(); }} className={TAP_QUIET + " w-full"}>{label}</button>
+    </div>
+}
 
 """A card's figures, three to a row."""
 def:pub CardFigures(children: any = None) -> JsxElement {
