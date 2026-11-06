@@ -90,6 +90,43 @@ obj Policy {
     has rules: list[PolicyRule] = [];
 }
 
+"""A number a policy sets: its range, step, and unit ("score", "share", "count", "multiple",
+"sessions", "switch"), and what it means. `int_valued` knobs take whole numbers."""
+obj Knob {
+    has name: str,
+        label: str,
+        group: str,
+        low: float,
+        high: float,
+        step: float,
+        unit: str,
+        help: str;
+    has int_valued: bool = False;
+}
+
+enum MetricKind: str {
+    SCORE = "score",
+    SHARE = "share",
+    NUMBER = "number",
+    COUNT = "count",
+    CATEGORY = "category"
+}
+
+"""A fact a rule can test. `low` and `high` bound the values a condition may compare it to;
+`choices` lists the words a category takes (empty for tickers, checked by pattern);
+`held_only` metrics exist only for a held stock."""
+obj Metric {
+    has name: str,
+        label: str,
+        group: str,
+        kind: MetricKind,
+        help: str;
+    has low: float = -1.0e9,
+        high: float = 1.0e9,
+        choices: list[str] = [],
+        held_only: bool = False;
+}
+
 """One saved version of a policy. `source` says how it was saved ("form", "chat",
 "restore"); `note` is the saver's reason, or the chat message that proposed it; `changes`
 lists what differs from the version before, in words."""
