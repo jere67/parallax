@@ -7,6 +7,12 @@ const test = base.extend({
   clean: [
     async ({ page }, use, info) => {
       const errors = [];
+      const failures = [];
+      page.on("response", (res) => {
+        if (res.status() === 500) {
+          failures.push(res.text().then((body) => body.includes("40001")).catch(() => false));
+        }
+      });
       page.on("pageerror", (err) => errors.push(err.message));
       page.on("console", (msg) => {
         if (msg.type() === "error") {
@@ -15,7 +21,14 @@ const test = base.extend({
       });
       await use();
       await info.attach("page", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
-      expect(errors, "console errors").toEqual([]);
+      // A database conflict the client retried is not an error, though the browser logs its 500.
+      let retried = (await Promise.all(failures)).filter(Boolean).length;
+      // WebKit words a fetch cut off by leaving the page as an access-control failure; Chromium
+      // stays silent about those and would still report a real one.
+      const real = errors
+        .filter((text) => !text.includes("due to access control checks"))
+        .filter((text) => !(text.includes("status of 500") && retried-- > 0));
+      expect(real, "console errors").toEqual([]);
     },
     { auto: true },
   ],
@@ -120,4 +133,190 @@ test("reports: sign in, request a cached insight, and retain private history", a
   await page.getByLabel("Password", { exact: true }).fill("local-report-test-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.locator("article")).toHaveCount(1);
+});
+
+// --- Policies ---------------------------------------------------------------------------------
+
+// Sign up on the Policy page with an account of this test's own.
+async function signUpOnPolicy(page, info, name) {
+  await page.goto("/policy");
+  await page.getByRole("button", { name: "Sign in to make your own" }).click();
+  await page.getByRole("button", { name: "New here? Create an account" }).click();
+  await page.getByLabel("Email or username").fill(`${name}-${info.project.name}-${Date.now()}@example.test`);
+  await page.getByLabel("Password", { exact: true }).fill("local-policy-test-password");
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page.getByRole("button", { name: "My policy" })).toHaveAttribute("aria-pressed", "true");
+}
+
+// Drag a slider to a value the way a keyboard or a thumb would end up there.
+async function setSlider(page, name, value) {
+  await page.getByRole("slider", { name }).evaluate((el, v) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+    setter.call(el, v);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }, String(value));
+}
+
+// The assistant is a sidebar on a wide screen and a sheet behind a button on a phone.
+async function openAssistant(page) {
+  const ask = page.getByRole("button", { name: "Ask", exact: true });
+  if (await ask.isVisible()) {
+    await ask.click();
+  }
+  await expect(page.getByRole("region", { name: "Policy assistant" })).toBeVisible();
+}
+
+async function closeAssistant(page) {
+  const close = page.getByRole("button", { name: "Close the assistant" });
+  if (await close.isVisible()) {
+    await close.click();
+  }
+}
+
+test("policy: a reader sees the team's policy and its replay, read-only", async ({ page }) => {
+  await page.goto("/policy");
+  await expect(page.getByRole("heading", { level: 1, name: "Policy" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "In plain English" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What it would have done" })).toBeVisible();
+  await expect(page.getByText(/No decision differs from the team's/)).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Largest position" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Add a rule" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Policy assistant" })).toHaveCount(0);
+  await fitsWidth(page);
+});
+
+test("policy: a draft replays as it changes, and a save is a new version", async ({ page }, info) => {
+  await signUpOnPolicy(page, info, "form");
+  await expect(page.getByText(/No decision differs from the team's/)).toBeVisible();
+  await setSlider(page, "Minimum agreement to buy", 1);
+  await expect(page.getByText(/decisions? differs? from the team's/)).toBeVisible();
+  await expect(page.getByTestId("replay-row").first()).toBeVisible();
+  await expect(page.getByTestId("save-bar")).toBeVisible();
+  await fitsWidth(page);
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByTestId("save-bar")).toHaveCount(0);
+  await expect(page.getByText("Version 1", { exact: true }).first()).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("slider", { name: "Minimum agreement to buy" })).toHaveValue("1");
+  await page.getByRole("button", { name: "Restore the defaults" }).click();
+  await expect(page.getByRole("slider", { name: "Minimum agreement to buy" })).toHaveValue("0.5");
+  await expect(page.getByText("Restored", { exact: false }).first()).toBeVisible();
+});
+
+test("policy: a rule built in the form says what it does and changes the replay", async ({ page }, info) => {
+  await signUpOnPolicy(page, info, "rule");
+  await page.getByRole("button", { name: "Add a rule" }).click();
+  const builder = page.getByTestId("rule-builder");
+  await builder.getByLabel("What should it do?").selectOption("sell");
+  await builder.getByLabel("Metric").selectOption("score");
+  await builder.getByLabel("Comparison").selectOption("lt");
+  await builder.getByLabel("Value", { exact: true }).fill("0.99");
+  await builder.getByLabel("Name (optional)").fill("Sell everything");
+  await builder.getByRole("button", { name: "Add rule" }).click();
+  const rule = page.getByTestId("rule");
+  await expect(rule).toHaveCount(1);
+  await expect(rule).toContainText("Sell a held stock when");
+  await expect(rule).toContainText("Sell everything");
+  await fitsWidth(page);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByTestId("save-bar")).toHaveCount(0);
+  await page.getByRole("button", { name: "Pause R1" }).click();
+  await expect(rule).toContainText("Paused");
+  await page.getByRole("button", { name: "Delete R1" }).click();
+  await expect(rule).toHaveCount(0);
+  await page.getByRole("button", { name: "Discard" }).click();
+  await expect(rule).toHaveCount(1);
+});
+
+test("policy: the assistant proposes in plain English, and only applying saves", async ({ page }, info) => {
+  await signUpOnPolicy(page, info, "chat");
+  await openAssistant(page);
+  const assistant = page.getByRole("region", { name: "Policy assistant" });
+  const input = assistant.getByLabel("Message the policy assistant");
+  await input.fill("Don't buy anything with RSI above 70");
+  await assistant.getByRole("button", { name: "Send" }).click();
+  const proposal = assistant.getByTestId("proposal");
+  await expect(proposal).toBeVisible({ timeout: 30_000 });
+  await expect(proposal).toContainText("Added rule R1");
+  await fitsWidth(page);
+
+  await proposal.getByRole("button", { name: "Discard" }).click();
+  await expect(proposal).toContainText("Discarded");
+  await expect(page.getByTestId("rule")).toHaveCount(0);
+
+  await input.fill("Don't buy anything with RSI above 70 please");
+  await assistant.getByRole("button", { name: "Send" }).click();
+  const second = assistant.getByTestId("proposal").last();
+  await expect(second.getByRole("button", { name: "Apply" })).toBeVisible({ timeout: 30_000 });
+  await second.getByRole("button", { name: "Apply" }).click();
+  await expect(second).toContainText("Applied as v1");
+  await closeAssistant(page);
+  await expect(page.getByTestId("rule")).toContainText("Too hot");
+
+  await openAssistant(page);
+  await input.fill("Put half my money in one stock");
+  await assistant.getByRole("button", { name: "Send" }).click();
+  const refused = assistant.getByTestId("proposal").last();
+  await expect(refused).toContainText("Cannot apply", { timeout: 30_000 });
+  await expect(refused.getByRole("button", { name: "Apply" })).toHaveCount(0);
+});
+
+// A page's routes do not see requests that pass through its service worker.
+test.describe(() => {
+  test.use({ serviceWorkers: "block" });
+
+  test("policy: a message that loses a database conflict is sent again without fuss", async ({ page }, info) => {
+    await signUpOnPolicy(page, info, "conflict");
+    await openAssistant(page);
+    const assistant = page.getByRole("region", { name: "Policy assistant" });
+    let refused = 0;
+    await page.route("**/function/send_policy_message", async (route) => {
+      if (refused === 0) {
+        refused += 1;
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: false, error: { code: "EXECUTION_ERROR", message: "{'C': '40001', 'M': 'could not serialize access'}" } }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    const input = assistant.getByLabel("Message the policy assistant");
+    await input.fill("Don't buy anything with RSI above 70");
+    await assistant.getByRole("button", { name: "Send" }).click();
+    await expect(assistant.getByTestId("proposal")).toBeVisible({ timeout: 30_000 });
+    expect(refused).toBe(1);
+    await expect(assistant.getByText("Could not send that")).toHaveCount(0);
+    await expect(input).toHaveValue("");
+  });
+});
+
+test("policy: only the admin can change the team's, and a member is told so", async ({ page }, info) => {
+  await signUpOnPolicy(page, info, "member");
+  await page.getByRole("button", { name: "Team policy" }).click();
+  await expect(page.getByText("Only the team's admin can change this policy.")).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Largest position" })).toBeDisabled();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("button", { name: "Sign in to make your own" })).toBeVisible();
+});
+
+// The admin's account is shared across devices, so only one project walks its one save.
+test("policy: the admin's save becomes the team's next version", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop" || !process.env.E2E_ADMIN_PASSWORD, "the admin account is shared");
+  await page.goto("/policy");
+  await page.getByRole("button", { name: "Sign in to make your own" }).click();
+  await page.getByLabel("Email or username").fill("admin");
+  await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("button", { name: "Team policy" }).click();
+  const slider = page.getByRole("slider", { name: "Largest position" });
+  await expect(slider).toBeEnabled();
+  const before = await slider.inputValue();
+  await setSlider(page, "Largest position", before === "0.08" ? 0.09 : 0.08);
+  await page.getByRole("button", { name: "Save for the next run" }).click();
+  await expect(page.getByTestId("save-bar")).toHaveCount(0);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("slider", { name: "Largest position" })).toHaveValue(before === "0.08" ? "0.09" : "0.08");
 });
