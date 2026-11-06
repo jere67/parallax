@@ -22,8 +22,8 @@ async def request_report(ticker: str) -> Reply {
     return await __jacCallFunction("request_report", {"ticker": ticker}, {"contract": "[\"trading-agent\",\"reports/api.jac\",\"func\",\"request_report\"]"});
 }
 
-glob INPUT: str = "h-10 w-full rounded-md border border-line-strong bg-panel px-3 text-[13px] text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
-glob BUTTON: str = "press h-10 rounded-md bg-accent px-4 text-[13px] font-medium text-bg hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
+glob INPUT: str = "h-10 max-md:h-11 w-full rounded-md border border-line-strong bg-panel px-3 text-[13px] max-md:text-[16px] text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
+glob BUTTON: str = "press h-10 max-md:h-11 rounded-md bg-accent px-4 text-[13px] font-medium text-bg hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
 
 def SignIn(done: Callable[[], None]) -> JsxElement {
     has email: str = "", password: str = "", signup: bool = False,
@@ -185,7 +185,7 @@ def ReportList(logout: Callable[[], None]) -> JsxElement {
     <div className="mx-auto max-w-4xl space-y-6">
         <header className="flex flex-wrap items-start justify-between gap-3">
             <div><Overline>Private research</Overline><h1 className="display mt-1 text-[34px] leading-tight">Stock reports</h1><p className="mt-2 max-w-xl text-[13px] text-muted">Request research, specialist votes, and a cited insight. Requests never place trades.</p></div>
-            <button type="button" onClick={logout} className="press rounded-md border border-line px-3 py-1.5 text-[12px] text-muted hover:bg-hover hover:text-text">Sign out</button>
+            <button type="button" onClick={logout} className="press min-h-11 rounded-md border border-line px-3 py-1.5 text-[12px] text-muted hover:bg-hover hover:text-text md:min-h-0">Sign out</button>
         </header>
         {if error { <ErrorBox message={error}/> }}
         {if data is None { <Loading label="Loading reports"/> } else {
