@@ -4,7 +4,9 @@ reconciliation), driven by one scheduled tick a minute.
 Each tick reads New York time and the day's market calendar, so an early close moves the
 afternoon steps with it, and does whatever step is due and not yet done:
 
-- from 9:45 a.m., once the morning run has finished: size, gate, and submit its orders;
+- from 9:45 a.m., once the morning run has finished: size, gate, and submit its orders, with
+  the sizing and risk limits of the team policy version the run decided under, so a policy
+  saved after the run changes the next run, not this one's orders;
 - until ten minutes before the close: record fills and keep every position's stop, every
   minute until 10:00 and every five minutes after;
 - ten minutes before the close (3:50 p.m., or 12:50 on an early close): cancel the run's
@@ -31,10 +33,12 @@ import from action.broker { Broker }
 import from action.executor { MarketView, close_day_orders, decisions_of, execute_run, keep_stops, market_view, open_positions, sync_orders }
 import from action.reconcile { marks_of, reconcile }
 import from analysis.history { History }
+import from analysis.policy { gate_config, sizing_config }
 import from analysis.scoring { score_votes }
 import from models.graph { DailyMark, Portfolio, PortfolioMode, Ran, Run, RunStatus }
 import from research.alpaca { MarketDay, market_calendar }
 import from research.collector { run_budget }
+import from policy.store { team_policy_version }
 import from run.guard { NEW_YORK }
 
 glob EXECUTION_START: time = time(9, 45);
@@ -107,7 +111,8 @@ def trading_step(portfolio: Portfolio, run: Run | None, day: str, local: datetim
         broker = deps.broker_client();
         if run is not None and run.status not in (RunStatus.RUNNING, RunStatus.SKIPPED) and not run.executed_at {
             tickers = sorted(set(decisions_of(run)) | set(open_positions(portfolio)));
-            done = execute_run(portfolio, run, broker, now, deps.read_market(tickers));
+            policy = team_policy_version(run.policy_version);
+            done = execute_run(portfolio, run, broker, now, deps.read_market(tickers), sizing_config(policy), gate_config(policy));
             lines.append(f"execute: {done.line()}");
             lines.extend(f"fill: {c}" for c in sync_orders(portfolio, broker, now));
             lines.extend(f"stop: {c}" for c in keep_stops(portfolio, broker, now));

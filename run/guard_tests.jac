@@ -24,6 +24,9 @@ import from models.graph {
     RunStatus,
     TradeAction
 }
+import from analysis.policy { consensus_config, with_knob }
+import from models.policy { Condition, Op, Policy, PolicyRule, PolicyScope, RuleEffect }
+import from policy.store { save_policy, team_policy }
 import from run.guard { Followup, RunLimits, RunOutcome, RunSession, claim_run, count_requests, daily_run, holdings_of, preflight, stored_requests }
 import from run.stubs { RUN_DAY, Stubs, collection }
 
@@ -34,10 +37,10 @@ def team -> Portfolio {
 }
 
 """Run `daily_run` with the stubs installed."""
-def run_day(stubs: Stubs, portfolio: Portfolio, driver: Callable[[RunSession], str] | None = None, limits: RunLimits = RunLimits()) -> RunOutcome {
+def run_day(stubs: Stubs, portfolio: Portfolio, driver: Callable[[RunSession], str] | None = None, limits: RunLimits = RunLimits(), in_force: tuple[Policy, int] = (Policy(), 0)) -> RunOutcome {
     stubs.install();
     try {
-        return daily_run(portfolio, RUN_DAY, driver, limits);
+        return daily_run(portfolio, RUN_DAY, driver, limits, in_force);
     } finally {
         stubs.restore();
     }
@@ -308,4 +311,41 @@ test "the stored run request breakdown excludes earlier requests and sums to the
     assert counts["specialist"]["parse_retry"] == 1 and counts["specialist"]["transient_retry"] == 1;
     assert counts["retry"]["first_attempt"] == 1 and counts["arbiter"]["fallback"] == 1;
     assert counts["orchestrator"]["first_attempt"] == 1;
+}
+
+test "a run decides under the newest team policy and records its version" {
+    (start, base) = team_policy();
+    no_tech = PolicyRule(id="R1", effect=RuleEffect.AVOID_BUY, conditions=[Condition(metric="sector", op=Op.IN, words=["Information Technology"])], label="No tech");
+    saved = save_policy(PolicyScope.TEAM, Policy(rules=[no_tech]) if start.rules == [] else with_knob(Policy(rules=[no_tech]), "buy_agreement", 0.55), base);
+    assert saved.saved;
+    portfolio = team();
+    outcome = run_day(Stubs(symbols=["AAPL"]), portfolio, in_force=team_policy());
+    run = outcome.run;
+    assert run is not None and run.policy_version == saved.version;
+    assert run.model_versions["policy"] == f"team v{saved.version}" and "policy_engine" in run.model_versions;
+    decided = [d for c in [run ->:Covers:->] for d in [c ->:Decided:->[?:Decision]]];
+    assert len(decided) == 1 and decided[0].action == TradeAction.NO_ACTION;
+    assert decided[0].policy_version == saved.version and "\"No tech\"" in decided[0].policy_notes[0];
+    card = [card for c in [run ->:Covers:->] for card in [c ->:Published:->[?:InsightCard]]][0];
+    assert f"Team policy v{saved.version}:" in card.note;
+    # Leave the team on a plain policy for any test that follows.
+    assert save_policy(PolicyScope.TEAM, Policy(), saved.version).saved;
+}
+
+test "a position's entry and opening date reach the policy's rules" {
+    portfolio = team();
+    p = Position(ticker="AAPL", sector="Information Technology", qty=5, avg_entry_price=150.0, opened_at="2026-10-05T14:00:00+00:00");
+    portfolio +>:Holds():+> p;
+    held = holdings_of(portfolio)["AAPL"];
+    assert (held.avg_entry_price, held.opened_day) == (150.0, "2026-10-05");
+    stubs = Stubs(symbols=["AAPL"]);
+    stubs.install();
+    try {
+        s = RunSession(run_day=RUN_DAY, collection=collection(stubs.symbols, ["AAPL"]), holdings=holdings_of(portfolio), config=consensus_config(Policy()), limits=RunLimits(), run_requests=600);
+        facts = s.facts_for("AAPL");
+        assert "return_since_entry" in facts.numbers and facts.numbers["sessions_held"] > 0;
+        assert facts.words["sector"] != "";
+    } finally {
+        stubs.restore();
+    }
 }
