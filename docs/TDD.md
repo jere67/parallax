@@ -118,7 +118,7 @@ Where those docs are silent, it cites the runtime source at the same tag and the
 | `edge` | Typed relationships declared with endpoints, such as `edge Covers: Run --> Coverage {}` and a `Decision` to its `Order` ([OSP reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/language/osp.md)) |
 | `obj` | Typed agent inputs and outputs, validated by byLLM and copied into nodes for storage |
 | `enum X: str` | Values an agent returns, such as `Stance`; byLLM turns a `: str` enum into a string schema ([byLLM reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/byllm.md)), while a plain enum becomes an integer schema and rejects `"BUY"` ([source](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/byllm/impl/schema.impl.jac#L232)) |
-| `def ... by <role_llm>()` | Each agent role, called through that role's own model instance; `sem` strings carry the role instructions |
+| `def ... by <role_llm>()` | Each agent role, called through that role's own model instance; docstrings and types always reach the model, and `sem` strings only when the program holds its compiled `sem` map, which a built `.jab` does not ([#172](https://github.com/jere67/parallax/issues/172)) |
 | `by <role_llm>(tools=[...])` | The Orchestrator's ReAct loop over sub-agent tools, bounded by `max_react_iterations` and an `on_iteration` hook that can return `ABORT_WITH_SUMMARY` |
 | `obj LimitedModel(Model)` | One subclass that gates every provider request through the shared rate limiter, backs off on 429s, and falls back to a second model |
 | `walker` | The daily pipeline and any endpoint that traverses the graph |
@@ -344,7 +344,8 @@ Each rule names its evidence: the bundled docs, the runtime source at the `v0.37
 3. **Budget for retries.** A failed parse is retried up to `max_output_retries` times with corrective feedback, for 1 + `max_output_retries` attempts in all ([byLLM reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/byllm.md)); timeouts, connection errors, and 5xx responses are retried up to twice more ([source](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/byllm/llm.impl/basellm.impl.jac#L1460-L1478)); every retry is a request.
    The project sets `max_output_retries = 1`; after that, the call site catches `OutputConversionError` (imported from `jaclang.byllm.lib`) and falls back as in Section 4.
 4. **String enums for model outputs.** A plain `enum` becomes an integer schema, so the model's `"BUY"` fails validation; `enum Stance: str` with a score map in code avoids that (sources in the table above).
-   Ranges such as confidence in [0, 1] are not part of the schema, so they go in `sem` text and in a `postinit` check, which byLLM treats as a parse failure and retries ([source](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/byllm/impl/mtir.impl.jac#L306-L316); spike).
+   Ranges such as confidence in [0, 1] are not part of the schema, so a `postinit` check enforces them, which byLLM treats as a parse failure and retries ([source](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/byllm/impl/mtir.impl.jac#L306-L316); spike).
+   `sem` text can state a range too, but a built `.jab` loads no `sem` text, so a server started that way sends the model only docstrings and types, and the check is the only guard ([#172](https://github.com/jere67/parallax/issues/172)).
 5. **Launch `flow` through a helper.** The call inside `flow` runs on the worker thread, so a loop or comprehension variable can change before it is read; a helper whose parameter holds the value fixes it ([concurrency reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/language/concurrency.md)).
    The `jac guide jac-concurrency` example still shows the racy form, so follow the reference.
    Only scalars, freshly built values, and `imm` values may cross into `flow`; an object held in a variable or parameter is rejected as not sendable (E1308), by `jac check` and by `jac run` alike.
@@ -708,6 +709,8 @@ Runs before November 5, 2026 did not store the price indicators, so rules on tho
 **The policy assistant** (`agents/policy_assistant.jac`, `policy/chat.jac`) answers questions about a policy and turns plain English into proposed edits.
 The model never changes anything.
 Its edits are typed, an edit naming a setting or metric that does not exist fails the parse and is retried once, and code applies the rest to a copy and checks them against the same limits as the form.
+Its prompt's docstring says how to write each kind of edit, and effects and operators are enums so the response schema lists their values, because `sem` text does not reach the model from a built `.jab` (Section 3, rule 4).
+On November 6, 2026, `tests/spikes/policy_chat_spike.jac` passed all six of its requests against the real free models: four edits, one explanation, and one refused price prediction.
 The user then sees what would change and what it would have done in the latest run, and only their confirmation saves it, through the same path as the form.
 A request holds a database transaction, so a model call never runs inside one: the message is stored, a pool thread asks the model only once that has committed, and the client collects the answer by polling.
 A transaction that fails, as a serialization conflict can, therefore leaves no model call behind and loses no finished answer, and the client sends a conflicted request again.
