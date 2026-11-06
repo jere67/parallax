@@ -28,7 +28,7 @@ import from action.gate { GateConfig }
 import from action.sizing { SizingConfig }
 import from analysis.consensus { Consensus, ConsensusConfig, decide }
 import from models.graph { TradeAction }
-import from models.policy { Condition, Op, Policy, PolicyRule, RuleEffect }
+import from models.policy { Condition, Knob, Metric, MetricKind, Op, Policy, PolicyRule, RuleEffect }
 
 # Bump with any change to how a policy is applied, so a decision can be traced to it.
 glob POLICY_ENGINE_VERSION: str = "2026-11-05";
@@ -38,20 +38,6 @@ glob MAX_CONDITIONS: int = 5;
 glob MAX_LABEL_CHARS: int = 80;
 glob MAX_WORDS: int = 30;
 glob TICKER_PATTERN: re.Pattern[str] = re.compile(r"^[A-Z]{1,5}([.-][A-Z]{1,2})?$");
-
-"""A number a policy sets: its range, step, and unit ("score", "share", "count", "multiple",
-"sessions", "switch"), and what it means. `int_valued` knobs take whole numbers."""
-obj Knob {
-    has name: str,
-        label: str,
-        group: str,
-        low: float,
-        high: float,
-        step: float,
-        unit: str,
-        help: str;
-    has int_valued: bool = False;
-}
 
 glob KNOBS: list[Knob] = [
     Knob(name="buy_score", label="Minimum panel score to buy", group="Buying", low=0.05, high=1.0, step=0.05, unit="score", help="The panel's consensus score C, from -1 (all strong sells) to +1 (all strong buys), must reach this to buy or add."),
@@ -73,29 +59,6 @@ glob KNOBS: list[Knob] = [
 ];
 
 glob KNOB_GROUPS: list[str] = ["Buying", "Selling", "Sizing", "Limits"];
-
-enum MetricKind: str {
-    SCORE = "score",
-    SHARE = "share",
-    NUMBER = "number",
-    COUNT = "count",
-    CATEGORY = "category"
-}
-
-"""A fact a rule can test. `low` and `high` bound the values a condition may compare it to;
-`choices` lists the words a category takes (empty for tickers, checked by pattern);
-`held_only` metrics exist only for a held stock."""
-obj Metric {
-    has name: str,
-        label: str,
-        group: str,
-        kind: MetricKind,
-        help: str;
-    has low: float = -1.0e9,
-        high: float = 1.0e9,
-        choices: list[str] = [],
-        held_only: bool = False;
-}
 
 glob SECTORS: list[str] = [
     "Communication Services",

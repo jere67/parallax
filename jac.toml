@@ -47,6 +47,13 @@ watchdog = ">=3.0.0"
 [placement]
 default = "server"
 
+[placement.pins]
+# Nothing here imports Python directly, so inference would pull it toward the client along the
+# endpoints' references. These read the graph and hold the hard limits, so they stay server.
+"policy.*" = "server"
+"run.manual.*" = "server"
+
+
 [byllm.model]
 default_model = "openrouter/nvidia/nemotron-3.5-super-vl:free"
 
