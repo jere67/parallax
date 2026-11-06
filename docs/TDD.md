@@ -869,6 +869,7 @@ The dashboard is an installable progressive web app.
 Under 768px the top bar's links give way to a bottom tab bar, safe-area insets keep it clear of a phone's notch and home indicator, and form controls are at least 44px tall with 16px text, since iOS zooms a page when a smaller field takes focus.
 On a phone the policy assistant is a bottom sheet behind a floating button, and the same component is a sidebar on a wide screen.
 A table on a wide screen is a list of cards on a phone, so the shortlist, positions, and orders never scroll sideways: the page renders both, and CSS shows the one that fits.
+A long list of orders or closed trades shows its ten newest cards and adds ten on each press, so it does not run the page on for screens.
 
 `assets/manifest.json` and `assets/sw.js` are served from the root, so the service worker's scope is the whole app; Jac's built-in `[client.pwa]` registers its worker under `/static/`, which would limit its scope to that path.
 The worker keeps the app's shell for a phone with no signal and serves hashed bundles from its cache, and it never caches an API call or a POST, so a figure on screen is never older than the page says.
