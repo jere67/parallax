@@ -54,7 +54,13 @@ def main {
             say("  PASS" if good else "  FAIL");
             passed += 1 if good else 0;
         } except Exception as e {
-            say(f"  FAIL: {type(e).__name__}: {str(e)[:300]}");
+            say(f"  FAIL: {type(e).__name__}");
+            for line in str(e).splitlines() {
+                if "Value error" in line or "Input should be" in line and "instance of" not in line {
+                    say(f"  why: {line.strip()[:300]}");
+                }
+            }
+            say(f"  raw: {str(getattr(e, 'raw_output', ''))[:1200]}");
         }
     }
     say(f"\n{passed} of {len(CASES)} passed");

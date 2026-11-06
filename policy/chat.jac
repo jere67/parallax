@@ -135,11 +135,10 @@ def normal_words(metric: str, words: list[str]) -> list[str] {
 }
 
 def condition_from(c: ConditionDraft) -> Condition {
-    op = Op(c.op);
-    if op in (Op.IN, Op.NOT_IN) {
-        return Condition(metric=c.metric, op=op, words=normal_words(c.metric, c.words));
+    if c.op in (Op.IN, Op.NOT_IN) {
+        return Condition(metric=c.metric, op=c.op, words=normal_words(c.metric, c.words));
     }
-    return Condition(metric=c.metric, op=op, number=c.number);
+    return Condition(metric=c.metric, op=c.op, number=c.number);
 }
 
 """`edits` applied to a copy of `policy`, and why the result cannot be applied (the same limits
@@ -151,7 +150,11 @@ def apply_edits(policy: Policy, edits: list[PolicyEdit]) -> tuple[Policy, list[s
         if edit.kind == EditKind.SET {
             found = with_knob(found, edit.setting, edit.value if edit.value is not None else 0.0);
         } elif edit.kind == EditKind.ADD_RULE {
-            found.rules.append(PolicyRule(id=next_rule_id(found), effect=RuleEffect(edit.effect), conditions=[condition_from(c) for c in edit.conditions], label=edit.label.strip()[:MAX_LABEL_CHARS]));
+            if edit.effect is None {
+                problems.append("A new rule needs an effect.");
+                continue;
+            }
+            found.rules.append(PolicyRule(id=next_rule_id(found), effect=edit.effect, conditions=[condition_from(c) for c in edit.conditions], label=edit.label.strip()[:MAX_LABEL_CHARS]));
         } else {
             matching = [r for r in found.rules if r.id == edit.rule_id.strip()];
             if not matching {

@@ -141,11 +141,11 @@ node PolicyVersion {
         changes: list[str] = [];
 }
 
-"""A condition as the policy assistant drafts it, before code checks it: the metric and
-operator are plain strings, and code refuses any it does not know."""
+"""A condition as the policy assistant drafts it, before code checks it: the metric is a plain
+string, and code refuses any it does not know."""
 obj ConditionDraft {
     has metric: str,
-        op: str;
+        op: Op;
     has number: float | None = None,
         words: list[str] = [];
 }
@@ -165,23 +165,12 @@ obj PolicyEdit {
     has kind: EditKind;
     has setting: str = "",
         value: float | None = None,
-        effect: str = "",
+        effect: RuleEffect | None = None,
         conditions: list[ConditionDraft] = [],
         label: str = "",
         rule_id: str = "";
 }
 
-sem PolicyEdit.kind = "set changes a setting; add_rule adds a rule; remove_rule, pause_rule, and resume_rule act on an existing rule.";
-sem PolicyEdit.setting = "For set: the setting's name, exactly as in the settings list.";
-sem PolicyEdit.value = "For set: the new value. Shares are fractions, so 8% is 0.08. For a switch, 1 is on and 0 is off.";
-sem PolicyEdit.effect = "For add_rule: avoid_buy, buy_only_if, sell, trim, or keep.";
-sem PolicyEdit.conditions = "For add_rule: the tests, all of which must hold for the rule to apply.";
-sem PolicyEdit.label = "For add_rule: a name for the rule of at most six words.";
-sem PolicyEdit.rule_id = "For remove_rule, pause_rule, and resume_rule: the rule's id, such as R2.";
-sem ConditionDraft.metric = "The metric's name, exactly as in the metrics list.";
-sem ConditionDraft.op = "lt, le, gt, or ge with a number; in or not_in with words.";
-sem ConditionDraft.number = "The number to compare with. Metrics marked as a share are fractions, so 8% is 0.08.";
-sem ConditionDraft.words = "The words to compare with, from the metric's choices, or tickers for the ticker metric.";
 
 """One message in a user's policy chat. A user turn holds what they wrote. An assistant turn
 holds the reply and, when it proposed changes, the policy they would give (`proposal`),
