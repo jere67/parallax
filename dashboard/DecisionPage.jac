@@ -23,6 +23,11 @@ import from dashboard.ui.format {
     tone
 }
 import from dashboard.ui.parts {
+    CARD,
+    CARD_LIST,
+    WIDE_ONLY,
+    CardFigure,
+    CardFigures,
     ROW,
     TD,
     TD_TEXT,
@@ -509,8 +514,11 @@ def RuleRow(rule: str, passed: bool, detail: str, before: int, after: int) -> Js
         <td className={TD + " w-8 pr-0"}>
             {<Check size={14} className="text-up"/> if passed else <X size={14} className="text-down"/>}
         </td>
-        <td className={TD + " font-medium"}>{title(rule)}</td>
-        <td className={TD_TEXT + " text-muted"}>{detail or MISSING}</td>
+        <td className={TD + " font-medium max-md:whitespace-normal"}>
+            {title(rule)}
+            <div className="mt-0.5 text-[12px] font-normal text-muted md:hidden">{detail or MISSING}</div>
+        </td>
+        <td className={TD_TEXT + " hidden text-muted md:table-cell"}>{detail or MISSING}</td>
         <td className={TD_NUM + (" text-warn" if after != before else " text-muted")}>
             {(qty(before) + " → " + qty(after)) if after != before else qty(after)}
         </td>
@@ -544,7 +552,7 @@ def Gate(g: GateData | None) -> JsxElement {
                                 <tr>
                                     <th className={TH + " w-8"}></th>
                                     <th className={TH}>Rule</th>
-                                    <th className={TH}>Detail</th>
+                                    <th className={TH + " hidden md:table-cell"}>Detail</th>
                                     <th className={TH_NUM}>Shares</th>
                                 </tr>
                             </thead>
@@ -564,43 +572,76 @@ def Gate(g: GateData | None) -> JsxElement {
 
 # --- 6. Orders and the position ---------------------------------------------------------------
 
-def OrdersTable(orders: list[OrderData]) -> JsxElement {
-    <div className="scroll-x">
-        <table className="w-full min-w-[760px]">
-            <thead>
-                <tr>
-                    <th className={TH}>Submitted</th>
-                    <th className={TH}>Order</th>
-                    <th className={TH_NUM}>Price</th>
-                    <th className={TH_NUM}>Filled</th>
-                    <th className={TH}>Fills</th>
-                    <th className={TH}>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {for o in orders {
-                    <tr key={o.client_order_id} className={ROW}>
-                        <td className={TD + " num text-muted"}>{stamp_et(o.submitted_at)}</td>
-                        <td className={TD}>
-                            <span className={"font-semibold uppercase " + ("text-up" if o.side == "buy" else "text-down")}>{o.side}</span>
-                            <span className="text-muted">{" " + title(o.purpose) + " · " + title(o.order_type) + " " + o.time_in_force.upper()}</span>
-                            <div className="font-mono text-[10px] text-faint">{o.client_order_id}</div>
-                        </td>
-                        <td className={TD_NUM}>{money(o.limit_price if o.limit_price is not None else o.stop_price)}</td>
-                        <td className={TD_NUM}>{qty(o.filled_qty) + " / " + qty(o.qty)}</td>
-                        <td className={TD + " num text-[12px] text-muted"}>
-                            {if len(o.fills) == 0 {
-                                <span className="text-faint">-</span>
-                            }}
-                            {for (i, f) in enumerate(o.fills) {
-                                <div key={str(i)}>{qty(f.qty) + " @ " + money(f.price) + ", " + stamp_et(f.filled_at)}</div>
-                            }}
-                        </td>
-                        <td className={TD} title={o.reject_reason}><StatusBadge status={o.status}/></td>
-                    </tr>
+"""One order on a phone: the same facts as a table row, stacked."""
+def OrderCard(o: OrderData) -> JsxElement {
+    <li data-testid="order-card" className={CARD} title={o.reject_reason}>
+        <div className="flex items-start justify-between gap-3">
+            <p className="min-w-0 text-[13px]">
+                <span className={"font-semibold uppercase " + ("text-up" if o.side == "buy" else "text-down")}>{o.side}</span>
+                <span className="text-muted">{" " + title(o.purpose) + ("" if o.purpose == o.order_type else " · " + title(o.order_type)) + " · " + o.time_in_force.upper()}</span>
+            </p>
+            <StatusBadge status={o.status}/>
+        </div>
+        <CardFigures>
+            <CardFigure label="Price">{money(o.limit_price if o.limit_price is not None else o.stop_price)}</CardFigure>
+            <CardFigure label="Filled">{qty(o.filled_qty) + " / " + qty(o.qty)}</CardFigure>
+        </CardFigures>
+        <p className="num mt-2 text-[11px] text-faint">{"Submitted " + stamp_et(o.submitted_at)}</p>
+        {if len(o.fills) > 0 {
+            <div className="num mt-2 text-[12px] text-muted">
+                {for (i, f) in enumerate(o.fills) {
+                    <div key={str(i)}>{qty(f.qty) + " @ " + money(f.price) + ", " + stamp_et(f.filled_at)}</div>
                 }}
-            </tbody>
-        </table>
+            </div>
+        }}
+        <div className="mt-1 break-all font-mono text-[10px] text-faint">{o.client_order_id}</div>
+    </li>
+}
+
+def OrdersTable(orders: list[OrderData]) -> JsxElement {
+    <div>
+        <ul className={CARD_LIST}>
+            {for o in orders {
+                <OrderCard key={o.client_order_id} o={o}/>
+            }}
+        </ul>
+        <div className={"scroll-x " + WIDE_ONLY}>
+            <table className="w-full min-w-[760px]">
+                <thead>
+                    <tr>
+                        <th className={TH}>Submitted</th>
+                        <th className={TH}>Order</th>
+                        <th className={TH_NUM}>Price</th>
+                        <th className={TH_NUM}>Filled</th>
+                        <th className={TH}>Fills</th>
+                        <th className={TH}>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {for o in orders {
+                        <tr key={o.client_order_id} className={ROW}>
+                            <td className={TD + " num text-muted"}>{stamp_et(o.submitted_at)}</td>
+                            <td className={TD}>
+                                <span className={"font-semibold uppercase " + ("text-up" if o.side == "buy" else "text-down")}>{o.side}</span>
+                                <span className="text-muted">{" " + title(o.purpose) + " · " + title(o.order_type) + " " + o.time_in_force.upper()}</span>
+                                <div className="font-mono text-[10px] text-faint">{o.client_order_id}</div>
+                            </td>
+                            <td className={TD_NUM}>{money(o.limit_price if o.limit_price is not None else o.stop_price)}</td>
+                            <td className={TD_NUM}>{qty(o.filled_qty) + " / " + qty(o.qty)}</td>
+                            <td className={TD + " num text-[12px] text-muted"}>
+                                {if len(o.fills) == 0 {
+                                    <span className="text-faint">-</span>
+                                }}
+                                {for (i, f) in enumerate(o.fills) {
+                                    <div key={str(i)}>{qty(f.qty) + " @ " + money(f.price) + ", " + stamp_et(f.filled_at)}</div>
+                                }}
+                            </td>
+                            <td className={TD} title={o.reject_reason}><StatusBadge status={o.status}/></td>
+                        </tr>
+                    }}
+                </tbody>
+            </table>
+        </div>
     </div>
 }
 

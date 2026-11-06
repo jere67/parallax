@@ -59,8 +59,11 @@ test("run: the latest run's shortlist leads to a decision's full trail", async (
   await expect(page.getByRole("heading", { name: "Shortlist" })).toBeVisible();
   await fitsWidth(page);
 
-  const ticker = page.locator('a[href^="/runs/"][href*="/"]').filter({ hasText: /^[A-Z.]+$/ }).first();
-  const name = (await ticker.textContent()).trim();
+  // A phone shows the shortlist as cards, and a wider screen as a table.
+  const ticker = page.viewportSize().width < 768
+    ? page.getByTestId("shortlist-card").first().getByRole("link")
+    : page.locator('a[href^="/runs/"][href*="/"]').filter({ hasText: /^[A-Z.]+$/ }).first();
+  const name = (await ticker.getAttribute("href")).split("/").pop();
   await ticker.click();
   await expect(page).toHaveURL(new RegExp(`/runs/\\d{4}-\\d{2}-\\d{2}/${name}$`));
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
@@ -308,4 +311,140 @@ test("policy: the admin's save becomes the team's next version", async ({ page }
   await expect(page.getByTestId("save-bar")).toHaveCount(0);
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("slider", { name: "Largest position" })).toHaveValue(before === "0.08" ? "0.09" : "0.08");
+});
+
+// --- A phone ----------------------------------------------------------------------------------
+
+test("mobile: the bottom tabs reach each page, and targets are a thumb's size", async ({ page }) => {
+  await page.goto("/");
+  const tabs = page.getByRole("navigation", { name: "Main" });
+  if (page.viewportSize().width >= 768) {
+    await expect(tabs).toBeHidden();
+    return;
+  }
+  await expect(tabs).toBeVisible();
+  for (const [name, path, heading] of [
+    ["Runs", "/runs", "Shortlist"],
+    ["Policy", "/policy", "In plain English"],
+    ["Reports", "/reports", "Sign in for stock reports"],
+    ["Portfolio", "/", "Open positions"],
+  ]) {
+    const tab = tabs.getByRole("link", { name, exact: true });
+    const box = await tab.boundingBox();
+    expect(box.height, `${name} tab height`).toBeGreaterThanOrEqual(44);
+    await tab.click();
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await expect(tab).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    await fitsWidth(page);
+  }
+});
+
+// Nothing inside the page scrolls sideways either, which would hide a column off the edge.
+async function noSidewaysPanels(page) {
+  const panels = await page.evaluate(() =>
+    [...document.querySelectorAll(".scroll-x, .overflow-auto")]
+      .filter((el) => el.offsetParent && el.scrollWidth > el.clientWidth + 1)
+      .map((el) => el.closest("section")?.querySelector("h2")?.textContent ?? el.className),
+  );
+  expect(panels, "panels that scroll sideways").toEqual([]);
+}
+
+test("mobile: tables are cards on a phone, and each card opens what it should", async ({ page }) => {
+  const phone = page.viewportSize().width < 768;
+  await page.goto("/");
+  const position = page.getByTestId("position-card").first();
+  const positionsTable = page.getByRole("columnheader", { name: "Avg cost" }).first();
+  if (!phone) {
+    await expect(positionsTable).toBeVisible();
+    await expect(position).toBeHidden();
+    return;
+  }
+  await expect(position).toBeVisible();
+  await expect(positionsTable).toBeHidden();
+  await fitsWidth(page);
+  const details = position.getByRole("button", { name: "Thesis and details" });
+  // Rounded: a layout's subpixel positions can read a hair under its true height.
+  expect(Math.round((await details.boundingBox()).height)).toBeGreaterThanOrEqual(44);
+  await details.click();
+  await expect(position.getByText("Thesis", { exact: true })).toBeVisible();
+  await expect(position.getByText("Avg cost")).toBeVisible();
+  await fitsWidth(page);
+  await page.getByRole("button", { name: /^Closed trades/ }).click();
+  await expect(page.getByTestId("closed-card").first()).toBeVisible();
+  await page.getByRole("button", { name: /^Orders/ }).click();
+  await expect(page.getByTestId("order-card").first()).toBeVisible();
+  await noSidewaysPanels(page);
+
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Runs", exact: true }).click();
+  const card = page.getByTestId("shortlist-card").first();
+  await expect(card).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Conviction" })).toBeHidden();
+  await fitsWidth(page);
+  await noSidewaysPanels(page);
+  const filter = page.getByRole("button", { name: /^Buys/ });
+  expect((await filter.boundingBox()).height).toBeGreaterThanOrEqual(36);
+  await card.getByRole("link").click();
+  await expect(page).toHaveURL(/\/runs\/\d{4}-\d{2}-\d{2}\/[A-Z.]+$/);
+  await expect(page.getByRole("navigation", { name: "Decision trail" })).toBeVisible();
+  await fitsWidth(page);
+  await noSidewaysPanels(page);
+});
+
+// A phone stacks its cards, so a long list must not run the page on for screens. Past that length
+// WebKit on Linux also cannot take the full-page shot every test attaches.
+test("mobile: a long list shows its newest cards, and more on request", async ({ page }) => {
+  await page.goto("/");
+  if (page.viewportSize().width >= 768) {
+    return;
+  }
+  const orders = page.getByTestId("order-card");
+  await expect(orders.first()).toBeVisible();
+  await expect(orders).toHaveCount(10);
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  expect(height / page.viewportSize().height, "screens of scrolling").toBeLessThan(10);
+
+  await page.getByRole("button", { name: "Show 10 more orders" }).click();
+  await expect(orders).toHaveCount(20);
+  await fitsWidth(page);
+
+  const closedTab = page.getByRole("button", { name: /^Closed trades/ });
+  await closedTab.click();
+  const total = Number((await closedTab.textContent()).match(/\d+/)[0]);
+  const closed = page.getByTestId("closed-card");
+  await expect(closed).toHaveCount(Math.min(total, 10));
+  const more = page.getByRole("button", { name: /^Show \d+ more closed trades?$/ });
+  while (await more.isVisible()) {
+    await more.click();
+  }
+  await expect(closed).toHaveCount(total);
+});
+
+test("mobile: the app can be installed and opens offline", async ({ page, request, browserName }) => {
+  const manifest = await (await request.get("/manifest.json")).json();
+  expect(manifest.display).toBe("standalone");
+  expect(manifest.icons.map((icon) => icon.purpose)).toContain("maskable");
+  for (const icon of manifest.icons) {
+    expect((await request.get(icon.src)).status(), icon.src).toBe(200);
+  }
+  const worker = await request.get("/sw.js");
+  expect(worker.headers()["content-type"]).toContain("javascript");
+  await expect(page.goto("/policy")).resolves.toBeTruthy();
+  expect(await page.locator('link[rel="manifest"]').getAttribute("href")).toBe("/manifest.json");
+  expect(await page.locator('meta[name="viewport"]').getAttribute("content")).toContain("viewport-fit=cover");
+  // Playwright's WebKit does not run service workers.
+  if (browserName === "webkit") {
+    return;
+  }
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+  // A second tab, since this one's own failed requests would count as console errors.
+  await page.goto("about:blank");
+  await page.context().setOffline(true);
+  const offline = await page.context().newPage();
+  await offline.goto("/");
+  await expect(offline.getByText("You are offline.")).toBeVisible();
+  await offline.close();
+  await page.context().setOffline(false);
 });

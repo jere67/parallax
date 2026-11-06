@@ -21,6 +21,11 @@ import from dashboard.ui.format {
     title
 }
 import from dashboard.ui.parts {
+    CARD,
+    CARD_LIST,
+    WIDE_ONLY,
+    CardFigure,
+    CardFigures,
     FROZEN_CELL,
     FROZEN_HEAD,
     PILL_BASE,
@@ -229,6 +234,33 @@ def in_group(row: CoverageData, group: str) -> bool {
     return True;
 }
 
+"""One covered ticker on a phone: the whole card opens its decision trail."""
+def CoverageCard(row: CoverageData, day: str) -> JsxElement {
+    <li data-testid="shortlist-card">
+        <Link to={"/runs/" + day + "/" + row.ticker} className={CARD + " active:bg-hover"}>
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <div className="font-semibold">{row.ticker}</div>
+                    <div className="truncate text-[11px] text-faint">{row.sector}</div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1 text-faint">
+                    <DecisionCell row={row}/>
+                    <ChevronRight size={16} aria-hidden="true"/>
+                </div>
+            </div>
+            <CardFigures>
+                <CardFigure label="Score">{signed(row.score)}</CardFigure>
+                <CardFigure label="Agreement">{pct(row.agreement, 0)}</CardFigure>
+                <CardFigure label="Conviction">{num(row.conviction)}</CardFigure>
+                <CardFigure label="Risk gate"><GateCell row={row}/></CardFigure>
+                <CardFigure label="Order"><OrderCell row={row}/></CardFigure>
+                <CardFigure label="Close">{money(row.last_close)}</CardFigure>
+            </CardFigures>
+            <div className="mt-2.5 text-[12px] text-muted"><CoveredCell row={row}/></div>
+        </Link>
+    </li>
+}
+
 def CoverageTable(run: RunData) -> JsxElement {
     has group: str = "all";
 
@@ -252,49 +284,56 @@ def CoverageTable(run: RunData) -> JsxElement {
         } elif len(rows) == 0 {
             <p className="px-4 py-6 text-[13px] text-muted">No ticker in this run came to that decision.</p>
         } else {
-            <div className="scroll-x">
-                <table className="w-full min-w-[1040px]">
-                    <thead>
-                        <tr>
-                            <th className={TH + FROZEN_HEAD}>Ticker</th>
-                            <th className={TH}>Decision</th>
-                            <th className={TH_NUM}>Conviction</th>
-                            <th className={TH}>Consensus</th>
-                            <th className={TH_NUM}>Agreement</th>
-                            <th className={TH}>Risk gate</th>
-                            <th className={TH}>Order</th>
-                            <th className={TH}>Covered</th>
-                            <th className={TH_NUM}>Close</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {for row in rows {
-                            <tr
-                                key={row.ticker}
-                                className={ROW + " group cursor-pointer"}
-                                onClick={lambda { nav("/runs/" + run.run_date + "/" + row.ticker); }}
-                            >
-                                <td className={TD + FROZEN_CELL}>
-                                    <Link to={"/runs/" + run.run_date + "/" + row.ticker} className="font-semibold hover:text-accent">{row.ticker}</Link>
-                                    <div className="max-w-[160px] truncate text-[11px] text-faint">{row.sector}</div>
-                                </td>
-                                <td className={TD}><DecisionCell row={row}/></td>
-                                <td className={TD_NUM}>{num(row.conviction)}</td>
-                                <td className={TD}>
-                                    <div className="flex items-center gap-2.5">
-                                        <IntervalBar score={row.score} low={row.ci_low} high={row.ci_high}/>
-                                        <span className="num w-11 text-right text-[12px]">{signed(row.score)}</span>
-                                    </div>
-                                </td>
-                                <td className={TD_NUM}>{pct(row.agreement, 0)}</td>
-                                <td className={TD}><GateCell row={row}/></td>
-                                <td className={TD}><OrderCell row={row}/></td>
-                                <td className={TD}><CoveredCell row={row}/></td>
-                                <td className={TD_NUM}>{money(row.last_close)}</td>
+            <div>
+                <ul className={CARD_LIST}>
+                    {for row in rows {
+                        <CoverageCard key={row.ticker} row={row} day={run.run_date}/>
+                    }}
+                </ul>
+                <div className={"scroll-x " + WIDE_ONLY}>
+                    <table className="w-full min-w-[1040px]">
+                        <thead>
+                            <tr>
+                                <th className={TH + FROZEN_HEAD}>Ticker</th>
+                                <th className={TH}>Decision</th>
+                                <th className={TH_NUM}>Conviction</th>
+                                <th className={TH}>Consensus</th>
+                                <th className={TH_NUM}>Agreement</th>
+                                <th className={TH}>Risk gate</th>
+                                <th className={TH}>Order</th>
+                                <th className={TH}>Covered</th>
+                                <th className={TH_NUM}>Close</th>
                             </tr>
-                        }}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {for row in rows {
+                                <tr
+                                    key={row.ticker}
+                                    className={ROW + " group cursor-pointer"}
+                                    onClick={lambda { nav("/runs/" + run.run_date + "/" + row.ticker); }}
+                                >
+                                    <td className={TD + FROZEN_CELL}>
+                                        <Link to={"/runs/" + run.run_date + "/" + row.ticker} className="font-semibold hover:text-accent">{row.ticker}</Link>
+                                        <div className="max-w-[160px] truncate text-[11px] text-faint">{row.sector}</div>
+                                    </td>
+                                    <td className={TD}><DecisionCell row={row}/></td>
+                                    <td className={TD_NUM}>{num(row.conviction)}</td>
+                                    <td className={TD}>
+                                        <div className="flex items-center gap-2.5">
+                                            <IntervalBar score={row.score} low={row.ci_low} high={row.ci_high}/>
+                                            <span className="num w-11 text-right text-[12px]">{signed(row.score)}</span>
+                                        </div>
+                                    </td>
+                                    <td className={TD_NUM}>{pct(row.agreement, 0)}</td>
+                                    <td className={TD}><GateCell row={row}/></td>
+                                    <td className={TD}><OrderCell row={row}/></td>
+                                    <td className={TD}><CoveredCell row={row}/></td>
+                                    <td className={TD_NUM}>{money(row.last_close)}</td>
+                                </tr>
+                            }}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         }}
     </Panel>
@@ -316,7 +355,7 @@ def ActionLog(lines: list[str]) -> JsxElement {
         {if len(lines) == 0 {
             <p className="px-4 py-6 text-[13px] text-muted">Nothing was logged.</p>
         } else {
-            <ol className="scroll-x font-mono text-[12px] leading-6 [&>li]:whitespace-nowrap">
+            <ol className="scroll-x font-mono text-[12px] leading-6 max-md:break-words md:[&>li]:whitespace-nowrap">
                 {for (i, line) in enumerate(shown) {
                     <li key={str(i)} className="border-b border-line/60 px-4 py-1 text-muted last:border-b-0">{line}</li>
                 }}
@@ -335,7 +374,7 @@ def RunList(runs: list[RunSummaryData], current: str) -> JsxElement {
                 <li key={r.run_date}>
                     <Link
                         to={"/runs/" + r.run_date}
-                        className={"relative flex items-center justify-between gap-3 border-b border-line/60 px-4 py-2 text-[13px] transition-colors duration-150 " + ("bg-accent-soft before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-accent" if active else "hover:bg-hover")}
+                        className={"relative flex min-h-11 items-center justify-between gap-3 border-b border-line/60 px-4 py-2 text-[13px] md:min-h-0 transition-colors duration-150 " + ("bg-accent-soft before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-accent" if active else "hover:bg-hover")}
                         aria-current={"page" if active else None}
                     >
                         <span className="flex items-center gap-2">
