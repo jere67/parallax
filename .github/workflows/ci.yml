@@ -79,12 +79,17 @@ jobs:
         run: jac build
 
       # The demo history gives the end-to-end check pages with data. This server is this job's
-      # alone; TRADING_AGENT_DEMO is never set on a deployed one.
+      # alone; TRADING_AGENT_DEMO is never set on a deployed one. The fake OpenRouter lets the
+      # policy assistant's whole path run with no key and no network.
       - name: Boot the production build
         env:
           TRADING_AGENT_DEMO: "1"
           TRADING_AGENT_DISABLE_ORDERS: "1"
+          ADMIN_PASSWORD: e2e-admin-password
+          OPENROUTER_API_KEY: e2e-fake
+          OPENROUTER_API_BASE: http://127.0.0.1:8399
         run: |
+          node e2e/fake-openrouter.js > fake-openrouter.log 2>&1 &
           jac run dist/trading-agent.jab < /dev/null > server.log 2>&1 &
           for _ in $(seq 1 120); do
             curl -sf http://localhost:8000/healthz > /dev/null && break
@@ -110,6 +115,8 @@ jobs:
 
       - name: Check every page on each device
         working-directory: e2e
+        env:
+          E2E_ADMIN_PASSWORD: e2e-admin-password
         run: |
           npm ci
           npx playwright install --with-deps chromium webkit
