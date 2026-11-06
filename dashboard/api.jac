@@ -428,6 +428,7 @@ def run_view(portfolio: Portfolio, run_date: str) -> RunView | None {
         prompt_tokens=run.prompt_tokens,
         completion_tokens=run.completion_tokens,
         macro=macro_view(run),
+        policy_version=run.policy_version,
         action_log=run.action_log,
         previous_day=days[at - 1] if at > 0 else "",
         next_day=days[at + 1] if at + 1 < len(days) else ""
@@ -539,7 +540,10 @@ def trail_view(portfolio: Portfolio, run_date: str, ticker: str) -> TrailView | 
         arbiter_verdict=d.arbiter_verdict,
         downgrade_reason=d.downgrade_reason,
         forced_hold_reason=d.forced_hold_reason,
-        model=d.model
+        model=d.model,
+        policy_version=d.policy_version,
+        policy_notes=d.policy_notes,
+        policy_skipped=d.policy_skipped
     );
     orders: list[Order] = [];
     rc = first_of([rc for rc in [d ->:CheckedBy:->[?:RiskCheck]]]);

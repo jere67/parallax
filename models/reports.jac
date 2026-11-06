@@ -1,6 +1,7 @@
 """Shared, non-personal report queue; personal history stays on each user's root."""
 import from models.users { ReportStatus }
 import from models.graph { InsightCard }
+import from models.policy_views { ReplayRow }
 
 node ReportCatalog {
     has symbols: list[str] = [], trading_date: str = "", refreshed_at: str = "";
@@ -17,7 +18,8 @@ node ReportJob {
 
 obj ReportView {
     has id: str, ticker: str, trading_date: str, requested_at: str, status: str;
-    has error: str = "", card: InsightCard | None = None, demo: bool = False;
+    has error: str = "", card: InsightCard | None = None, demo: bool = False,
+        my_policy: ReplayRow | None = None, my_policy_version: int = 0;
 }
 
 obj ReportsView {
