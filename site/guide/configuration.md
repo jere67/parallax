@@ -40,6 +40,7 @@ Leave them unset unless you mean to change that.
 | `TRADING_AGENT_FORWARD_TEST_START` | A trading date, `YYYY-MM-DD`. On that date, the first trading tick before the day's run executes starts the [forward test](/guide/forward-test) and switches the team portfolio to auto mode. Set it only with the team's go-ahead. |
 | `TRADING_AGENT_DISABLE_ORDERS` | `1` stops every order. The executor still sizes and gates each decision and records the checks, but sends nothing and places no stop. |
 | `TRADING_AGENT_DISABLE_MODELS` | `1`, `true`, or `yes` stops every model request. Each call raises `ModelsDisabledError`, so the Run Guard falls back to HOLD for every ticker. |
+| `POLICY_CHAT_PER_USER_DAY` | Messages each user may send the [policy assistant](/guide/policies) in a UTC day. Defaults to 20. |
 | `TRADING_AGENT_DEMO` | `1` fills an empty team portfolio with simulated history. See [Demo data](/guide/demo-data). Never set it on a deployed server. |
 
 ## Base URLs

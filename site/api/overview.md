@@ -8,7 +8,7 @@ related:
 
 The dashboard reads everything it shows through a small HTTP API, and anyone can call it.
 Every endpoint is a Jac function exposed by the server: you send a `POST` with a JSON body of its parameters and read the result from the response's `data.result`.
-The read endpoints are public; only [`start_morning_run`](/api/start-morning-run) needs a token.
+The read endpoints are public; [`start_morning_run`](/api/start-morning-run) and a user's own [policy endpoints](/api/policy) need a token.
 
 ## Base URL
 

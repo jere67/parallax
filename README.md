@@ -50,6 +50,31 @@ Two environment variables control it:
 - `TRADING_AGENT_DISABLE_ORDERS=1` stops every order.
   The executor still sizes and gates each morning's decisions and records the checks, but sends nothing.
 
+## Policies
+
+The Policy page (`/policy`) says when to buy, sell, trim, and hold, as numbers with hard limits and as typed rules over a fixed set of metrics.
+Anyone can read the team's policy and try any draft against the latest stored run, which costs no model request and places no order.
+
+A signed-in user keeps a private policy of their own, which only shows what it would have done.
+The team's policy decides every morning run from the next one on, and only the admin account can change it.
+A run records the version it used, and every save is kept, so any version can be restored.
+
+The policy assistant answers questions about a policy and turns plain English into a proposed change, which saves nothing until its owner applies it.
+It uses the free model chain, and it needs `OPENROUTER_API_KEY`; without one the rest of the page works as usual.
+`POLICY_CHAT_PER_USER_DAY` sets each user's daily messages (20 by default), and the morning run's share of the day's requests is always held back.
+
+To check the assistant against the real free models (about 20 requests at most):
+
+```bash
+set -a && source .env && set +a
+TRADING_AGENT_RUN_SPIKE=1 jac run --no-takeover tests/spikes/policy_chat_spike.jac
+```
+
+## Phones
+
+The dashboard can be installed on a phone: from Chrome's install prompt on Android, or on iPhone with Share, then Add to Home Screen.
+It needs HTTPS to install anywhere but `localhost`, which is a browser rule.
+
 ## Starting the morning run by hand
 
 The morning run starts by itself only between 7:30 and 7:45 a.m. New York time, so a server that was down then has no run that day.
