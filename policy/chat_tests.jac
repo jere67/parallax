@@ -7,7 +7,7 @@ test "edits apply to a copy, and the original policy never changes" {
     start = Policy();
     (found, problems) = apply_edits(start, [
         PolicyEdit(kind=EditKind.SET, setting="buy_score", value=0.4),
-        PolicyEdit(kind=EditKind.ADD_RULE, effect="avoid_buy", label="Too hot", conditions=[ConditionDraft(metric="rsi_14", op="gt", number=70.0)])
+        PolicyEdit(kind=EditKind.ADD_RULE, effect=RuleEffect.AVOID_BUY, label="Too hot", conditions=[ConditionDraft(metric="rsi_14", op=Op.GT, number=70.0)])
     ]);
     assert problems == [];
     assert start.buy_score == 0.2 and start.rules == [];
@@ -18,9 +18,11 @@ test "edits apply to a copy, and the original policy never changes" {
 test "a setting past its limit, or a rule that does not exist, is a problem, not a change" {
     (_, over) = apply_edits(Policy(), [PolicyEdit(kind=EditKind.SET, setting="max_position_weight", value=0.5)]);
     assert over and "Largest position" in over[0];
+    (no_effect, unsaid) = apply_edits(Policy(), [PolicyEdit(kind=EditKind.ADD_RULE, conditions=[ConditionDraft(metric="rsi_14", op=Op.GT, number=70.0)])]);
+    assert no_effect.rules == [] and unsaid == ["A new rule needs an effect."];
     (_, missing) = apply_edits(Policy(), [PolicyEdit(kind=EditKind.REMOVE_RULE, rule_id="R9")]);
     assert missing == ["There is no rule R9."];
-    (_, bad_metric) = apply_edits(Policy(), [PolicyEdit(kind=EditKind.ADD_RULE, effect="sell", conditions=[ConditionDraft(metric="rsi_14", op="gt", number=5000.0)])]);
+    (_, bad_metric) = apply_edits(Policy(), [PolicyEdit(kind=EditKind.ADD_RULE, effect=RuleEffect.SELL, conditions=[ConditionDraft(metric="rsi_14", op=Op.GT, number=5000.0)])]);
     assert bad_metric;
 }
 
@@ -40,7 +42,7 @@ test "words take the catalog's spelling: capitals for tickers, its own case for 
     assert normal_words("ticker", [" aapl ", "brk.b"]) == ["AAPL", "BRK-B"];
     assert normal_words("sector", ["energy", "information technology"]) == ["Energy", "Information Technology"];
     assert normal_words("sector", ["not a sector"]) == ["not a sector"];
-    (_, problems) = apply_edits(Policy(), [PolicyEdit(kind=EditKind.ADD_RULE, effect="avoid_buy", conditions=[ConditionDraft(metric="sector", op="in", words=["not a sector"])])]);
+    (_, problems) = apply_edits(Policy(), [PolicyEdit(kind=EditKind.ADD_RULE, effect=RuleEffect.AVOID_BUY, conditions=[ConditionDraft(metric="sector", op=Op.IN, words=["not a sector"])])]);
     assert problems;
 }
 

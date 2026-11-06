@@ -4,7 +4,7 @@ import json;
 import agents.policy_assistant as module;
 import from jaclang.byllm.lib { MockLLM, MockRawResponse, OutputConversionError }
 import from agents.policy_assistant { PolicyAnswer, answer_policy_message, edit_problem }
-import from models.policy { ConditionDraft, EditKind, PolicyEdit }
+import from models.policy { ConditionDraft, EditKind, Op, PolicyEdit, RuleEffect }
 
 def ask_with(outputs: list[str]) -> tuple[PolicyAnswer, MockLLM] {
     mock = MockLLM(model_name="mock-policy", config={"outputs": [MockRawResponse(content=o) for o in outputs]});
@@ -50,14 +50,36 @@ test "a second malformed answer is an error, for the caller to report" {
     assert failed;
 }
 
+test "an effect or operator outside the lists is sent back, and the retry's answer is used" {
+    good = {"kind": "add_rule", "effect": "sell", "conditions": [{"metric": "rsi_14", "op": "gt", "number": 70}]};
+    bad_op = {"kind": "add_rule", "effect": "sell", "conditions": [{"metric": "rsi_14", "op": ">", "number": 70}]};
+    bad_effect = {"kind": "add_rule", "effect": "no_buy", "conditions": [{"metric": "rsi_14", "op": "gt", "number": 70}]};
+    for bad in [bad_op, bad_effect] {
+        (found, _) = ask_with([answer([bad]), answer([good])]);
+        assert found.edits[0].effect == RuleEffect.SELL and found.edits[0].conditions[0].op == Op.GT;
+    }
+}
+
+# A built .jab loads no `sem` text, so this has to hold in the prompt itself. A real free model
+# guessed at effects and operators until it did: docs/TDD.md §7.
+test "the prompt itself says how to write every kind of edit" {
+    (_, mock) = ask_with([answer([])]);
+    prompt = mock.seen_prompts[0];
+    for word in [k.value for k in list(EditKind)] + [e.value for e in list(RuleEffect)] {
+        assert word in prompt, word;
+    }
+    assert "With lt, le, gt," in prompt and "or ge, give a number" in prompt and "With in or not_in, give words" in prompt;
+    assert "8% is 0.08" in prompt and "rule_id" in prompt;
+    assert "return_since_entry ge 0.3" in prompt;
+}
+
 test "edit_problem names what is wrong with an edit's shape" {
     assert "does not exist" in edit_problem(PolicyEdit(kind=EditKind.SET, setting="nope", value=1.0));
     assert "needs a value" in edit_problem(PolicyEdit(kind=EditKind.SET, setting="buy_score"));
-    assert "effect" in edit_problem(PolicyEdit(kind=EditKind.ADD_RULE, effect="explode"));
-    assert "at least one" in edit_problem(PolicyEdit(kind=EditKind.ADD_RULE, effect="sell"));
-    assert "op" in edit_problem(PolicyEdit(kind=EditKind.ADD_RULE, effect="sell", conditions=[ConditionDraft(metric="rsi_14", op="bigger")]));
-    assert "needs a number" in edit_problem(PolicyEdit(kind=EditKind.ADD_RULE, effect="sell", conditions=[ConditionDraft(metric="rsi_14", op="gt")]));
-    assert "needs words" in edit_problem(PolicyEdit(kind=EditKind.ADD_RULE, effect="sell", conditions=[ConditionDraft(metric="sector", op="in")]));
+    assert "needs an effect" in edit_problem(PolicyEdit(kind=EditKind.ADD_RULE));
+    assert "at least one" in edit_problem(PolicyEdit(kind=EditKind.ADD_RULE, effect=RuleEffect.SELL));
+    assert "needs a number" in edit_problem(PolicyEdit(kind=EditKind.ADD_RULE, effect=RuleEffect.SELL, conditions=[ConditionDraft(metric="rsi_14", op=Op.GT)]));
+    assert "needs words" in edit_problem(PolicyEdit(kind=EditKind.ADD_RULE, effect=RuleEffect.SELL, conditions=[ConditionDraft(metric="sector", op=Op.IN)]));
     assert "rule_id" in edit_problem(PolicyEdit(kind=EditKind.PAUSE_RULE));
     assert edit_problem(PolicyEdit(kind=EditKind.PAUSE_RULE, rule_id="R1")) == "";
 }
