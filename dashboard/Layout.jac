@@ -1,11 +1,12 @@
 """The frame around every page: the top bar with navigation, the portfolio's status, and the
 theme switch; a banner when the graph holds demo history; and the disclaimer (TDD §9)."""
 import from "@jac/runtime" { Link, Outlet, useLocation }
-import from "lucide-react" { Moon, Sun }
+import from "lucide-react" { BookOpen, FileText, History, Moon, SlidersHorizontal, Sun }
 import from dashboard.api { get_portfolio }
 import from models.views { PortfolioView as Portfolio }
 import from dashboard.ui.format { stamp_et, title }
 import from dashboard.ui.parts { StatusBadge }
+import from dashboard.ui.pwa { InstallHint, OfflineBanner, register_worker }
 import from dashboard.ui.theme { is_dark, set_theme }
 
 # The same words as action/insights.jac DISCLAIMER, which stays server-side with the cards.
@@ -35,6 +36,18 @@ def NavLink(to: str, active: bool, children: any = None) -> JsxElement {
     </Link>
 }
 
+"""One destination in the phone's bottom tab bar, a full thumb's height."""
+def TabLink(to: str, label: str, active: bool, children: any = None) -> JsxElement {
+    <Link
+        to={to}
+        aria-current={"page" if active else None}
+        className={"press flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium " + ("text-accent" if active else "text-muted")}
+    >
+        {children}
+        <span>{label}</span>
+    </Link>
+}
+
 def ThemeSwitch -> JsxElement {
     has dark: bool = is_dark();
 
@@ -46,7 +59,7 @@ def ThemeSwitch -> JsxElement {
     <button
         type="button"
         onClick={flip}
-        className="press grid size-8 place-items-center rounded-md text-muted hover:bg-hover hover:text-text"
+        className="press grid size-11 place-items-center rounded-md text-muted hover:bg-hover hover:text-text md:size-8"
         aria-label={"Switch to light theme" if dark else "Switch to dark theme"}
         title={"Light theme" if dark else "Dark theme"}
     >
@@ -64,19 +77,20 @@ def:pub Layout -> JsxElement {
     }
 
     path = useLocation().pathname;
+    register_worker();
 
-    <div className="flex min-h-dvh flex-col">
-        <header className="sticky top-0 z-20 border-b border-line bg-bg/90 backdrop-blur-md">
+    <div className="flex min-h-dvh flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
+        <header className="sticky top-0 z-20 border-b border-line bg-bg/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
             <div className="mx-auto flex h-12 max-w-[1200px] items-center gap-6 px-4 sm:px-6 lg:px-8">
                 <Link to="/" className="flex items-center gap-2" aria-label="Trading Agent, home">
                     <Mark/>
-                    <span className="display hidden text-[19px] leading-none sm:inline">Trading Agent</span>
+                    <span className="display text-[19px] leading-none">Trading Agent</span>
                 </Link>
-                <nav className="flex items-center gap-6">
+                <nav className="hidden items-center gap-6 md:flex">
                     <NavLink to="/" active={path == "/"}>Portfolio</NavLink>
-                    <NavLink to="/reports" active={path.startsWith("/reports")}>Reports</NavLink>
                     <NavLink to="/runs" active={path.startsWith("/runs")}>Runs</NavLink>
                     <NavLink to="/policy" active={path.startsWith("/policy")}>Policy</NavLink>
+                    <NavLink to="/reports" active={path.startsWith("/reports")}>Reports</NavLink>
                 </nav>
                 <div className="ml-auto flex items-center gap-3">
                     {if info is not None and info.started {
@@ -103,12 +117,16 @@ def:pub Layout -> JsxElement {
                 </p>
             </div>
         }}
+        <OfflineBanner/>
         <main className="mx-auto w-full max-w-[1200px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             <Outlet/>
         </main>
         <footer className="border-t border-line">
             <div className="mx-auto flex max-w-[1200px] flex-col gap-2 px-4 py-6 text-[12px] text-faint sm:flex-row sm:items-start sm:justify-between sm:gap-8 sm:px-6 lg:px-8">
-                <p className="max-w-2xl">{DISCLAIMER}</p>
+                <div className="max-w-2xl">
+                    <p>{DISCLAIMER}</p>
+                    <InstallHint/>
+                </div>
                 <p className="shrink-0">
                     <a href={REPO_URL} className="transition-colors duration-150 hover:text-text">Source</a>
                     {" · "}
@@ -116,5 +134,11 @@ def:pub Layout -> JsxElement {
                 </p>
             </div>
         </footer>
+        <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
+            <TabLink to="/" label="Portfolio" active={path == "/"}><BookOpen size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/runs" label="Runs" active={path.startsWith("/runs")}><History size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/policy" label="Policy" active={path.startsWith("/policy")}><SlidersHorizontal size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/reports" label="Reports" active={path.startsWith("/reports")}><FileText size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+        </nav>
     </div>
 }
