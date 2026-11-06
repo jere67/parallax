@@ -141,11 +141,11 @@ node PolicyVersion {
         changes: list[str] = [];
 }
 
-"""A condition as the policy assistant drafts it, before code checks it: the metric and
-operator are plain strings, and code refuses any it does not know."""
+"""A condition as the policy assistant drafts it, before code checks it: the metric is a plain
+string, and code refuses any it does not know."""
 obj ConditionDraft {
     has metric: str,
-        op: str;
+        op: Op;
     has number: float | None = None,
         words: list[str] = [];
 }
@@ -165,17 +165,21 @@ obj PolicyEdit {
     has kind: EditKind;
     has setting: str = "",
         value: float | None = None,
-        effect: str = "",
+        effect: RuleEffect | None = None,
         conditions: list[ConditionDraft] = [],
         label: str = "",
         rule_id: str = "";
 }
 
+
 """One message in a user's policy chat. A user turn holds what they wrote. An assistant turn
 holds the reply and, when it proposed changes, the policy they would give (`proposal`),
 checked by code: `changes` says what would change, `problems` why it cannot be applied, and
 `status` whether it is "proposed", "applied", "discarded", "stale" (the policy changed
-since), or "invalid". `base_version` is the version the proposal was drafted against."""
+since), or "invalid". `base_version` is the version the proposal was drafted against, `impact`
+says what it would change in the latest run, and `question` is the message it answers. A user
+turn's `status` is "pending" until it is answered, then "answered" or "failed"; only a failed
+one gives its place in the day's limit back."""
 node ChatTurn {
     has scope: PolicyScope,
         role: str,
@@ -185,6 +189,8 @@ node ChatTurn {
         base_version: int = 0,
         changes: list[str] = [],
         problems: list[str] = [],
+        impact: list[str] = [],
+        question: str = "",
         status: str = "",
         applied_version: int = 0,
         model: str = "",
