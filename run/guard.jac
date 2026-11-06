@@ -20,7 +20,9 @@ import from agents.catalog { resolve_models }
 import from agents.models { CHAIN, FREE_REQUESTS_PER_DAY, LIMITER, model_error, provider_requests_left, request_total }
 import from agents.research { MacroResult, ResearchResult, fallback, macro_research, research }
 import from analysis.consensus { CONSENSUS_VERSION, ConsensusConfig }
+import from analysis.policy { Facts, POLICY_ENGINE_VERSION, consensus_config }
 import from models.agents { Domain }
+import from models.policy { Policy }
 import from models.graph {
     Counted,
     Coverage,
@@ -48,7 +50,8 @@ import from research.briefs { Brief, macro_brief, regime_inputs }
 import from research.collector { run_budget, utc_now }
 import from research.screener { ScreenConfig }
 import from research.sources { SOURCES_VERSION }
-import from run.analysis { Holding, TickerAnalysis, analyze, record_analysis }
+import from policy.facts { MarketFacts, stock_facts, stock_from_technicals }
+import from run.analysis { DecisionRule, Holding, TickerAnalysis, analyze, record_analysis, settle }
 import from run.public { public }
 import from run.research { COVERAGE_REASONS, Collection, PassConfig, briefs_for, collect_pass }
 import from run.workers { NETWORK }
@@ -155,8 +158,9 @@ def claim_run(portfolio: Portfolio, run_day: str) -> Run | None {
     }
 }
 
-"""The portfolio's open positions by ticker, each with the time stop its opening decision set.
-Closed positions keep their nodes and are skipped."""
+"""The portfolio's open positions by ticker, each with the time stop its opening decision set,
+its average entry price, and the date it opened. Closed positions keep their nodes and are
+skipped."""
 def holdings_of(portfolio: Portfolio) -> dict[str, Holding] {
     found: dict[str, Holding] = {};
     for p in [portfolio ->:Holds:->[?:Position]] {
@@ -164,7 +168,7 @@ def holdings_of(portfolio: Portfolio) -> dict[str, Holding] {
             continue;
         }
         opened = [p ->:OpenedBy:->[?:Decision]];
-        found[p.ticker] = Holding(ticker=p.ticker, time_stop=opened[0].time_stop if opened else "");
+        found[p.ticker] = Holding(ticker=p.ticker, time_stop=opened[0].time_stop if opened else "", avg_entry_price=p.avg_entry_price, opened_day=p.opened_at[:10]);
     }
     return found;
 }
@@ -172,7 +176,9 @@ def holdings_of(portfolio: Portfolio) -> dict[str, Holding] {
 """One run's state, and the tools that change it (TDD §4, Orchestrator tools). Every tool
 checks its limits and answers with a short plain-text result; a refused move changes nothing
 and says why. The Orchestrator calls these through byLLM, and the fallback calls them in
-fixed order, so both paths obey the same rules."""
+fixed order, so both paths obey the same rules. `config` must carry `policy`'s thresholds
+(analysis/policy.jac `consensus_config`); the policy's rules settle each ticker after its
+panel."""
 obj RunSession {
     has run_day: str,
         collection: Collection,
@@ -180,6 +186,8 @@ obj RunSession {
         config: ConsensusConfig,
         limits: RunLimits,
         run_requests: int;
+    has policy: Policy = Policy(),
+        policy_version: int = 0;
     has macro: MacroResult | None = None,
         latest: dict[str, dict[Domain, ResearchResult]] = {},
         history: dict[str, list[tuple[ResearchResult, str]]] = {},
@@ -396,8 +404,8 @@ obj RunSession {
                 } elif ticker in self.analyses {
                     notes.append(f"{ticker}: already decided");
                 } elif ticker in self.flags {
-                    self.analyses[ticker] = TickerAnalysis(ticker=ticker, held=ticker in self.holdings, forced_hold_reason=f"flagged by the Orchestrator: {self.flags[ticker]}");
-                    notes.append(f"{ticker}: HOLD (flagged)");
+                    self.analyses[ticker] = self.held_back(ticker, f"flagged by the Orchestrator: {self.flags[ticker]}");
+                    notes.append(f"{ticker}: {self.analyses[ticker].action().value} (flagged)");
                 } elif any(d not in self.latest.get(ticker, {}) for d in TICKER_DOMAINS) {
                     notes.append(f"{ticker}: dispatch market, fundamentals, and news research first");
                 } else {
@@ -408,7 +416,7 @@ obj RunSession {
             for ticker in list(ready) {
                 complete = all(r.complete() for r in ready[ticker].values());
                 if complete and room < self.panel_cost() {
-                    self.analyses[ticker] = TickerAnalysis(ticker=ticker, held=ticker in self.holdings, forced_hold_reason="the run's request budget was spent before the panel");
+                    self.analyses[ticker] = self.held_back(ticker, "the run's request budget was spent before the panel");
                     del ready[ticker];
                 } elif complete {
                     room -= self.panel_cost();
@@ -417,7 +425,7 @@ obj RunSession {
             }
             if ready {
                 macro = self.macro.body if self.macro is not None else None;
-                for result in analyze(self.run_day, ready, macro, self.holdings, self.collection.sessions, self.config, NETWORK) {
+                for result in analyze(self.run_day, ready, macro, self.holdings, self.collection.sessions, self.decision_rule(list(ready)), NETWORK) {
                     self.analyses[result.ticker] = result;
                 }
             }
@@ -482,12 +490,41 @@ obj RunSession {
         }
         for t in self.tickers() {
             if t not in self.analyses {
-                self.analyses[t] = TickerAnalysis(ticker=t, held=t in self.holdings, forced_hold_reason="the run could not finish its research or panel");
+                self.analyses[t] = self.held_back(t, "the run could not finish its research or panel");
             }
         }
         if not self.submitted {
             self.submit_decisions("submitted by the Run Guard");
         }
+    }
+
+    """The decision rule for `tickers`: the consensus settings, the policy, and each ticker's
+    facts for its rules."""
+    def decision_rule(tickers: list[str]) -> DecisionRule {
+        return DecisionRule(config=self.config, policy=self.policy, version=self.policy_version, facts={t: self.facts_for(t) for t in tickers});
+    }
+
+    """What the policy's rules can read about `ticker` before its panel: its collected
+    figures, the market, and its position when held."""
+    def facts_for(ticker: str) -> Facts {
+        inputs = self.collection.inputs_for(ticker);
+        if inputs is None {
+            return Facts(numbers={}, words={"ticker": ticker});
+        }
+        pick = inputs.pick;
+        screened = COVERAGE_REASONS[pick.reason] == CoverageReason.SCREEN;
+        stock = stock_from_technicals(ticker, pick.sector, pick.score if screened else None, inputs.market.stock, inputs.news.sessions_until);
+        market = MarketFacts(regime=self.macro.body.regime.value if self.macro is not None else "", inputs=regime_inputs(self.collection.macro_inputs));
+        holding = self.holdings.get(ticker);
+        return stock_facts(stock, market, holding.position() if holding is not None else None, self.run_day);
+    }
+
+    """A ticker decided without its panel: HOLD for `reason`, unless one of the policy's exit
+    rules sells or trims it."""
+    def held_back(ticker: str, reason: str) -> TickerAnalysis {
+        found = TickerAnalysis(ticker=ticker, held=ticker in self.holdings, forced_hold_reason=reason);
+        settle(found, self.decision_rule([ticker]));
+        return found;
     }
 
     """Keep a research result: every result goes in the ticker's history, and a follow-up
@@ -537,14 +574,16 @@ obj RunOutcome {
 """Run the morning pipeline for `run_day` on `portfolio` and record it. `driver` is the
 Orchestrator: it drives the session through its tools and returns its final summary. With no
 driver, or when it raises, runs out the deadline, or ends without submitting, the session
-finishes in fixed order and the run is marked fallback. Never raises once the run is
-claimed: a failure is recorded on the run. A portfolio holding the local demo history is never
-run: its decisions are made up (dashboard/demo.jac)."""
+finishes in fixed order and the run is marked fallback. `in_force` is the policy to decide under
+and its version; the caller reads it, so nothing here can fail on it once the run is claimed.
+Never raises once the run is claimed: a failure is recorded on the run. A portfolio holding the
+local demo history is never run: its decisions are made up (dashboard/demo.jac)."""
 def daily_run(
     portfolio: Portfolio,
     run_day: str,
     driver: Callable[[RunSession], str] | None = None,
-    limits: RunLimits = RunLimits()
+    limits: RunLimits = RunLimits(),
+    in_force: tuple[Policy, int] = (Policy(), 0)
 ) -> RunOutcome {
     if portfolio.demo {
         return RunOutcome(run_day=run_day, status=RunStatus.SKIPPED, note="the portfolio holds the demo history");
@@ -560,6 +599,8 @@ def daily_run(
     }
     run.reduced_mode = checked.reduced;
     holdings = holdings_of(portfolio);
+    (policy, version) = in_force;
+    run.policy_version = version;
     pass_config = PassConfig(screen=ScreenConfig(shortlist_size=min(limits.reduced_shortlist, limits.shortlist) if checked.reduced else limits.shortlist));
     try {
         collection = collect_pass(run_day, sorted(holdings), pass_config);
@@ -569,8 +610,8 @@ def daily_run(
         _close(run, RunStatus.FAILED, f"Failed: {reason}. Every open position holds.");
         return RunOutcome(run_day=run_day, status=RunStatus.FAILED, run=run, preflight=checked, note=reason);
     }
-    config = ConsensusConfig(samples=min(limits.reduced_samples, limits.samples), extra_samples=0) if checked.reduced else ConsensusConfig(samples=limits.samples);
-    session = RunSession(run_day=run_day, collection=collection, holdings=holdings, config=config, limits=limits, run_requests=checked.run_requests);
+    config = consensus_config(policy, min(limits.reduced_samples, limits.samples), 0) if checked.reduced else consensus_config(policy, limits.samples);
+    session = RunSession(run_day=run_day, collection=collection, holdings=holdings, config=config, limits=limits, run_requests=checked.run_requests, policy=policy, policy_version=version);
     session.write_macro();
     (status, said) = (RunStatus.FALLBACK, "");
     if driver is not None {
@@ -638,7 +679,14 @@ def record_run(portfolio: Portfolio, run: Run, s: RunSession, status: RunStatus)
             atr_14=stock.atr_14 if stock is not None else None,
             realized_vol_20=stock.realized_vol_20 if stock is not None else None,
             volume_20=stock.volume_20 if stock is not None else None,
-            sessions_to_earnings=inputs.news.sessions_until if inputs is not None else None
+            sessions_to_earnings=inputs.news.sessions_until if inputs is not None else None,
+            rsi_14=stock.rsi_14 if stock is not None else None,
+            momentum_20=stock.momentum_20 if stock is not None else None,
+            momentum_60=stock.momentum_60 if stock is not None else None,
+            sma_50=stock.sma_50 if stock is not None else None,
+            sma_200=stock.sma_200 if stock is not None else None,
+            range_52w_position=stock.range_52w_position if stock is not None else None,
+            rs_spy_20=stock.rs_spy_20 if stock is not None else None
         ));
         for (r, question) in s.history.get(pick.symbol, []) {
             public(cov +>:Researched():+> ResearchRecord(ticker=r.ticker, domain=r.domain, as_of=finished, model=r.model, body=r.body, followup_question=question));
@@ -646,7 +694,8 @@ def record_run(portfolio: Portfolio, run: Run, s: RunSession, status: RunStatus)
         record_analysis(cov, s.analyses[pick.symbol]);
         publish_card(cov, s.run_day, portfolio.mode.value, finished);
     }
-    run.model_versions = {**model_chain_versions(), "sources": SOURCES_VERSION, "screen": s.collection.shortlist.version, "consensus": CONSENSUS_VERSION};
+    run.model_versions = {**model_chain_versions(), "sources": SOURCES_VERSION, "screen": s.collection.shortlist.version, "consensus": CONSENSUS_VERSION, "policy": f"team v{s.policy_version}", "policy_engine": POLICY_ENGINE_VERSION};
+    run.policy_version = s.policy_version;
     run.model_requests_by_role = LIMITER.since(s.request_counts_at_start);
     run.model_requests = request_total(run.model_requests_by_role);
     count_requests(portfolio, utc_now().date().isoformat(), run.model_requests);

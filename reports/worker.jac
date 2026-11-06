@@ -10,8 +10,9 @@ import from datetime { timedelta }
 import from agents.models { FREE_REQUESTS_PER_DAY, LIMITER, REQUEST_BUDGET, RequestBudget, models_disabled, provider_requests_left }
 import from agents.orchestrator { Committee }
 import from jaclang.byllm.types { IterationAction, IterationContext }
-import from analysis.consensus { ConsensusConfig }
+import from analysis.policy { consensus_config }
 import from models.graph { Coverage, Covers, CoverageReason, InsightCard, Portfolio, PortfolioMode, Published, Ran, Run, RunStatus }
+import from models.policy { Policy }
 import from models.reports { ReportCatalog, ReportJob }
 import from models.users { ReportStatus }
 import from research.alpaca { market_calendar }
@@ -20,6 +21,7 @@ import from research.wikipedia { constituents }
 import from run.guard { NEW_YORK, RunLimits, RunSession, record_run, stored_requests, team_portfolio }
 import from run.research { collect_pass }
 import from run.public { public }
+import from policy.store { team_policy }
 import from reports.api { RESERVE, catalog, job_for }
 
 glob WORKER: str = str(uuid.uuid4());
@@ -27,18 +29,20 @@ glob POOL: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1, thread_name_pr
 glob FUTURES: dict[str, Future[RunSession]] = {};
 glob REPORT_LIMIT: int = 80;
 
-"""Same committee, without submit_decisions or any execution tool."""
-def generate(ticker: str, day: str, allowance: int) -> RunSession {
+"""Same committee, without submit_decisions or any execution tool. A report decides under the
+team policy in force when it starts (`policy`, version `version`), read on the job's thread,
+since this one cannot read the graph."""
+def generate(ticker: str, day: str, allowance: int, policy: Policy = Policy(), version: int = 0) -> RunSession {
     budget = RequestBudget(remaining=allowance, deadline=time.monotonic() + 600.0);
     token = REQUEST_BUDGET.set(budget);
-    try { return analyze_report(ticker, day, allowance); }
+    try { return analyze_report(ticker, day, allowance, policy, version); }
     finally { REQUEST_BUDGET.reset(token); }
 }
 
-def analyze_report(ticker: str, day: str, allowance: int) -> RunSession {
+def analyze_report(ticker: str, day: str, allowance: int, policy: Policy = Policy(), version: int = 0) -> RunSession {
     collection = collect_pass(day, [], requested_ticker=ticker);
-    s = RunSession(run_day=day, collection=collection, holdings={}, config=ConsensusConfig(),
-        limits=RunLimits(deadline_s=600.0, react_iterations=6), run_requests=allowance);
+    s = RunSession(run_day=day, collection=collection, holdings={}, config=consensus_config(policy),
+        limits=RunLimits(deadline_s=600.0, react_iterations=6), run_requests=allowance, policy=policy, policy_version=version);
     s.write_macro();
     def stop(_ctx: IterationContext) -> IterationAction {
         return IterationAction.ABORT_WITH_SUMMARY if s.overdue() or s.requests_left() < 2 else IterationAction.CONTINUE;
@@ -59,7 +63,8 @@ def analyze_report(ticker: str, day: str, allowance: int) -> RunSession {
 }
 
 def start(job_id: str, ticker: str, day: str, allowance: int) {
-    FUTURES[job_id] = POOL.submit(generate, ticker, day, allowance);
+    (policy, version) = team_policy();
+    FUTURES[job_id] = POOL.submit(generate, ticker, day, allowance, policy, version);
 }
 
 def save_result(j: ReportJob, s: RunSession) {

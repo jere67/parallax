@@ -1,6 +1,7 @@
 import reports.worker as worker;
 import from reports.api { request_report, list_reports, get_report, catalog }
 import from reports.worker { reports_job, save_result, reuse_daily }
+import from models.policy { Policy }
 import from models.reports { ReportCatalog, ReportJob }
 import from models.users { ReportStatus }
 import from models.graph { Portfolio, Sent, Run, Ran }
@@ -17,7 +18,7 @@ def fake_refresh(_team: Portfolio) -> ReportCatalog {
     return c;
 }
 
-def fake_generate(ticker: str, day: str, allowance: int) -> RunSession {
+def fake_generate(ticker: str, day: str, allowance: int, _policy: Policy = Policy(), _version: int = 0) -> RunSession {
     if ticker == "FAIL" { raise RuntimeError("secret-provider-detail"); }
     stubs = Stubs(symbols=[ticker]);
     stubs.install();
