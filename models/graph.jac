@@ -137,7 +137,8 @@ node Run {
         model_requests: int = 0,
         model_requests_by_role: dict[str, dict[str, int]] = {},
         prompt_tokens: int = 0,
-        completion_tokens: int = 0;
+        completion_tokens: int = 0,
+        policy_version: int = 0;
 }
 
 """Free-model requests the app made on one UTC day (TDD §12, request controls), kept in the
@@ -157,7 +158,9 @@ node MacroRecord {
 """One ticker in one run. The market figures at the end are what the Action layer sizes and
 gates with (TDD §8), stored with the run because execution runs as a later job: the last
 close, ATR(14), 20-day realized volatility, 20-day average volume in shares, and trading
-sessions to the next earnings release (None when none is known within the calendar)."""
+sessions to the next earnings release (None when none is known within the calendar). The
+indicators after them are what a policy's rules read (analysis/policy.jac), stored so a
+replay sees what the run saw; runs before November 5, 2026 lack them."""
 node Coverage {
     has ticker: str,
         sector: str,
@@ -171,7 +174,14 @@ node Coverage {
         atr_14: float | None = None,
         realized_vol_20: float | None = None,
         volume_20: float | None = None,
-        sessions_to_earnings: int | None = None;
+        sessions_to_earnings: int | None = None,
+        rsi_14: float | None = None,
+        momentum_20: float | None = None,
+        momentum_60: float | None = None,
+        sma_50: float | None = None,
+        sma_200: float | None = None,
+        range_52w_position: float | None = None,
+        rs_spy_20: float | None = None;
 }
 
 node ResearchRecord {
@@ -206,6 +216,9 @@ node ConsensusResult {
         samples_dropped: int = 0;
 }
 
+"""A ticker's final decision. `policy_version` is the team policy it was decided under (0 for
+the defaults); `policy_notes` say how that policy's rules changed the thresholds' action, and
+`policy_skipped` which rules it could not check (analysis/policy.jac)."""
 node Decision {
     has ticker: str,
         action: TradeAction,
@@ -218,7 +231,10 @@ node Decision {
         forced_hold_reason: str = "",
         arbiter_verdict: str = "",
         arbiter_error: str = "",
-        model: str = "";
+        model: str = "",
+        policy_version: int = 0,
+        policy_notes: list[str] = [],
+        policy_skipped: list[str] = [];
 }
 
 obj RuleResult {
