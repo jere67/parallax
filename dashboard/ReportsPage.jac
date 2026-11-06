@@ -73,6 +73,9 @@ def ReportCard(item: ReportData) -> JsxElement {
         {if item.error { <ErrorBox message={item.error}/> }}
         {if card is not None {
             <p className="font-semibold">{str(card.action) + " · conviction " + str(round(card.conviction * 100)) + "%"}</p>
+            if item.my_policy is not None {
+                <p className="text-sm text-muted" data-testid="report-my-policy">{"Your policy (v" + str(item.my_policy_version) + "): " + (item.my_policy.action if item.my_policy.action != "NO_ACTION" else "no action") + (". " + " ".join(item.my_policy.notes) if len(item.my_policy.notes) > 0 else ".")}</p>
+            }
             <p>{card.thesis}</p>
             <h3 className="font-semibold">Key risks</h3>
             <ul className="list-disc pl-5">{for risk in card.risks { <li key={risk}>{risk}</li> }}</ul>

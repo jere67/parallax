@@ -475,6 +475,12 @@ def Arbiter(trail: TrailData) -> JsxElement {
                     {if d.forced_hold_reason {
                         <p className={CALLOUT}>{"Forced hold: " + d.forced_hold_reason}</p>
                     }}
+                    {for note in d.policy_notes {
+                        <p key={note} className={CALLOUT}>{"Team policy v" + str(d.policy_version) + ": " + note}</p>
+                    }}
+                    {for note in d.policy_skipped {
+                        <p key={note} className="text-[12px] text-faint">{note}</p>
+                    }}
                     {if len(d.risks) > 0 {
                         <div>
                             <div className={LABEL}>Key risks</div>
