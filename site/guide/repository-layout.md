@@ -14,11 +14,12 @@ main.jac        server entry; imports every endpoint by name
 models/         node, edge, obj, and enum definitions; no server-only imports
 agents/         role model instances, Orchestrator, research sub-agents, specialists, Arbiter
 research/       data collectors and the S&P 500 screener
-analysis/       indicators, the consensus engine, and vote scoring
+analysis/       indicators, the consensus engine, vote scoring, and what a policy decides
+policy/         saved policies, replays of stored runs, their endpoints, and the assistant's chat
 action/         broker client, sizing, risk gate, executor, reconciliation, insight cards, baselines
 run/            daily run, Run Guard, trading day, scheduled jobs, health
 dashboard/      client pages and components
-assets/         static files served at /static/assets/
+assets/         static files, plus the app's manifest, icons, and service worker at the root
 tests/          integration and smoke tests, fixtures, fakes
 e2e/            the dashboard's browser checks on each device (Playwright)
 docs/           design documents and spike findings

@@ -667,7 +667,50 @@ Conviction is |C| × A.
 The buy thresholds started at C ≥ 0.35 and A ≥ 0.6, and no ticker reached them in the first three live runs (November 2 to 4, 2026), so they are now 0.2 and 0.5 ([decision backtest](spikes/2026-11-04-decision-backtest.md)); all thresholds are retuned as the forward test adds history.
 In code, a held position's exit condition triggers when its time stop has passed; price exits are the stop orders the Action layer places (Section 8), and an event exit is the Arbiter's text for the next run's research to test.
 The thresholds, the ambiguity band, and the 60% minimum share of valid samples live in `ConsensusConfig` (`analysis/consensus.jac`), versioned with `CONSENSUS_VERSION`, which each run records.
+These thresholds are the default team policy's, and the admin can change them within hard limits (see Policies below).
 The Action layer turns conviction into position size (Section 8).
+
+### Policies
+
+A policy says when to buy, sell, trim, and hold, and sets the limits a run sizes and gates with.
+It has two parts: bounded numbers (the decision rule's thresholds, sizing, and the risk gate's limits) and typed rules, each up to five conditions on a fixed set of metrics with one effect.
+Rules are data, never code or free text, so the same policy always gives the same decision (`models/policy.jac`, `analysis/policy.jac`).
+With nothing saved, the default policy is this section's decision rule and Section 8's limits, so a team that never opens the Policy page trades exactly as before.
+
+| Rule effect | What it does | Applies to |
+| --- | --- | --- |
+| `avoid_buy` | No BUY or ADD while its conditions all hold | Buys |
+| `buy_only_if` | A BUY or ADD only while its conditions all hold | Buys |
+| `keep` | HOLD a position the thresholds or its time stop would sell or trim | Held stocks |
+| `trim` | Sell part of a held position | Held stocks |
+| `sell` | Exit a held position | Held stocks |
+
+Code settles a ticker in a fixed order: the thresholds draw the first action, entry rules can block a buy, keep rules can hold a position, and exit rules act last, so risk can always come off.
+A ticker the panel could not decide stays a forced HOLD that only an exit rule can change.
+A rule whose metric is unknown for a stock, with no condition already false, is skipped and noted rather than guessed.
+The Arbiter then reviews the result under its usual one-sided authority, so a rule can never talk the panel into an unreviewed buy.
+
+Every number has a hard limit no policy can loosen, checked by code at each save and again when a run reads the policy: a position of at most 15% of equity, a sector of at most 40%, gross exposure of at most 95%, a drawdown halt of at most 20%, and so on (`KNOBS`, `analysis/policy.jac`).
+A stored policy that no longer passes its limits gives way to the defaults.
+
+There are two kinds of policy, and neither is ever edited in place: a save adds a `PolicyVersion` numbered one past the newest, naming the version it was edited from, and a stale save is refused.
+
+- **The team's**, which only the admin can change, decides every morning run from the next one on.
+  A run records the version it used, and its orders are sized and gated with that version even if the policy changes before they are placed.
+- **A user's own**, private to their account, replays stored runs and their own reports.
+  It places no orders and calls no model.
+
+A replay (`policy/replay.jac`) applies any policy to what a run stored, so an editor can show what a draft would have done as it changes.
+"Held" means the team held the stock that morning.
+The Arbiter reviewed only the action the team's rule proposed, so a replay honors its downgrade of a buy and marks a buy it never saw as unreviewed.
+Runs before November 5, 2026 did not store the price indicators, so rules on those metrics are skipped for them.
+
+**The policy assistant** (`agents/policy_assistant.jac`, `policy/chat.jac`) answers questions about a policy and turns plain English into proposed edits.
+The model never changes anything.
+Its edits are typed, an edit naming a setting or metric that does not exist fails the parse and is retried once, and code applies the rest to a copy and checks them against the same limits as the form.
+The user then sees what would change and what it would have done in the latest run, and only their confirmation saves it, through the same path as the form.
+A request holds a database transaction, so a model call never runs inside one: the message is stored, a pool thread asks the model only once that has committed, and the client collects the answer by polling.
+A transaction that fails, as a serialization conflict can, therefore leaves no model call behind and loses no finished answer, and the client sends a conflicted request again.
 
 ### Arbiter
 
@@ -774,6 +817,7 @@ Both core surfaces reuse the same pipeline, so the only added model requests com
 | --- | --- | --- | --- | --- |
 | Public team portfolio | Anyone | None | Live positions, performance against SPY, daily decisions with full reasoning, specialist statistics | MVP (Pitch Week) |
 | On-demand insight reports | Signed-in users | Email and password, or Google SSO (`[scale.sso.google]`; [HTTP reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/jac-scale-http.md)) | A full analysis of any S&P 500 ticker, cached per day; three new reports per user per day (proposed) | Launch Week |
+| Policies | Anyone reads the team's; signed-in users keep their own; the admin edits the team's | Plus the admin role for the team's | The rules behind every decision, in plain English, with a replay of the latest run under any draft and an assistant that proposes changes (Section 7) | Launch |
 | Connected paper account | Signed-in users who opt in | Plus Alpaca OAuth | The team portfolio mirrored into their own paper account | Stretch goal |
 
 ### Connecting an Alpaca paper account (stretch goal)
@@ -810,10 +854,23 @@ The backing endpoints are `def:pub` functions that read `root.shared` explicitly
 | Today | Public | The run's shortlist, each ticker's action and conviction, run status (normal or fallback), run summary, and the past runs | `get_run`, `list_runs` |
 | Decision detail | Public | The full trail for one ticker: research reports and sources → every specialist sample → consensus score, agreement, interval → Arbiter → risk gate → order and fill | `get_decision_trail` |
 | Specialists | Public | Hit rate, calibration curve, and recent votes per specialist | `get_specialist_stats` |
-| Reports | Signed in | Request a ticker report, view past reports, remaining daily quota | `request_report`, `list_reports` |
+| Reports | Signed in | Request a ticker report, view past reports, remaining daily quota, and what the reader's own policy makes of each report | `request_report`, `list_reports` |
+| Policy | Public to read; signed in to keep one's own; admin for the team's | The policy in plain English, the latest run replayed under it, its rules and numbers, its version history, and the policy assistant | `get_policy_catalog`, `get_team_policy`, `preview_policy`, `get_policy_workspace`, `save_policy_version`, `restore_policy_version`, `get_policy_chat`, `send_policy_message`, `apply_policy_proposal`, `discard_policy_proposal` |
 | Admin | Team only | Run logs, collector health, model calls and latency per agent, request-cap headroom | Admin-only `/admin/llm/telemetry/*` endpoints ([byLLM reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/byllm.md)); `/admin/logs` needs `[scale.monitoring] loki_enabled = true`, so local development reads server logs instead |
 
 A Live committee page (real-time run progress through polling or a [streaming endpoint](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-streaming.md)) and an Account page for connected Alpaca accounts are stretch goals.
+
+### Mobile
+
+The dashboard is an installable progressive web app.
+Under 768px the top bar's links give way to a bottom tab bar, safe-area insets keep it clear of a phone's notch and home indicator, and form controls are at least 44px tall with 16px text, since iOS zooms a page when a smaller field takes focus.
+On a phone the policy assistant is a bottom sheet behind a floating button, and the same component is a sidebar on a wide screen.
+A table on a wide screen is a list of cards on a phone, so the shortlist, positions, and orders never scroll sideways: the page renders both, and CSS shows the one that fits.
+
+`assets/manifest.json` and `assets/sw.js` are served from the root, so the service worker's scope is the whole app; Jac's built-in `[client.pwa]` registers its worker under `/static/`, which would limit its scope to that path.
+The worker keeps the app's shell for a phone with no signal and serves hashed bundles from its cache, and it never caches an API call or a POST, so a figure on screen is never older than the page says.
+A banner says when the browser is offline.
+The Playwright device matrix (Section 14) checks all of this on Chromium and WebKit phones.
 
 ### Design notes
 
@@ -862,9 +919,12 @@ root.shared (written by the scheduled job; READ granted on each node)
                  ├─ ConsensusResult
                  ├─ Decision ──[checked_by]──> RiskCheck ──[placed]──> Order ──[filled_by]──> Fill
                  └─ InsightCard
+  └─ PolicyVersion(team)*
 user root (the caller's own root; JWT required)
   ├─ UserProfile
-  └─ ReportRequest* ──[uses]──> Coverage (shared daily cache)
+  ├─ ReportRequest* ──[uses]──> Coverage (shared daily cache)
+  ├─ PolicyVersion(personal)*
+  └─ ChatTurn*
 ```
 
 A grant covers one node, not its subtree ([multi-user guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-multi-user.md)), so public nodes are created through one helper that attaches the node and calls `grant(node, level=AccessLevel.READ)`.
@@ -879,14 +939,16 @@ Moving a module that declares node types quarantines their stored rows until a `
 
 | Node | Key fields | Retention |
 | --- | --- | --- |
-| `Run` | date, status (normal, fallback, skipped), model versions, token and cost totals, summary | Permanent |
-| `Coverage` | ticker, screen score, reason included (screen, held, wildcard, user request) | Permanent |
+| `Run` | date, status (normal, fallback, skipped), model versions, team policy version, token and cost totals, summary | Permanent |
+| `Coverage` | ticker, screen score, reason included (screen, held, wildcard, user request), the figures sizing and policy rules read | Permanent |
 | `ResearchReport` | domain, view, confidence, summary, evidence list with URLs and timestamps, data gaps | Permanent |
 | `Vote` | specialist, sample index, stance, confidence, horizon, rationale, cited evidence, scored outcome | Permanent (needed for weights) |
 | `ConsensusResult` | C, A, 90% interval, per-specialist scores, weights used, draft action | Permanent |
-| `Decision` | final action, conviction, thesis, risks, exit condition, time stop, Arbiter override reason | Permanent |
+| `Decision` | final action, conviction, thesis, risks, exit condition, time stop, Arbiter override reason, team policy version and how its rules changed the action | Permanent |
 | `RiskCheck` | each rule evaluated, result, resize amount | Permanent |
 | `Order` / `Fill` | Alpaca order ID, client order ID, side, quantity, limit, status, fill price and time | Permanent |
+| `PolicyVersion` | scope (team or personal), version number, the policy, who saved it and how, the saver's note, what changed | Permanent |
+| `ChatTurn` | scope, role, text, and for a proposal the policy it would give, what it would change, its status | Permanent |
 | `AlpacaConnection` | stretch goal only: encrypted token, account ID, mode | Until disconnect |
 | Raw cache entries | source, symbol, date, payload file key, fetch time | 90 days, except filings and bars |
 
@@ -984,6 +1046,7 @@ A global cap of 15 new reports a day bounds reports at about 330 requests, so co
 - **Count requests ourselves, and check against OpenRouter.** The limiter increments a per-UTC-day counter, which each run adds to a `RequestCount` node in the graph so it survives a restart, and preflight also reads `free_model_daily_requests` (`used`, `limit`, `remaining`) from `GET /api/v1/key` ([limits](https://openrouter.ai/docs/api_reference/limits)), using whichever shows fewer requests left; the per-minute limit is not reported there.
 - **Check before running.** Preflight switches to reduced mode (K = 1, shortlist of 10) if fewer than 500 requests remain for the UTC day.
 - **Protect the morning run.** On-demand reports become cache-only when fewer than 150 requests remain.
+  The policy assistant is refused below 650 until the day's run has finished and below 150 after, is paused while a run is under way, allows each user 20 messages a day (`POLICY_CHAT_PER_USER_DAY`), and spends at most four requests on one message; a failed message gives its place in the day's limit back.
 - **Back off on 429.** byLLM does not retry rate-limit errors, so `LimitedModel` retries with exponential backoff, as OpenRouter [advises](https://openrouter.ai/docs/api_reference/limits); OpenRouter's own free-model 429s carry `X-RateLimit-Reset`, and `Retry-After` arrives only when every provider sent a hint, so reading those headers is a planned refinement.
 - **Keep the balance positive.** OpenRouter can return 402 errors even on free models when an account's balance is negative ([limits](https://openrouter.ai/docs/api_reference/limits)).
 
