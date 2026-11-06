@@ -32,6 +32,8 @@ const guide: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'The forward test', link: '/guide/forward-test' },
       { text: 'Starting a run by hand', link: '/guide/manual-run' },
+      { text: 'Policies and the assistant', link: '/guide/policies' },
+      { text: 'Installing on a phone', link: '/guide/mobile' },
       { text: 'Reading the dashboard', link: '/guide/dashboard' }
     ]
   },
@@ -94,7 +96,8 @@ const api: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'Overview', link: '/api/overview' },
       { text: 'Authentication', link: '/api/authentication' },
-      { text: 'Data types', link: '/api/types' }
+      { text: 'Data types', link: '/api/types' },
+      { text: 'Policy endpoints', link: '/api/policy' }
     ]
   },
   {
