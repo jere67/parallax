@@ -5,8 +5,11 @@ submissions cannot spend the last quota slot twice or create duplicate ticker/da
 """
 import os;
 import from datetime { timedelta }
+import from models.policy { Policy }
 import from models.users { ReportRequest, ReportStatus }
 import from models.reports { ReportCatalog, ReportJob, ReportView, ReportsView, ReportReply }
+import from policy.replay { replay_card }
+import from policy.store { current_of, personal_versions }
 import from research.collector { utc_now, parse_utc }
 import from run.public { public }
 
@@ -29,17 +32,24 @@ def job_for(ticker: str, day: str) -> ReportJob | None {
     return None;
 }
 
-def report_view(r: ReportRequest) -> ReportView {
+"""A request as its owner sees it. `mine` is the owner's policy and version: from their first
+saved version on, a finished card also says what that policy makes of it."""
+def report_view(r: ReportRequest, mine: tuple[Policy, int]) -> ReportView {
     j = job_for(r.ticker, r.trading_date);
+    card = j.card if j else None;
+    (policy, version) = mine;
     return ReportView(id=jid(r), ticker=r.ticker, trading_date=r.trading_date,
         requested_at=r.requested_at, status=j.status.value if j else r.status.value,
-        error=j.error if j else r.error, card=j.card if j else None, demo=j.demo if j else False);
+        error=j.error if j else r.error, card=card, demo=j.demo if j else False,
+        my_policy=replay_card(policy, card) if card is not None and version > 0 else None,
+        my_policy_version=version);
 }
 
 def:priv list_reports -> ReportsView {
     c = catalog();
     mine = [r for r in [root -->[?:ReportRequest]]];
-    view = ReportsView(reports=[report_view(r) for r in sorted(mine, key=lambda (r: ReportRequest) { r.requested_at; }, reverse=True)][:100]);
+    policy = current_of(personal_versions());
+    view = ReportsView(reports=[report_view(r, policy) for r in sorted(mine, key=lambda (r: ReportRequest) { r.requested_at; }, reverse=True)][:100]);
     if c is None {
         view.message = "The report catalog is warming up. Try again shortly.";
         return view;
@@ -60,7 +70,7 @@ def:priv list_reports -> ReportsView {
 def:priv get_report(request_id: str) -> ReportView | None {
     # Resolve only from the caller's own history, never an unchecked jobj(id).
     for r in [root -->[?:ReportRequest]] {
-        if jid(r) == request_id { return report_view(r); }
+        if jid(r) == request_id { return report_view(r, current_of(personal_versions())); }
     }
     return None;
 }
@@ -73,7 +83,7 @@ def:priv request_report(ticker: str) -> ReportReply {
     }
     for r in [root -->[?:ReportRequest]] {
         if r.ticker == symbol and r.trading_date == c.trading_date {
-            return ReportReply(accepted=True, message="Your existing request is shown below.", item=report_view(r));
+            return ReportReply(accepted=True, message="Your existing request is shown below.", item=report_view(r, current_of(personal_versions())));
         }
     }
     j = job_for(symbol, c.trading_date);
@@ -86,5 +96,5 @@ def:priv request_report(ticker: str) -> ReportReply {
         j = public(root.shared ++> ReportJob(ticker=symbol, trading_date=c.trading_date, created_at=utc_now().isoformat(), demo=c.demo));
     }
     r = root ++> ReportRequest(ticker=symbol, trading_date=c.trading_date, requested_at=utc_now().isoformat(), charged=charged);
-    return ReportReply(accepted=True, message="Report requested.", item=report_view(r));
+    return ReportReply(accepted=True, message="Report requested.", item=report_view(r, current_of(personal_versions())));
 }

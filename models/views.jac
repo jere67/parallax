@@ -184,7 +184,8 @@ obj RunView {
         rows: list[CoverageRow] = [],
         action_log: list[str] = [],
         previous_day: str = "",
-        next_day: str = "";
+        next_day: str = "",
+        policy_version: int = 0;
 }
 
 obj EvidenceView {
@@ -253,7 +254,10 @@ obj DecisionView {
         arbiter_verdict: str = "",
         downgrade_reason: str = "",
         forced_hold_reason: str = "",
-        model: str = "";
+        model: str = "",
+        policy_version: int = 0,
+        policy_notes: list[str] = [],
+        policy_skipped: list[str] = [];
 }
 
 obj RuleView {
