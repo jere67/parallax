@@ -102,3 +102,38 @@ obj PolicyWorkspace {
         team: PolicyDoc;
     has can_edit_team: bool = False;
 }
+
+"""One message in the policy chat. An assistant turn with `changes` is a proposal: `status`
+says whether it is "proposed", "applied", "discarded", "stale", or "invalid"."""
+obj ChatTurnView {
+    has id: str,
+        role: str,
+        text: str,
+        at: str;
+    has changes: list[str] = [],
+        problems: list[str] = [],
+        impact: list[str] = [],
+        status: str = "",
+        applied_version: int = 0;
+}
+
+"""A user's chat about one policy. `pending` is true while a message is being answered, so the
+client asks again shortly. `available` is false when no new message can be sent, and `note`
+says why; the form and the rest of the page work regardless."""
+obj ChatState {
+    has scope: str;
+    has turns: list[ChatTurnView] = [],
+        pending: bool = False,
+        available: bool = False,
+        note: str = "",
+        remaining: int = 0,
+        daily_limit: int = 0;
+}
+
+"""What applying or discarding a proposal did. `doc` is the policy now in force."""
+obj ChatActionReply {
+    has ok: bool,
+        message: str,
+        chat: ChatState;
+    has doc: PolicyDoc | None = None;
+}
