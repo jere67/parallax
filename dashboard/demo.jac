@@ -30,6 +30,7 @@ import from agents.models { FALLBACK_MODEL, PRIMARY_MODEL }
 import from agents.specialists { packet }
 import from analysis.consensus { CONSENSUS_VERSION, consensus, draft_action }
 import from analysis.history { bar }
+import from research.indicators { momentum, range_position, relative_strength, rsi, sma }
 import from dashboard.ui.format { count }
 import from analysis.scoring { BENCHMARK, excess_return, vote_window }
 import from models.agents { Domain, Evidence, MacroReport, ResearchReport, RiskRegime, Specialist, Stance, Vote }
@@ -357,7 +358,7 @@ obj DemoSim {
             prompt_tokens=requests * self.rng.randint(2600, 3400),
             completion_tokens=requests * self.rng.randint(380, 520)
         ));
-        regime = self.macro(run, day);
+        self.macro(run, day);
         others = [s.ticker for s in UNIVERSE if s.ticker not in held];
         self.rng.shuffle(others);
         picks = sorted(others[:SHORTLIST]);
@@ -371,7 +372,7 @@ obj DemoSim {
         }
         ordered = sorted(covered, key=lambda (c: Coverage) { -self.outlook(c.ticker, day); });
         for c in covered {
-            self.analyze(c, day, held.get(c.ticker), regime);
+            self.analyze(c, day, held.get(c.ticker));
             publish_card(c, day, PortfolioMode.AUTO.value, run.finished_at);
         }
         buys = len([c for c in covered if self.action_of(c) in (TradeAction.BUY, TradeAction.ADD)]);
@@ -419,6 +420,11 @@ obj DemoSim {
         s = self.stocks[ticker];
         last = self.before(day, 1)[0];
         earnings = self.rng.choice([1, 2, 6, 11, 17, 24, 33, 41, None]);
+        # The indicators a policy's rules read, from the bars before the run, as a live run
+        # computes them; the tape is too short for the 50- and 200-day figures.
+        past = [self.bars[ticker][d] for d in self.before(day, len(self.sessions))];
+        spy = [self.bars[BENCHMARK][d] for d in self.before(day, len(self.sessions))];
+        closes = [b.close for b in past];
         return public(run +>:Covers():+> Coverage(
             ticker=ticker,
             sector=s.sector,
@@ -429,12 +435,19 @@ obj DemoSim {
             atr_14=round(self.atr(ticker, day), 4),
             realized_vol_20=round(self.realized_vol(ticker, day), 4),
             volume_20=s.volume * self.rng.uniform(0.85, 1.15),
-            sessions_to_earnings=earnings
+            sessions_to_earnings=earnings,
+            rsi_14=rsi(closes),
+            momentum_20=momentum(closes, 20),
+            momentum_60=momentum(closes, 60),
+            sma_50=sma(closes, 50),
+            sma_200=sma(closes, 200),
+            range_52w_position=range_position([b.high for b in past], [b.low for b in past], closes[-1]),
+            rs_spy_20=relative_strength(past, spy, 20)
         ));
     }
 
     """Research, votes, consensus, and the Arbiter's decision for one coverage."""
-    def analyze(c: Coverage, day: str, position: Position | None, regime: RegimeInputs) {
+    def analyze(c: Coverage, day: str, position: Position | None) {
         t = c.ticker;
         s = self.stocks[t];
         signal = self.bias[t] + 0.3 * self.outlook(t, day) + self.rng.gauss(0.0, 0.25);
