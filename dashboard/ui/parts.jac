@@ -173,3 +173,9 @@ def:pub Segment(label: str, count: int, active: bool, pick: Callable[[], None]) 
         <span className={"num rounded-[2px] px-1 text-[10px] leading-4 " + ("bg-panel-2 text-muted" if active else "text-faint")}>{str(count)}</span>
     </button>
 }
+
+# A form control a thumb can hit: at least 44px tall on a phone, and 16px text there, since iOS
+# zooms the page when a smaller field takes focus.
+glob:pub TAP_INPUT: str = "min-h-11 w-full min-w-0 rounded-md border border-line bg-panel-2 px-3 text-[16px] text-text md:min-h-9 md:text-[13px]";
+glob:pub TAP_BUTTON: str = "press inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md bg-accent px-4 text-[13px] font-medium text-bg disabled:opacity-50 md:min-h-9";
+glob:pub TAP_QUIET: str = "press inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md border border-line-strong px-3 text-[13px] text-text hover:bg-hover disabled:opacity-50 md:min-h-9";
