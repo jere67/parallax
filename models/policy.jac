@@ -171,11 +171,26 @@ obj PolicyEdit {
         rule_id: str = "";
 }
 
+sem PolicyEdit.kind = "set changes a setting; add_rule adds a rule; remove_rule, pause_rule, and resume_rule act on an existing rule.";
+sem PolicyEdit.setting = "For set: the setting's name, exactly as in the settings list.";
+sem PolicyEdit.value = "For set: the new value. Shares are fractions, so 8% is 0.08. For a switch, 1 is on and 0 is off.";
+sem PolicyEdit.effect = "For add_rule: avoid_buy, buy_only_if, sell, trim, or keep.";
+sem PolicyEdit.conditions = "For add_rule: the tests, all of which must hold for the rule to apply.";
+sem PolicyEdit.label = "For add_rule: a name for the rule of at most six words.";
+sem PolicyEdit.rule_id = "For remove_rule, pause_rule, and resume_rule: the rule's id, such as R2.";
+sem ConditionDraft.metric = "The metric's name, exactly as in the metrics list.";
+sem ConditionDraft.op = "lt, le, gt, or ge with a number; in or not_in with words.";
+sem ConditionDraft.number = "The number to compare with. Metrics marked as a share are fractions, so 8% is 0.08.";
+sem ConditionDraft.words = "The words to compare with, from the metric's choices, or tickers for the ticker metric.";
+
 """One message in a user's policy chat. A user turn holds what they wrote. An assistant turn
 holds the reply and, when it proposed changes, the policy they would give (`proposal`),
 checked by code: `changes` says what would change, `problems` why it cannot be applied, and
 `status` whether it is "proposed", "applied", "discarded", "stale" (the policy changed
-since), or "invalid". `base_version` is the version the proposal was drafted against."""
+since), or "invalid". `base_version` is the version the proposal was drafted against, `impact`
+says what it would change in the latest run, and `question` is the message it answers. A user
+turn's `status` is "pending" until it is answered, then "answered" or "failed"; only a failed
+one gives its place in the day's limit back."""
 node ChatTurn {
     has scope: PolicyScope,
         role: str,
@@ -185,6 +200,8 @@ node ChatTurn {
         base_version: int = 0,
         changes: list[str] = [],
         problems: list[str] = [],
+        impact: list[str] = [],
+        question: str = "",
         status: str = "",
         applied_version: int = 0,
         model: str = "",
