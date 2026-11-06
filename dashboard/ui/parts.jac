@@ -159,7 +159,7 @@ glob:pub FROZEN_CELL: str = " sticky left-0 z-[1] bg-panel transition-colors dur
 
 # A segmented control's inset track; its chips are Segment. The track's 6px corner is the
 # chip's 3px plus the 2px inset and the 1px border.
-glob:pub SEGMENTS: str = "inline-flex h-8 max-w-full items-center gap-0.5 overflow-x-auto rounded-md border border-line bg-panel-2 p-0.5";
+glob:pub SEGMENTS: str = "inline-flex h-11 max-w-full md:h-8 items-center gap-0.5 overflow-x-auto rounded-md border border-line bg-panel-2 p-0.5";
 
 """One choice in a segmented control: a raised chip on the inset track when it is chosen."""
 def:pub Segment(label: str, count: int, active: bool, pick: Callable[[], None]) -> JsxElement {
@@ -172,6 +172,25 @@ def:pub Segment(label: str, count: int, active: bool, pick: Callable[[], None]) 
         {label}
         <span className={"num rounded-[2px] px-1 text-[10px] leading-4 " + ("bg-panel-2 text-muted" if active else "text-faint")}>{str(count)}</span>
     </button>
+}
+
+# A table on a wide screen is a list of cards on a phone, where nine columns would scroll
+# sideways: the page renders both, and these show only the one that fits.
+glob:pub WIDE_ONLY: str = "hidden md:block";
+glob:pub CARD_LIST: str = "divide-y divide-line/60 md:hidden";
+glob:pub CARD: str = "block px-4 py-3";
+
+"""A card's figures, three to a row."""
+def:pub CardFigures(children: any = None) -> JsxElement {
+    <dl className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2.5">{children}</dl>
+}
+
+"""One figure on a card: a small label over its value."""
+def:pub CardFigure(label: str, children: any = None, tone: str = "text-text") -> JsxElement {
+    <div className="min-w-0">
+        <dt className="text-[11px] leading-4 text-faint">{label}</dt>
+        <dd className={"num truncate text-[13px] leading-5 " + tone}>{children}</dd>
+    </div>
 }
 
 # A form control a thumb can hit: at least 44px tall on a phone, and 16px text there, since iOS

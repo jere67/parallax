@@ -20,8 +20,8 @@ async def request_report(ticker: str) -> Reply {
     return await __jacCallFunction("request_report", {"ticker": ticker}, {"contract": "[\"trading-agent\",\"reports/api.jac\",\"func\",\"request_report\"]"});
 }
 
-glob INPUT: str = "rounded-md border border-line bg-panel px-3 py-2 text-text";
-glob BUTTON: str = "rounded-md bg-accent px-4 py-2 text-white disabled:opacity-50";
+glob INPUT: str = "min-h-11 rounded-md border border-line bg-panel px-3 py-2 text-text max-md:text-[16px] md:min-h-0";
+glob BUTTON: str = "min-h-11 rounded-md bg-accent px-4 py-2 text-white disabled:opacity-50 md:min-h-0";
 
 def SignIn(done: Callable[[], None]) -> JsxElement {
     has email: str = "", password: str = "", signup: bool = False,
@@ -134,7 +134,7 @@ def ReportList(logout: Callable[[], None]) -> JsxElement {
     <div className="mx-auto max-w-3xl space-y-5">
         <div className="flex items-center justify-between">
             <h1 className="text-xl font-semibold">Stock reports</h1>
-            <button type="button" onClick={logout} className="text-accent">Sign out</button>
+            <button type="button" onClick={logout} className="-mr-2 min-h-11 px-2 text-accent md:min-h-0">Sign out</button>
         </div>
         <p className="text-muted">Request research, specialist votes, and a cited insight. Requests never place trades.</p>
         {if error { <ErrorBox message={error}/> }}
