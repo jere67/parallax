@@ -3,6 +3,7 @@ a pages/ directory at the project root and the dashboard lives in dashboard/."""
 import from "@jac/runtime" { Router, Routes, Route }
 import from dashboard.Layout { Layout }
 import from dashboard.NotFound { NotFound }
+import from dashboard.PolicyPage { PolicyPage }
 import from dashboard.PortfolioPage { PortfolioPage }
 import from dashboard.ReportsPage { ReportsPage }
 import from dashboard.RunPage { RunPage }
@@ -15,6 +16,7 @@ def:pub App -> JsxElement {
         <Routes>
             <Route path="/" element={<Layout/>}>
                 <Route index={True} element={<PortfolioPage/>}/>
+                <Route path="policy" element={<PolicyPage/>}/>
                 <Route path="reports" element={<ReportsPage/>}/>
                 <Route path="runs" element={<RunPage/>}/>
                 <Route path="runs/:day" element={<RunPage/>}/>

@@ -76,6 +76,7 @@ def:pub Layout -> JsxElement {
                     <NavLink to="/" active={path == "/"}>Portfolio</NavLink>
                     <NavLink to="/reports" active={path.startsWith("/reports")}>Reports</NavLink>
                     <NavLink to="/runs" active={path.startsWith("/runs")}>Runs</NavLink>
+                    <NavLink to="/policy" active={path.startsWith("/policy")}>Policy</NavLink>
                 </nav>
                 <div className="ml-auto flex items-center gap-3">
                     {if info is not None and info.started {

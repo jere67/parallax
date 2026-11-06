@@ -213,3 +213,22 @@ body {
 .rise > :nth-child(2) { animation-delay: 100ms; }
 .rise > :nth-child(3) { animation-delay: 200ms; }
 .rise > :nth-child(n + 4) { animation-delay: 300ms; }
+
+/* A policy's slider: the brass thumb is drawn at 20px and fills a 44px track row on a phone, so
+ * a thumb can always find it. */
+.policy-slider {
+    height: 44px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.policy-slider:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+@media (min-width: 768px) {
+    .policy-slider {
+        height: 24px;
+    }
+}
