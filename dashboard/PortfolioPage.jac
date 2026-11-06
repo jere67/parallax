@@ -24,9 +24,11 @@ import from dashboard.ui.format {
 import from dashboard.ui.parts {
     CARD,
     CARD_LIST,
+    CARD_STEP,
     WIDE_ONLY,
     CardFigure,
     CardFigures,
+    MoreCards,
     FROZEN_CELL,
     FROZEN_HEAD,
     ROW,
@@ -437,15 +439,19 @@ def OrderCard(o: OrderData) -> JsxElement {
 }
 
 def OrdersTable(orders: list[OrderData]) -> JsxElement {
+    has shown: int = CARD_STEP;
+
     if len(orders) == 0 {
         return <p className="px-4 py-6 text-[13px] text-muted">No orders yet.</p>;
     }
+    left = len(orders) - shown;
     <div>
         <ul className={CARD_LIST}>
-            {for o in orders {
+            {for o in orders[:shown] {
                 <OrderCard key={o.client_order_id} o={o}/>
             }}
         </ul>
+        <MoreCards left={left} label={"Show " + count(min(left, CARD_STEP), "more order")} more={lambda { shown = shown + CARD_STEP; }}/>
         <div className={"max-h-[480px] overflow-auto overscroll-contain " + WIDE_ONLY}>
             <table className="w-full min-w-[900px]">
                 <thead>
@@ -501,15 +507,19 @@ def ClosedCard(p: PositionData) -> JsxElement {
 }
 
 def ClosedTable(closed: list[PositionData]) -> JsxElement {
+    has shown: int = CARD_STEP;
+
     if len(closed) == 0 {
         return <p className="px-4 py-6 text-[13px] text-muted">No closed trades yet.</p>;
     }
+    left = len(closed) - shown;
     <div>
         <ul className={CARD_LIST}>
-            {for p in closed {
+            {for p in closed[:shown] {
                 <ClosedCard key={p.ticker + p.opened_at} p={p}/>
             }}
         </ul>
+        <MoreCards left={left} label={"Show " + count(min(left, CARD_STEP), "more closed trade")} more={lambda { shown = shown + CARD_STEP; }}/>
         <div className={"max-h-[480px] overflow-auto overscroll-contain " + WIDE_ONLY}>
             <table className="w-full min-w-[820px]">
                 <thead>
