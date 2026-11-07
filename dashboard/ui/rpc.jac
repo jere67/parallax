@@ -5,7 +5,7 @@ by reloading the page, which would cancel a log-in already under way."""
 import from "@jac/runtime" { jacIsLoggedIn }
 import from dashboard.ui.retry { call_function }
 import from models.accounts { AgentReply, AgentSettings, KeysReply }
-import from models.market { ScreenerView }
+import from models.market { HistoryView, ScreenerView, StockAboutView, StockView }
 import from models.views { NewsFeed, NewsStory, PerformanceView, PortfolioView, RunSummary, RunView, TrailView }
 
 def contract(file: str, name: str) -> dict[str, str] {
@@ -79,4 +79,16 @@ async def:pub screen_stocks(
     limit: int = 100
 ) -> ScreenerView | None {
     return await call("market/api.jac", "screen_stocks", {"filters": filters, "search": search, "symbols": symbols, "sort": sort, "descending": descending, "columns": columns, "offset": offset, "limit": limit});
+}
+
+async def:pub get_stock(symbol: str) -> StockView | None {
+    return await call("market/api.jac", "get_stock", {"symbol": symbol});
+}
+
+async def:pub get_stock_history(symbol: str) -> HistoryView | None {
+    return await call("market/api.jac", "get_stock_history", {"symbol": symbol});
+}
+
+async def:pub get_stock_about(symbol: str) -> StockAboutView | None {
+    return await call("market/api.jac", "get_stock_about", {"symbol": symbol});
 }

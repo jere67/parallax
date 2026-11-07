@@ -98,3 +98,65 @@ test("screener: a starred stock joins the watchlist and stays after a reload", a
   await page.reload();
   await expect(firstSymbol(page)).toContainText("NVDA");
 });
+
+test("stock: the header, the chart, its ranges, and its key figures", async ({ page }) => {
+  await page.goto("/app/screener");
+  await firstSymbol(page).click();
+  await expect(page).toHaveURL(/\/app\/stocks\/AAPL$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Apple Inc." })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Information Technology");
+  await expect(page.locator("canvas").first()).toBeVisible();
+  const ranges = page.getByRole("group", { name: "Chart range" });
+  for (const range of ["1D", "5D", "YTD", "Max"]) {
+    await ranges.getByRole("button", { name: new RegExp(`^${range}`) }).click();
+    await expect(page.locator("canvas").first()).toBeVisible();
+  }
+  await page.getByRole("button", { name: "Candles" }).click();
+  await expect(page.locator("canvas").first()).toBeVisible();
+  await expect(page.getByText("Market cap", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "From revenue to profit" })).toBeVisible();
+  await fitsWidth(page);
+});
+
+test("stock: peers join the chart, up to three, and leave it", async ({ page }) => {
+  await page.goto("/app/stocks/AAPL");
+  const peers = page.getByRole("region", { name: "Peers for comparison" });
+  const add = peers.getByRole("button", { name: /^Compare / });
+  await expect(add.first()).toBeVisible();
+  for (let i = 0; i < 3; i += 1) {
+    await add.first().click();
+    await expect(peers.getByRole("button", { name: /^Remove / })).toHaveCount(i + 1);
+  }
+  await expect(add.first()).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Candles" })).toHaveCount(0);
+  await peers.getByRole("button", { name: /^Remove / }).first().click();
+  await expect(peers.getByRole("button", { name: /^Remove / })).toHaveCount(2);
+  await fitsWidth(page);
+});
+
+test("stock: every tab opens at its own address", async ({ page }) => {
+  await page.goto("/app/stocks/MSFT");
+  await expect(page.getByRole("heading", { level: 1, name: "Microsoft" })).toBeVisible();
+  const tabs = page.getByRole("tablist", { name: "Stock sections" });
+  const sections = [
+    ["Financials", "financials", "Debt and cash"],
+    ["Technicals", "technicals", "Indicators"],
+    ["Forecasts", "forecasts", "The consensus over time"],
+    ["Seasonals", "seasonals", "Returns by month"],
+    ["News", "news", "Headlines"],
+    ["Filings", "filings", "SEC filings"],
+  ];
+  for (const [name, slug, heading] of sections) {
+    await tabs.getByRole("tab", { name }).click();
+    await expect(page).toHaveURL(new RegExp(`/app/stocks/MSFT/${slug}$`));
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    await fitsWidth(page);
+  }
+});
+
+test("stock: an unknown symbol says so and leads back", async ({ page }) => {
+  await page.goto("/app/stocks/ZZZZ");
+  await expect(page.getByText("ZZZZ is not on the screener")).toBeVisible();
+  await page.getByRole("link", { name: "Back to the screener" }).click();
+  await expect(page).toHaveURL(/\/app\/screener$/);
+});
