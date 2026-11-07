@@ -60,12 +60,12 @@ obj PolicySaveReply {
         doc: PolicyDoc | None = None;
 }
 
-"""One covered ticker in a replay: what the team decided and what the policy would. `notes`
+"""One covered ticker in a replay: what the agent decided and what the policy would. `notes`
 say how the rules changed its action, and `skipped` which could not be checked. `unreviewed`
-marks a buy the Arbiter never saw, since the team's rule did not propose one."""
+marks a buy the Arbiter never saw, since the agent's rule did not propose one."""
 obj ReplayRow {
     has ticker: str,
-        team_action: str,
+        run_action: str,
         action: str;
     has sector: str = "",
         held: bool = False,
@@ -79,28 +79,21 @@ obj ReplayRow {
 }
 
 """A stored run under a policy, moving no money and calling no model. `problems` are why a
-draft could not be replayed; `differs` counts tickers whose action differs from the team's;
+draft could not be replayed; `differs` counts tickers whose action differs from the agent's;
 `sentences` and `rule_sentences` say the draft in words, so an editor can show them as it changes."""
 obj ReplayView {
     has run_date: str = "",
         previous_day: str = "",
         next_day: str = "",
         demo: bool = False,
-        team_version: int = 0,
+        run_version: int = 0,
         rows: list[ReplayRow] = [],
         differs: int = 0,
         counts: dict[str, int] = {},
-        team_counts: dict[str, int] = {},
+        run_counts: dict[str, int] = {},
         problems: list[str] = [],
         sentences: list[str] = [],
         rule_sentences: list[str] = [];
-}
-
-"""A signed-in user's page: their own policy, the team's, and whether they may edit the team's."""
-obj PolicyWorkspace {
-    has mine: PolicyDoc,
-        team: PolicyDoc;
-    has can_edit_team: bool = False;
 }
 
 """One message in the policy chat. An assistant turn with `changes` is a proposal: `status`

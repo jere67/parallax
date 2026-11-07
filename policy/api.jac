@@ -1,6 +1,6 @@
-"""The policy endpoints (TDD §9, policies): anyone can read the team policy and try any draft
-against a stored run, and a signed-in user keeps a private policy. Only the admin can save the
-team's, which changes the next morning run and never a run already decided.
+"""The policy endpoints (TDD §9, policies): each signed-in user reads and saves the one policy that
+drives their agent, and tries any draft against its stored runs. A save changes the next morning
+run and never a run already decided.
 
 Replays read stored runs, so these endpoints spend no model request and place no order. Saving
 checks a policy against its hard limits (analysis/policy.jac) whoever sends it, so the client
@@ -8,10 +8,9 @@ is never trusted with them.
 """
 import from analysis.policy { EFFECT_LEADS, KNOBS, KNOB_GROUPS, MAX_CONDITIONS, MAX_RULES, METRICS, describe, rule_sentence }
 import from models.policy { Op, Policy, PolicyScope, PolicyVersion, RuleEffect }
-import from models.policy_views { EffectView, OpView, PolicyCatalog, PolicyDoc, PolicySaveReply, PolicyWorkspace, ReplayView, VersionView }
-import from policy.replay { replay_team_run }
-import from policy.store { current_of, personal_versions, save_policy, team_versions, versions_of }
-import from accounts.store { caller_is_admin }
+import from models.policy_views { EffectView, OpView, PolicyCatalog, PolicyDoc, PolicySaveReply, ReplayView, VersionView }
+import from policy.replay { replay_my_run }
+import from policy.store { current_of, my_scope, save_policy, versions_of }
 
 glob OP_LABELS: dict[Op, str] = {Op.LT: "is below", Op.LE: "is at most", Op.GT: "is above", Op.GE: "is at least", Op.IN: "is one of", Op.NOT_IN: "is none of"};
 glob MAX_HISTORY: int = 50;
@@ -35,34 +34,13 @@ def policy_doc(scope: PolicyScope, versions: list[PolicyVersion]) -> PolicyDoc {
     );
 }
 
-"""The scope named by the client, or None when it names neither."""
-def scope_of(name: str) -> PolicyScope | None {
-    for s in list(PolicyScope) {
-        if s.value == name {
-            return s;
-        }
-    }
-    return None;
-}
-
-"""Why the caller cannot save to `scope`, or "" when they can."""
-def save_refusal(scope: PolicyScope | None) -> str {
-    if scope is None {
-        return "Choose your own policy or the team's.";
-    }
-    if scope == PolicyScope.TEAM and not caller_is_admin() {
-        return "Only the admin can change the team policy.";
-    }
-    return "";
-}
-
 def save_reply(scope: PolicyScope, policy: Policy, base_version: int, source: str, note: str) -> PolicySaveReply {
     done = save_policy(scope, policy, base_version, source, note);
     return PolicySaveReply(saved=done.saved, version=done.version, message=done.message, problems=done.problems, changes=done.changes, doc=policy_doc(scope, versions_of(scope)));
 }
 
 """The ranges, metrics, and words an editor is built from."""
-def:pub get_policy_catalog -> PolicyCatalog {
+def:priv get_policy_catalog -> PolicyCatalog {
     return PolicyCatalog(
         knobs=KNOBS,
         groups=KNOB_GROUPS,
@@ -75,40 +53,27 @@ def:pub get_policy_catalog -> PolicyCatalog {
     );
 }
 
-"""The team policy in force, with its words and history."""
-def:pub get_team_policy -> PolicyDoc {
-    return policy_doc(PolicyScope.TEAM, team_versions());
+"""What `policy` would have done with the caller's agent's run on `run_date` (the newest when
+empty). Saves nothing, so a draft can be tried as it is edited."""
+def:priv preview_policy(policy: Policy, run_date: str = "") -> ReplayView {
+    return replay_my_run(policy, run_date);
 }
 
-"""What `policy` would have done with the team's run on `run_date` (the newest when empty).
-Saves nothing, so a draft can be tried as it is edited."""
-def:pub preview_policy(policy: Policy, run_date: str = "") -> ReplayView {
-    return replay_team_run(policy, run_date);
+"""The policy that drives the caller's agent."""
+def:priv get_my_policy -> PolicyDoc {
+    scope = my_scope();
+    return policy_doc(scope, versions_of(scope));
 }
 
-"""The caller's own policy, the team's, and whether they may edit the team's."""
-def:priv get_policy_workspace -> PolicyWorkspace {
-    return PolicyWorkspace(mine=policy_doc(PolicyScope.PERSONAL, personal_versions()), team=policy_doc(PolicyScope.TEAM, team_versions()), can_edit_team=caller_is_admin());
+"""Save `policy` as its next version, edited from `base_version`."""
+def:priv save_policy_version(policy: Policy, base_version: int, note: str = "") -> PolicySaveReply {
+    return save_reply(my_scope(), policy, base_version, "form", note);
 }
 
-"""Save `policy` as the next version of `scope`, edited from `base_version`."""
-def:priv save_policy_version(scope: str, policy: Policy, base_version: int, note: str = "") -> PolicySaveReply {
-    target = scope_of(scope);
-    refusal = save_refusal(target);
-    if refusal or target is None {
-        return PolicySaveReply(saved=False, version=0, message=refusal);
-    }
-    return save_reply(target, policy, base_version, "form", note);
-}
-
-"""Make version `version` of `scope` the policy in force again, as a new version, so nothing in
-its history is lost."""
-def:priv restore_policy_version(scope: str, version: int, base_version: int) -> PolicySaveReply {
-    target = scope_of(scope);
-    refusal = save_refusal(target);
-    if refusal or target is None {
-        return PolicySaveReply(saved=False, version=0, message=refusal);
-    }
+"""Make version `version` the policy in force again, as a new version, so nothing in its history
+is lost."""
+def:priv restore_policy_version(version: int, base_version: int) -> PolicySaveReply {
+    target = my_scope();
     versions = versions_of(target);
     for v in versions {
         if v.version == version {

@@ -76,7 +76,7 @@ the thresholds or its time stop would sell or trim. sell and trim rules act last
 
 You are given current_rules (the policy's rules now, each with its id), settings (every setting's
 name, value now, and limits), metrics (every figure a rule can test, and the values it can take),
-latest_run (each covered stock's figures, what the team decided, and what this policy would
+latest_run (each covered stock's figures, what the agent decided, and what this policy would
 decide), and conversation (the chat so far, oldest first).
 
 Rules:

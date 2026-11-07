@@ -1,5 +1,6 @@
 """Where policies are kept (models/policy.jac): every saved version is a new PolicyVersion
-node, the team's on root.shared and granted READ, a user's on their own root and private.
+node, a user's on their own root and private, and the admin agent's on root.shared, where the
+team's morning job reads it. Each user has one policy, the one that drives their agent.
 
 Nothing is edited in place, which suits the graph's permissions as well as the audit trail: a
 request can attach a new node to root.shared but cannot change a node another root owns, so
@@ -8,6 +9,7 @@ version it was edited from, and is refused when a newer one exists, so two edito
 overwrite each other unseen.
 """
 import logging;
+import from accounts.store { caller_is_admin }
 import from analysis.policy { changes, copy_policy, validate }
 import from models.policy { Policy, PolicyScope, PolicyVersion }
 import from research.collector { utc_now }
@@ -55,6 +57,11 @@ def current_of(versions: list[PolicyVersion]) -> tuple[Policy, int] {
     }
     newest = versions[-1];
     return (usable(newest.policy, newest.version), newest.version);
+}
+
+"""The scope of the policy that drives the caller's agent."""
+def my_scope -> PolicyScope {
+    return PolicyScope.TEAM if caller_is_admin() else PolicyScope.PERSONAL;
 }
 
 def team_policy -> tuple[Policy, int] {
