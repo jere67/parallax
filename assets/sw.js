@@ -2,7 +2,7 @@
 // is never cached, so a figure on screen is never older than the page says. Hashed bundles under
 // /static/ never change, so they are served from the cache once seen; a page comes from the
 // network, falling back to the last copy, and every API call goes straight to the server.
-const CACHE = "trading-agent-v1";
+const CACHE = "parallax-v1";
 const SHELL = "/";
 const API = /^\/(function|walker|user|sso|healthz|admin|docs|cl)(\/|$)/;
 

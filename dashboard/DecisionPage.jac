@@ -3,7 +3,7 @@ from the research and its sources, through every specialist's votes and the cons
 Arbiter, the risk gate, and the orders. A strip at the top sums up each stage and jumps to it."""
 import from "@jac/runtime" { Link, useParams }
 import from "lucide-react" { Check, ChevronLeft, ChevronRight, ExternalLink, X }
-import from dashboard.api { get_decision_trail }
+import from dashboard.ui.rpc { get_decision_trail }
 import from dashboard.ui.DotPlot { DotPlot, ScoreScale }
 import from dashboard.ui.format {
     MISSING,
@@ -66,7 +66,7 @@ glob CALLOUT: str = "rounded-md border border-warn/25 bg-warn/10 px-3 py-2 text-
 glob GRID: str = "grid-cols-[1fr_auto] sm:grid-cols-[180px_1fr_72px_16px]";
 
 def trail_to(day: str, ticker: str) -> str {
-    return "/runs/" + day + "/" + ticker;
+    return "/app/runs/" + day + "/" + ticker;
 }
 
 def StanceText(stance: str) -> JsxElement {
@@ -271,7 +271,7 @@ def PositionFacts(p: PositionData) -> JsxElement {
 def Backdrop(trail: TrailData) -> JsxElement {
     <Panel title="Market backdrop">
         <p className="text-[13px] leading-relaxed text-muted">{trail.macro.summary if trail.macro is not None else "No macro brief was recorded."}</p>
-        <Link to={"/runs/" + trail.run_date} className="mt-2 inline-block text-[12px] font-medium text-accent hover:underline">The run's macro brief</Link>
+        <Link to={"/app/runs/" + trail.run_date} className="mt-2 inline-block text-[12px] font-medium text-accent hover:underline">The run's macro brief</Link>
     </Panel>
 }
 
@@ -481,7 +481,7 @@ def Arbiter(trail: TrailData) -> JsxElement {
                         <p className={CALLOUT}>{"Forced hold: " + d.forced_hold_reason}</p>
                     }}
                     {for note in d.policy_notes {
-                        <p key={note} className={CALLOUT}>{"Team policy v" + str(d.policy_version) + ": " + note}</p>
+                        <p key={note} className={CALLOUT}>{"Policy v" + str(d.policy_version) + ": " + note}</p>
                     }}
                     {for note in d.policy_skipped {
                         <p key={note} className="text-[12px] text-faint">{note}</p>
@@ -685,16 +685,16 @@ def:pub DecisionPage -> JsxElement {
     }
     if trail is None {
         return <Empty title={ticker.upper() + " was not covered on " + day_long(day)}>
-            <Link to={"/runs/" + day} className="text-accent hover:underline">See what that run covered</Link>.
+            <Link to={"/app/runs/" + day} className="text-accent hover:underline">See what that run covered</Link>.
         </Empty>;
     }
 
     <div className="rise flex flex-col gap-6">
         <div className="flex items-center justify-between gap-3">
             <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
-                <Link to="/runs" className="hover:text-text">Runs</Link>
+                <Link to="/app/runs" className="hover:text-text">Runs</Link>
                 <ChevronRight size={14} className="shrink-0 text-faint"/>
-                <Link to={"/runs/" + trail.run_date} className="num truncate hover:text-text">{day_long(trail.run_date)}</Link>
+                <Link to={"/app/runs/" + trail.run_date} className="num truncate hover:text-text">{day_long(trail.run_date)}</Link>
                 <ChevronRight size={14} className="shrink-0 text-faint"/>
                 <span className="font-medium text-text">{trail.ticker}</span>
             </nav>

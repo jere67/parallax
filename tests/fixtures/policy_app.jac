@@ -2,18 +2,21 @@
 for the admin role, which comes from the server's user store; the Playwright suite signs in as
 the real admin."""
 import agents.policy_assistant as policy_assistant;
-import policy.api as policy_api;
+import accounts.store as store;
+import from accounts.api { save_agent_keys }
+import from models.accounts { KeysReply }
 import from jaclang.byllm.lib { MockLLM, MockRawResponse }
 import from action.fixtures { Call, finished_run }
 import from agents.models { LIMITER }
 import from models.graph { Concluded, ConsensusResult, Coverage, Covers, Portfolio, PortfolioMode, TradeAction }
-import from policy.api { get_policy_catalog, get_policy_workspace, get_team_policy, preview_policy, restore_policy_version, save_policy_version }
+import from policy.api { get_my_policy, get_policy_catalog, preview_policy, restore_policy_version, save_policy_version }
 import from policy.chat { ANSWERS, apply_policy_proposal, discard_policy_proposal, get_policy_chat, send_policy_message }
 import from research.collector { utc_now }
 import from run.public { public }
 
 def:priv set_admin(on: bool) -> str {
-    setattr(policy_api, "caller_is_admin", lambda -> bool { on; });
+    setattr(store, "is_admin_root", lambda (_users: object, _caller: str) -> bool { on; });
+    store._ROLES.clear();
     return "ok";
 }
 
@@ -42,13 +45,13 @@ def:priv spend_requests(requests: int) -> str {
 
 """Send a message in a transaction that then fails, as a serialization conflict would."""
 def:priv send_then_fail(text: str) -> str {
-    send_policy_message("personal", text);
+    send_policy_message(text);
     raise RuntimeError("the transaction failed");
 }
 
 """Collect the finished answers in a transaction that then fails."""
 def:priv collect_then_fail -> str {
-    get_policy_chat("personal");
+    get_policy_chat();
     raise RuntimeError("the transaction failed");
 }
 

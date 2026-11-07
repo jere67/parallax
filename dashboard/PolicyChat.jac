@@ -16,7 +16,7 @@ glob POLL_MS: int = 1500;
 glob STATUS_WORDS: dict[str, str] = {"applied": "Applied", "discarded": "Discarded", "stale": "Out of date", "invalid": "Cannot apply"};
 glob STATUS_TONES: dict[str, str] = {"applied": TONE_UP, "discarded": TONE_QUIET, "stale": TONE_WARN, "invalid": TONE_WARN};
 glob SUGGESTIONS: list[str] = [
-    "Why does this policy differ from the team's today?",
+    "Why would this policy change today's decisions?",
     "Don't buy anything with RSI above 70",
     "Sell a position that has fallen 8% since I bought it"
 ];
@@ -25,14 +25,14 @@ def contract(name: str) -> dict[str, str] {
     return {"contract": "[\"trading-agent\",\"policy/chat.jac\",\"func\",\"" + name + "\"]"};
 }
 
-async def load_chat(scope: str) -> ChatData | None {
+async def load_chat -> ChatData | None {
     if not jacIsLoggedIn() { return None; }
-    return await call_function("get_policy_chat", {"scope": scope}, contract("get_policy_chat"));
+    return await call_function("get_policy_chat", {}, contract("get_policy_chat"));
 }
 
-async def send_message(scope: str, text: str) -> ChatData | None {
+async def send_message(text: str) -> ChatData | None {
     if not jacIsLoggedIn() { return None; }
-    return await call_function("send_policy_message", {"scope": scope, "text": text}, contract("send_policy_message"));
+    return await call_function("send_policy_message", {"text": text}, contract("send_policy_message"));
 }
 
 async def act_on(name: str, turn_id: str) -> ChatReply | None {
@@ -91,19 +91,23 @@ def Bubble(turn: TurnData, busy: bool, blocked: bool, apply: Callable[[str], Non
 """`open_sheet` shows it on a phone, and `close` hides it again. `blocked` is true while the form
 holds unsaved edits, since applying a proposal would replace them. `saved` gets the policy a
 proposal saved."""
-def:pub PolicyChat(scope: str, whose: str, blocked: bool, open_sheet: bool, close: Callable[[], None], saved: Callable[[DocData], None]) -> JsxElement {
+def:pub PolicyChat(blocked: bool, open_sheet: bool, close: Callable[[], None], saved: Callable[[DocData], None]) -> JsxElement {
     has chat: ChatData | None = None,
         text: str = "",
         busy: bool = False,
         error: str = "";
 
     end = useRef(None);
+    # Bumped by a send or an action. A poll asked before one must not land after it: it was read
+    # before the change committed, so it would bring back the proposal just applied.
+    moves = useRef(0);
 
     async def refresh {
         fresh: ChatData | None = None;
+        asked_at = moves.current;
         try {
-            fresh = await load_chat(scope);
-            if fresh is not None {
+            fresh = await load_chat();
+            if fresh is not None and asked_at == moves.current {
                 chat = fresh;
                 error = "";
             }
@@ -112,8 +116,7 @@ def:pub PolicyChat(scope: str, whose: str, blocked: bool, open_sheet: bool, clos
         }
     }
 
-    async can with [scope] entry {
-        chat = None;
+    async can with entry {
         await refresh();
     }
 
@@ -125,7 +128,7 @@ def:pub PolicyChat(scope: str, whose: str, blocked: bool, open_sheet: bool, clos
         if not pending { return; }
         timer = setInterval(refresh, POLL_MS);
         return lambda { clearInterval(timer); };
-    }, [pending, scope]);
+    }, [pending]);
 
     useEffect(lambda {
         if end.current {
@@ -138,8 +141,10 @@ def:pub PolicyChat(scope: str, whose: str, blocked: bool, open_sheet: bool, clos
         busy = True;
         error = "";
         fresh: ChatData | None = None;
+        moves.current += 1;
         try {
-            fresh = await send_message(scope, message);
+            fresh = await send_message(message);
+            moves.current += 1;
             if fresh is not None {
                 chat = fresh;
                 text = "";
@@ -155,10 +160,12 @@ def:pub PolicyChat(scope: str, whose: str, blocked: bool, open_sheet: bool, clos
         busy = True;
         error = "";
         reply: ChatReply | None = None;
+        moves.current += 1;
         try {
             reply = await act_on(name, turn_id);
+            moves.current += 1;
             if reply is not None {
-                if reply.chat.scope { chat = reply.chat; }
+                chat = reply.chat;
                 if not reply.ok { error = reply.message; }
                 if reply.ok and reply.doc is not None { saved(reply.doc); }
             }
@@ -187,7 +194,7 @@ def:pub PolicyChat(scope: str, whose: str, blocked: bool, open_sheet: bool, clos
             <header className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-line px-4 py-2">
                 <div className="min-w-0">
                     <h2 className="text-[15px] font-medium leading-5">Policy assistant</h2>
-                    <p className="truncate text-[11px] text-faint">{whose}</p>
+                    <p className="truncate text-[11px] text-faint">About your policy</p>
                 </div>
                 <button type="button" onClick={lambda { close(); }} className="press grid size-11 shrink-0 place-items-center rounded-md text-muted hover:bg-hover lg:hidden" aria-label="Close the assistant"><X size={18} strokeWidth={1.75}/></button>
             </header>

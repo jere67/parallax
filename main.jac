@@ -1,6 +1,6 @@
 import from reports.worker { reports_job }
 import from reports.api { request_report, list_reports, get_report }
-import from policy.api { get_policy_catalog, get_policy_workspace, get_team_policy, preview_policy, restore_policy_version, save_policy_version }
+import from policy.api { get_my_policy, get_policy_catalog, preview_policy, restore_policy_version, save_policy_version }
 import from policy.chat { apply_policy_proposal, discard_policy_proposal, get_policy_chat, send_policy_message }
 import from models.health { Health }
 import from models.accounts { AgentReply, AgentSettings, KeysReply }
@@ -14,7 +14,7 @@ import from dashboard.api { get_decision_trail, get_performance, get_portfolio, 
 import from dashboard.news { get_news_feed, get_news_story, news_refresh_job }
 import from dashboard.display { chart_points, money, percent, ratio }
 import from models.views { NewsFeed, NewsStory, PerformanceView, PortfolioView, RunSummary, RunView, TrailView }
-import from models.policy_views { ChatActionReply, ChatState, PolicyCatalog, PolicyDoc, PolicySaveReply, PolicyWorkspace, ReplayView }
+import from models.policy_views { ChatActionReply, ChatState, PolicyCatalog, PolicyDoc, PolicySaveReply, ReplayView }
 
 import "./dashboard/theme.css";
 import from .dashboard.App { App }

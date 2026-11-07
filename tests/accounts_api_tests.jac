@@ -2,6 +2,7 @@
 back, stay sealed, and work done for an owner stays private to them."""
 import os;
 import tempfile;
+import time;
 import from datetime { datetime, timedelta, timezone }
 import from pathlib { Path }
 import from jaclang.testing.testing { JacTestClient }
@@ -242,6 +243,26 @@ test "a job's work for an owner uses their root and keys, and only they can see 
     } finally { c.close(); }
 }
 
+test "a member's report runs on that member's keys, not another member's or the server's" {
+    c = server();
+    try {
+        c.register_user("first", PASSWORD);
+        call(c, "save_agent_keys", FULL_KEYS);
+        c.clear_auth();
+        c.register_user("second", PASSWORD);
+        call(c, "save_agent_keys", {**FULL_KEYS, "openrouter_key": SMALL_OPENROUTER});
+        call(c, "open_reports");
+        assert call(c, "request_report", {"ticker": "AAPL"})["accepted"];
+        seen: list[str] = [];
+        for _ in range(40) {
+            seen = call(c, "report_job_pass");
+            if seen { break; }
+            time.sleep(0.1);
+        }
+        assert seen == [SMALL_OPENROUTER];
+    } finally { c.close(); }
+}
+
 test "asking for a run marks only today, and an agent without keys is never due" {
     c = server();
     try {
@@ -249,11 +270,14 @@ test "asking for a run marks only today, and an agent without keys is never due"
         refused = call(c, "start_my_run");
         assert not refused["ok"] and "Connect" in refused["message"];
         call(c, "save_agent_keys", FULL_KEYS);
-        # 10:00 New York on a Monday is outside the morning slot, so only a request makes it due.
+        # 10:00 New York on a Monday is past the morning window, so only a request makes it due.
         (day, now) = ("2026-11-09", "2026-11-09T15:00:00+00:00");
         assert call(c, "job_due_days", {"day": day, "iso_now": now}) == [];
-        # 7:35 New York on the same day is the slot, so it is due with no request.
+        # Anywhere from 7:30 to 9:15 New York is the window, so it is due with no request.
         assert len(call(c, "job_due_days", {"day": day, "iso_now": "2026-11-09T12:35:00+00:00"})) == 1;
+        assert len(call(c, "job_due_days", {"day": day, "iso_now": "2026-11-09T14:14:00+00:00"})) == 1;
+        assert call(c, "job_due_days", {"day": day, "iso_now": "2026-11-09T14:15:00+00:00"}) == [];
+        assert call(c, "job_due_days", {"day": day, "iso_now": "2026-11-09T12:29:00+00:00"}) == [];
     } finally { c.close(); }
 }
 

@@ -1,5 +1,6 @@
 """The dashboard's endpoints over a team graph seeded the way the scheduled job writes it, for
 dashboard_tests.jac."""
+import accounts.store as store;
 import from action.fixtures { Call, finished_run }
 import from dashboard.api { get_decision_trail, get_performance, get_portfolio, get_run, list_runs }
 import from dashboard.news { get_news_feed, get_news_story }
@@ -7,6 +8,13 @@ import from models.agents { Domain, Evidence, ResearchReport, Stance }
 import from models.graph { Coverage, Covers, DailyMark, Marked, Portfolio, PortfolioMode, Researched, ResearchRecord, TradeAction }
 import from models.views { NewsFeed, NewsStory, PerformanceView, PortfolioView, RunSummary, RunView, TrailView }
 import from run.public { public }
+
+"""Stands in for the admin role, which comes from the server's user store."""
+def:priv set_admin(on: bool) -> str {
+    setattr(store, "is_admin_root", lambda (_users: object, _caller: str) -> bool { on; });
+    store._ROLES.clear();
+    return "ok";
+}
 
 """Write a public team portfolio with one run, one decision, and one mark."""
 def:priv seed_team_graph -> str {

@@ -3,7 +3,7 @@ timing, the macro brief, every covered ticker with the panel's consensus, the Ar
 action, the risk gate, and the order, and the list of past runs to move between."""
 import from "@jac/runtime" { Link, useNavigate, useParams }
 import from "lucide-react" { ChevronLeft, ChevronRight }
-import from dashboard.api { get_run, list_runs }
+import from dashboard.ui.rpc { get_run, list_runs }
 import from dashboard.ui.IntervalBar { IntervalBar }
 import from dashboard.ui.format {
     MISSING,
@@ -83,7 +83,7 @@ def DayLink(day: str, label: str, forward: bool) -> JsxElement {
     if not day {
         return <span className={base + "text-faint opacity-40"} aria-hidden="true">{icon}</span>;
     }
-    <Link to={"/runs/" + day} className={base + "press text-muted hover:bg-hover hover:text-text"} aria-label={label} title={day_long(day)}>
+    <Link to={"/app/runs/" + day} className={base + "press text-muted hover:bg-hover hover:text-text"} aria-label={label} title={day_long(day)}>
         {icon}
     </Link>
 }
@@ -237,7 +237,7 @@ def in_group(row: CoverageData, group: str) -> bool {
 """One covered ticker on a phone: the whole card opens its decision trail."""
 def CoverageCard(row: CoverageData, day: str) -> JsxElement {
     <li data-testid="shortlist-card">
-        <Link to={"/runs/" + day + "/" + row.ticker} className={CARD + " active:bg-hover"}>
+        <Link to={"/app/runs/" + day + "/" + row.ticker} className={CARD + " active:bg-hover"}>
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <div className="font-semibold">{row.ticker}</div>
@@ -310,10 +310,10 @@ def CoverageTable(run: RunData) -> JsxElement {
                                 <tr
                                     key={row.ticker}
                                     className={ROW + " group cursor-pointer"}
-                                    onClick={lambda { nav("/runs/" + run.run_date + "/" + row.ticker); }}
+                                    onClick={lambda { nav("/app/runs/" + run.run_date + "/" + row.ticker); }}
                                 >
                                     <td className={TD + FROZEN_CELL}>
-                                        <Link to={"/runs/" + run.run_date + "/" + row.ticker} className="font-semibold hover:text-accent">{row.ticker}</Link>
+                                        <Link to={"/app/runs/" + run.run_date + "/" + row.ticker} className="font-semibold hover:text-accent">{row.ticker}</Link>
                                         <div className="max-w-[160px] truncate text-[11px] text-faint">{row.sector}</div>
                                     </td>
                                     <td className={TD}><DecisionCell row={row}/></td>
@@ -373,7 +373,7 @@ def RunList(runs: list[RunSummaryData], current: str) -> JsxElement {
                 active = r.run_date == current;
                 <li key={r.run_date}>
                     <Link
-                        to={"/runs/" + r.run_date}
+                        to={"/app/runs/" + r.run_date}
                         className={"relative flex min-h-11 items-center justify-between gap-3 border-b border-line/60 px-4 py-2 text-[13px] md:min-h-0 transition-colors duration-150 " + ("bg-accent-soft before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-accent" if active else "hover:bg-hover")}
                         aria-current={"page" if active else None}
                     >
@@ -428,10 +428,10 @@ def:pub RunPage -> JsxElement {
     if run is None {
         if day {
             return <Empty title={"No run on " + day_long(day)}>
-                The agent runs each trading morning. <Link to="/runs" className="text-accent hover:underline">Go to the latest run</Link>.
+                The agent runs each trading morning. <Link to="/app/runs" className="text-accent hover:underline">Go to the latest run</Link>.
             </Empty>;
         }
-        return <Empty title="No runs yet">The first morning run appears here once the forward test starts.</Empty>;
+        return <Empty title="No runs yet">Your agent's runs appear here. <Link to="/app/settings" className="text-accent hover:underline">Connect your keys and start one in Settings</Link>.</Empty>;
     }
 
     <div className="rise flex flex-col gap-6">

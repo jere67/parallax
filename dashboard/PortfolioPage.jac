@@ -1,9 +1,10 @@
-"""The Portfolio page (TDD §10): the team portfolio at its last mark, its equity curve against
+"""The Portfolio page (TDD §10): the agent's portfolio at its last mark, its equity curve against
 both baselines, the open positions with their stops and theses, and the recent orders and
 closed trades. Every ticker links to the decision trail behind it."""
 import from "@jac/runtime" { Link }
 import from "lucide-react" { ChevronRight }
-import from dashboard.api { get_performance, get_portfolio }
+import from dashboard.ui.rpc { get_performance, get_portfolio }
+import from dashboard.ui.AgentSetup { AgentSetup }
 import from dashboard.ui.EquityChart { EquityChart }
 import from dashboard.ui.format {
     MISSING,
@@ -60,7 +61,7 @@ import from models.views {
 glob CELL: str = "min-w-0 bg-panel px-4 py-3.5";
 glob SECTOR_CAP: float = 0.30;
 glob STAT_ROWS: list[str] = ["Total return", "Sharpe", "Max drawdown", "Volatility"];
-glob SHORT_LABELS: dict[str, str] = {"team": "Team", "equal_weight": "Equal wt", "spy": "SPY"};
+glob SHORT_LABELS: dict[str, str] = {"team": "Agent", "equal_weight": "Equal wt", "spy": "SPY"};
 
 def series_of(perf: PerformanceData | None, key: str) -> SeriesData | None {
     if perf is None {
@@ -76,7 +77,7 @@ def series_of(perf: PerformanceData | None, key: str) -> SeriesData | None {
 
 """A decision trail's address, or "" when the decision's run is unknown."""
 def trail_link(day: str, ticker: str) -> str {
-    return "/runs/" + day + "/" + ticker if day else "";
+    return "/app/runs/" + day + "/" + ticker if day else "";
 }
 
 def TickerCell(ticker: str, day: str, sub: str = "") -> JsxElement {
@@ -137,7 +138,7 @@ def Figures(view: PortfolioData, perf: PerformanceData | None) -> JsxElement {
                 value={signed_pct(lead)}
                 tone={tone(lead)}
                 sub={"SPY " + signed_pct(spy.total_return if spy is not None else None)}
-                hint="Team total return minus SPY buy-and-hold over the same sessions"
+                hint="Your total return minus SPY buy-and-hold over the same sessions"
             />
         </div>
         <div className={CELL}>
@@ -586,15 +587,13 @@ def:pub PortfolioPage -> JsxElement {
         return <Loading label="Loading the portfolio"/>;
     }
     if not view.started {
-        return <Empty title="The forward test has not started">
-            The team portfolio has no closing mark yet. Once the first trading day closes, its equity, positions, and orders appear here.
-        </Empty>;
+        return <AgentSetup/>;
     }
 
     <div className="rise flex flex-col gap-6">
         <header className="flex flex-col gap-2">
             <Overline className="num">{"Paper account · " + day_long(view.last_day) + " close"}</Overline>
-            <h1 className="display text-[36px] leading-10 text-text">Team portfolio</h1>
+            <h1 className="display text-[36px] leading-10 text-text">Your portfolio</h1>
             <p className="max-w-[600px] text-[13px] leading-5 text-muted">
                 Five specialists research each stock, the Arbiter decides, and the risk gate sizes every order.
                 The account is marked at each close against SPY and an equal-weight basket of the same shortlist.

@@ -12,7 +12,44 @@ import from models.graph { Portfolio, Ran, Run, RunStatus, PortfolioMode }
 import from research.credentials { ALPACA_KEY, user_key }
 import from action.baselines { baselines_of }
 import from run.agents { as_agent, due, is_running, next_due, tick_agents }
-import from run.guard { NEW_YORK }
+import from run.guard { NEW_YORK, RunSession }
+import reports.worker as worker;
+import from reports.api { catalog, request_report }
+import from models.reports { ReportCatalog }
+import from models.policy { Policy }
+import from research.credentials { OPENROUTER_KEY }
+import from research.collector { utc_now }
+import from run.public { public }
+
+glob report_keys_seen: list[str] = [];
+
+"""Stands in for the research behind a report, and records the key that work would pay with."""
+def record_report_key(_ticker: str, _day: str, _allowance: int, _policy: Policy = Policy(), _version: int = 0) -> RunSession {
+    report_keys_seen.append(user_key(OPENROUTER_KEY));
+    raise RuntimeError("recorded");
+}
+
+def stub_catalog(_team: Portfolio) -> ReportCatalog {
+    found = catalog();
+    assert found is not None;
+    return found;
+}
+
+"""Offer one stock for reports, with the research behind a report replaced by `record_report_key`."""
+def:priv open_reports -> str {
+    public(root.shared ++> ReportCatalog(symbols=["AAPL"], trading_date="2026-11-09", refreshed_at=utc_now().isoformat(), generation_enabled=True, model_requests_left=1000));
+    worker.refresh_catalog = stub_catalog;
+    worker.analyze_report = record_report_key;
+    return "ok";
+}
+
+"""As the static job would: become the super root and run one pass of the report worker."""
+def:priv report_job_pass -> list[str] {
+    ctx = Jac.get_context();
+    ctx.set_user_root(str(ctx.system_root.id));
+    worker.reports_job();
+    return report_keys_seen;
+}
 
 def:priv set_admin(on: bool) -> str {
     setattr(store, "caller_is_admin", lambda -> bool { on; });
