@@ -85,6 +85,7 @@ Each kind of data is a `Dataset` with two separate rules:
 | `finnhub.metrics` | 24 hours | 7 days | |
 | `wikipedia.constituents` | 7 days | 8 days | Refreshed weekly |
 | `wikipedia.history` | 7 days | 8 days | |
+| `market.*` | See [Market data](/system/market-data) | | The screener's own datasets, kept apart from the research pipeline's |
 
 The freshness limits are proposals (GAP-15), to be checked against each provider's real update cadence.
 

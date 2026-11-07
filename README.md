@@ -77,6 +77,7 @@ TRADING_AGENT_DEMO=1 TRADING_AGENT_DISABLE_ORDERS=1 jac run --dev main.jac
 Within a minute, a scheduled job fills an empty team portfolio with a few weeks of simulated sessions, and every page shows a "Demo data" banner.
 The prices, research, and votes are invented; the consensus, sizing, risk gate, baselines, and scoring that turn them into orders are the project's own.
 The scheduled jobs never run, trade, reconcile, or score a demo portfolio, and the job writes nothing once the team portfolio has any run.
+The screener and stock pages show an invented market of about 70 names, which is never written to disk and calls no source.
 Never set `TRADING_AGENT_DEMO` on a deployed server.
 
 ## Checks
@@ -113,6 +114,7 @@ research/       data collectors and the S&P 500 screener
 analysis/       indicators, the consensus engine, and vote scoring
 action/         broker client, sizing, risk gate, executor, reconciliation, insight cards, baselines
 run/            daily run walker, Run Guard, trading day, scheduled jobs, health
+market/         whole-market data for the screener and stock pages
 dashboard/      client pages and components
 assets/         static files served at /static/assets/
 tests/          integration and smoke tests, fixtures, fakes

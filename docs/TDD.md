@@ -371,6 +371,7 @@ trading-agent/
   models/                  # node, edge, obj, and enum definitions; no server-only imports
   agents/                  # role model instances, orchestrator, research sub-agents, specialists, arbiter
   research/                # collectors (one module per source, with caching and rate limits), screener
+  market/                  # whole-market data for the screener and stock pages, apart from the research pipeline
   analysis/                # consensus engine, indicators
   action/                  # portfolio constructor, risk gate, executor
   run/                     # DailyRun walker, Run Guard, scheduled jobs
@@ -800,7 +801,7 @@ Every page states that the product is an educational student project using simul
 
 ## 10. Dashboard
 
-The dashboard is a jac-client React-style app served by the same `jac run` process, with six pages built around one idea: every number links down to the evidence behind it.
+The dashboard is a jac-client React-style app served by the same `jac run` process, with eight pages built around one idea: every number links down to the evidence behind it.
 It is built last, but a read-only Portfolio page and Decision page must exist for Pitch Week.
 The backing endpoints are `def:pub` functions that read `root.shared` explicitly (Section 11), and `main.jac` imports every one of them (Section 3; [endpoints guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-endpoints.md)).
 
@@ -810,10 +811,29 @@ The backing endpoints are `def:pub` functions that read `root.shared` explicitly
 | Today | Public | The run's shortlist, each ticker's action and conviction, run status (normal or fallback), run summary, and the past runs | `get_run`, `list_runs` |
 | Decision detail | Public | The full trail for one ticker: research reports and sources → every specialist sample → consensus score, agreement, interval → Arbiter → risk gate → order and fill | `get_decision_trail` |
 | Specialists | Public | Hit rate, calibration curve, and recent votes per specialist | `get_specialist_stats` |
+| Screener | Public | Every U.S.-listed stock, filtered and sorted by any of about 90 fields, with the screen held in the address | `screen_stocks` |
+| Stock | Public | One stock's price chart with peers to compare, key figures, company, financials, technicals, analyst view, seasonality, headlines, and filings | `get_stock`, `get_stock_history`, `get_stock_about` |
 | Reports | Signed in | Request a ticker report, view past reports, remaining daily quota | `request_report`, `list_reports` |
 | Admin | Team only | Run logs, collector health, model calls and latency per agent, request-cap headroom | Admin-only `/admin/llm/telemetry/*` endpoints ([byLLM reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/byllm.md)); `/admin/logs` needs `[scale.monitoring] loki_enabled = true`, so local development reads server logs instead |
 
 A Live committee page (real-time run progress through polling or a [streaming endpoint](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-streaming.md)) and an Account page for connected Alpaca accounts are stretch goals.
+
+### Market pages
+
+The Screener and Stock pages cover the whole U.S. market, about 5,600 stocks: what SEC lists and Alpaca can trade, without warrants, units, rights, preferreds, notes, or funds.
+They are separate from the universe screen (Section 5), and nothing in them reaches an agent.
+
+- **Filled by background sweeps.** A job fires every minute and starts two passes on their own threads, each behind a lock, so a slow pass is skipped rather than stacked and the scheduler's other jobs never wait.
+  The main pass reads quotes, earnings dates, a year of bars, and company filings, resuming where it stopped; the analyst pass reads six stocks' Finnhub records a minute on a three-day cycle.
+  SEC and Finnhub sweeps stand aside from 7:15 to 9:45 ET on weekdays for the morning run (Section 4).
+- **Stored in files, not the graph.** Each domain is a JSON file under `.jac/market/`, replaced atomically, since about 5,600 rows a minute would be far too slow as nodes (Section 11).
+- **Pages read memory.** `screen_stocks` and `get_stock` answer from rows rebuilt only when a pass changes something, so a query takes no source call.
+  Price history, headlines, and descriptions are read on demand under a shared allowance of 40 calls a minute, past which the endpoint answers `busy` and the page retries.
+- **Numbers from filings, not vendors.** P/E is market cap over trailing net income, which holds for ADRs and share classes alike, and a loss has none.
+  Filers reporting in IFRS have prices and technicals but no SEC figures, and a figure with no source is a dash.
+- **Doubt shows as a dash.** XBRL carries filers' scale errors and stray tags, and one of them would otherwise top every sort, so a share count, EPS, dividend, or ratio outside a believable range is unknown rather than shown.
+  Today's move is measured from the split-adjusted close when the snapshot's own is far from it, since a reverse split that morning would otherwise read as a thirty-fold gain.
+- **Left out for want of a free source.** Community posts, options, bonds, ETF holdings, company logos, employee counts, and share float.
 
 ### Design notes
 
@@ -837,6 +857,8 @@ A Live committee page (real-time run progress through polling or a [streaming en
   The portfolio is flagged `demo`, every page says so, and the scheduled jobs never run, trade, reconcile, or score it.
   The variable is never set on a deployed server.
 - **No raw data redistribution.** Pages show derived analysis, short quotes of our own agents' text, and links to original sources.
+  The market pages are the exception for prices: they show Alpaca's quotes and bars as they come, which needs checking against Alpaca's terms before any public launch.
+  Their company figures are SEC's public filings, and from Finnhub they show only derived scores and percentages and public facts such as a website.
 - **Pages never trigger model calls.** Public pages read state the pipeline already stored, so they load instantly and cannot spend the request budget.
 
 ## 11. Data model and storage

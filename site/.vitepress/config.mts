@@ -83,7 +83,8 @@ const system: DefaultTheme.SidebarItem[] = [
     text: 'Platform',
     items: [
       { text: 'Data model', link: '/system/data-model' },
-      { text: 'Dashboard internals', link: '/system/dashboard' }
+      { text: 'Dashboard internals', link: '/system/dashboard' },
+      { text: 'Market data', link: '/system/market-data' }
     ]
   }
 ]
@@ -117,6 +118,16 @@ const api: DefaultTheme.SidebarItem[] = [
           { text: 'list_runs', link: '/api/list-runs', badge: 'POST' },
           { text: 'get_run', link: '/api/get-run', badge: 'POST' },
           { text: 'get_decision_trail', link: '/api/get-decision-trail', badge: 'POST' }
+        ]
+      },
+      {
+        text: 'Market',
+        collapsed: false,
+        items: [
+          { text: 'screen_stocks', link: '/api/screen-stocks', badge: 'POST' },
+          { text: 'get_stock', link: '/api/get-stock', badge: 'POST' },
+          { text: 'get_stock_history', link: '/api/get-stock-history', badge: 'POST' },
+          { text: 'get_stock_about', link: '/api/get-stock-about', badge: 'POST' }
         ]
       },
       {
