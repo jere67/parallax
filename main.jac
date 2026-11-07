@@ -3,9 +3,12 @@ import from reports.api { request_report, list_reports, get_report }
 import from policy.api { get_policy_catalog, get_policy_workspace, get_team_policy, preview_policy, restore_policy_version, save_policy_version }
 import from policy.chat { apply_policy_proposal, discard_policy_proposal, get_policy_chat, send_policy_message }
 import from models.health { Health }
+import from models.accounts { AgentReply, AgentSettings, KeysReply }
 import from run.health { health }
 import from run.jobs { morning_job, trading_job }
 import from run.manual { manual_run_job, start_morning_run }
+import from run.agents { agent_run_slot_1, agent_run_slot_2, agent_run_slot_3, agents_trading_job }
+import from accounts.api { get_agent_settings, remove_agent_keys, save_agent_keys, set_paper_trading, start_my_run }
 import from dashboard.demo { demo_job }
 import from dashboard.api { get_decision_trail, get_performance, get_portfolio, get_run, list_runs, refresh_job }
 import from dashboard.news { get_news_feed, get_news_story, news_refresh_job }

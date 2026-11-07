@@ -289,8 +289,8 @@ test "closed positions are not holdings" {
 test "the stored run request breakdown excludes earlier requests and sums to the total" {
     limiter = RequestLimiter(per_minute=60000);
     limiter.acquire("research", "first_attempt");
-    saved = guard_module.LIMITER;
-    setattr(guard_module, "LIMITER", limiter);
+    saved = guard_module.limiter_now;
+    setattr(guard_module, "limiter_now", lambda -> RequestLimiter { limiter; });
     def counted_driver(s: RunSession) -> str {
         # Simulate provider counts while Stubs keeps all model/data calls offline.
         for (role, kind) in [("research", "first_attempt"), ("specialist", "first_attempt"), ("specialist", "parse_retry"), ("specialist", "transient_retry"), ("retry", "first_attempt"), ("arbiter", "fallback"), ("orchestrator", "first_attempt")] {
@@ -301,7 +301,7 @@ test "the stored run request breakdown excludes earlier requests and sums to the
     try {
         outcome = run_day(Stubs(), team(), counted_driver);
     } finally {
-        setattr(guard_module, "LIMITER", saved);
+        setattr(guard_module, "limiter_now", saved);
     }
     run = outcome.run;
     assert run is not None;

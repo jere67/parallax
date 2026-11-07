@@ -20,5 +20,6 @@ class ContextPool(ThreadPoolExecutor) {
     }
 }
 
-glob NETWORK_WORKERS: int = 32;
+# Three agents can run at once (run/agents.jac), each with its own limiter to keep busy.
+glob NETWORK_WORKERS: int = 64;
 glob NETWORK: ThreadPoolExecutor = ContextPool(max_workers=NETWORK_WORKERS, thread_name_prefix="network");
