@@ -1,5 +1,5 @@
-"""The reader's color theme. It follows the system until the reader picks light or dark, which
-is saved in this browser and set as data-theme on <html> (dashboard/theme.css)."""
+"""The reader's color theme. Everyone starts dark until they pick, and their pick is saved in this
+browser and set as data-theme on <html> (dashboard/theme.css)."""
 
 glob THEME_KEY: str = "trading-agent-theme";
 glob:pub THEME_EVENT: str = "trading-agent-theme";
@@ -21,11 +21,7 @@ def:pub restore_theme {
 }
 
 def:pub is_dark -> bool {
-    choice = document.documentElement.getAttribute("data-theme");
-    if choice {
-        return choice == "dark";
-    }
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;  # jac:ignore[E1030,E1002]
+    return document.documentElement.getAttribute("data-theme") != "light";
 }
 
 """Pick light or dark, save it, and tell the charts to repaint. Transitions are off for the

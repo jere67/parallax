@@ -10,8 +10,9 @@ turns a finished call into an assistant turn, and keeps the call's result until 
 
 The model only drafts. Code applies its edits to a copy and checks them against the form's
 limits, and the proposal changes nothing until its owner applies it. The same save path as the
-form then refuses it if the policy moved in the meantime. Model requests are the team's shared
-daily allowance, so each user has a daily limit and the morning run's share is held back.
+form then refuses it if the policy moved in the meantime. A message uses its sender's own
+OpenRouter key, with a daily limit so a long chat cannot eat their morning run's allowance. The
+admin's agent uses the server's key, and that allowance also holds back the morning run's share.
 """
 import logging;
 import os;
@@ -19,16 +20,19 @@ import re;
 import time;
 import from concurrent.futures { Future }
 import from datetime { datetime, timedelta, timezone }
-import from agents.models { FREE_REQUESTS_PER_DAY, LIMITER, REQUEST_BUDGET, RequestBudget, models_disabled }
+import from accounts.store { caller_is_admin, credentials_of, demo_mode, my_account, my_portfolio }
+import from accounts.vault { VaultError }
+import from agents.models { FREE_REQUESTS_PER_DAY, REQUEST_BUDGET, RequestBudget, limiter_now, models_disabled }
 import from agents.policy_assistant { PolicyAnswer, answer_policy_message }
 import from analysis.policy { KNOBS, MAX_LABEL_CHARS, METRICS, METRIC_BY_NAME, changes as changes_between, copy_policy, knob_text, knob_value, next_rule_id, rule_sentence, validate, with_knob }
-import from dashboard.api { find_team }
 import from models.graph { Ran, Run, RunStatus }
 import from models.policy { ChatTurn, Condition, ConditionDraft, EditKind, MetricKind, Op, Policy, PolicyEdit, PolicyRule, PolicyScope, RuleEffect }
 import from models.policy_views { ChatActionReply, ChatState, ChatTurnView, ReplayRow, ReplayView }
-import from policy.api { policy_doc, save_refusal, scope_of }
-import from policy.replay { StoredRun, replay, replay_team_run, team_run }
-import from policy.store { current_of, save_policy, versions_of }
+import from policy.api { policy_doc }
+import from policy.replay { StoredRun, replay, replay_my_run, latest_run_of_mine }
+import from policy.store { current_of, my_scope, save_policy, versions_of }
+import from research.credentials { Credentials, OPENROUTER_KEY, enter_credentials, leave_credentials }
+import from run.agents { is_running }
 import from research.collector { parse_utc, utc_now }
 import from run.guard { NEW_YORK, stored_requests }
 import from run.workers { ContextPool }
@@ -81,19 +85,29 @@ def daily_limit -> int {
     }
 }
 
-"""Why no new message can be sent right now, or "" when one can."""
-def unavailable_reason(now: datetime) -> str {
-    if models_disabled() or not os.environ.get("OPENROUTER_API_KEY", "") {
+"""The sender's keys for a call, or None for the server's own: the admin's agent, and a demo
+server, which shows every user the same made-up history."""
+def keys_for_chat -> Credentials | None {
+    if caller_is_admin() or demo_mode() {
+        return None;
+    }
+    account = my_account();
+    return credentials_of(account) if account is not None else Credentials({});
+}
+
+"""Why a message on the server's own key cannot be sent, or "" when it can."""
+def server_chat_refusal(now: datetime) -> str {
+    if not os.environ.get(OPENROUTER_KEY, "") {
         return "The assistant is off on this server. You can still edit the policy here.";
     }
-    team = find_team();
+    portfolio = my_portfolio();
     utc_day = now.astimezone(timezone.utc).date().isoformat();
-    used = LIMITER.sent_by_day.get(utc_day, 0);
+    used = limiter_now().sent_by_day.get(utc_day, 0);
     reserve = RESERVE_BEFORE_RUN;
-    if team is not None {
-        used = max(used, stored_requests(team, utc_day));
+    if portfolio is not None {
+        used = max(used, stored_requests(portfolio, utc_day));
         day = now.astimezone(NEW_YORK).date().isoformat();
-        runs = [r for r in [team ->:Ran:->[?:Run]]];
+        runs = [r for r in [portfolio ->:Ran:->[?:Run]]];
         if any(r.status == RunStatus.RUNNING for r in runs) {
             return "The morning run is using the models, so the assistant is paused until it finishes.";
         }
@@ -103,6 +117,28 @@ def unavailable_reason(now: datetime) -> str {
     }
     if FREE_REQUESTS_PER_DAY - used < reserve {
         return "The day's model requests are held back for the morning run and reports. The assistant returns tomorrow.";
+    }
+    return "";
+}
+
+"""Why no new message can be sent right now, or "" when one can."""
+def unavailable_reason(now: datetime) -> str {
+    if models_disabled() {
+        return "The assistant is off on this server. You can still edit the policy here.";
+    }
+    try {
+        keys = keys_for_chat();
+    } except VaultError {
+        return "Connect your OpenRouter key again in Settings to use the assistant.";
+    }
+    if keys is None {
+        return server_chat_refusal(now);
+    }
+    if OPENROUTER_KEY not in keys.keys {
+        return "Connect your OpenRouter key in Settings to use the assistant. You can still edit the policy here.";
+    }
+    if is_running(keys.owner) {
+        return "Your morning run is using your model allowance, so the assistant is paused until it finishes.";
     }
     return "";
 }
@@ -171,8 +207,8 @@ def apply_edits(policy: Policy, edits: list[PolicyEdit]) -> tuple[Policy, list[s
 
 """What `proposal` would change in the team's latest run, compared with `current`."""
 def impact_of(current: Policy, proposal: Policy) -> list[str] {
-    before = replay_team_run(current);
-    after = replay_team_run(proposal);
+    before = replay_my_run(current);
+    after = replay_my_run(proposal);
     if not before.rows or not after.rows {
         return [];
     }
@@ -228,7 +264,7 @@ def run_text(view: ReplayView, run: StoredRun | None, named: set[str]) -> str {
     lines = [f"Run of {view.run_date}, {len(view.rows)} stocks covered."];
     for r in sorted(view.rows, key=lambda (row: ReplayRow) { row.ticker; }) {
         score = f"score {r.score:.2f}, agreement {r.agreement:.2f}" if r.score is not None and r.agreement is not None else "no panel score";
-        line = f"{r.ticker} ({r.sector}{', held' if r.held else ''}): {score}; team {r.team_action}; this policy {r.action}.";
+        line = f"{r.ticker} ({r.sector}{', held' if r.held else ''}): {score}; team {r.run_action}; this policy {r.action}.";
         if r.notes {
             line += " " + " ".join(r.notes);
         }
@@ -244,18 +280,19 @@ def run_text(view: ReplayView, run: StoredRun | None, named: set[str]) -> str {
     return "\n".join(lines);
 }
 
-def brief_for(scope: PolicyScope, policy: Policy, message: str, earlier: list[ChatTurn]) -> Brief {
-    run = team_run();
-    whose = "The team's policy: changing it changes every morning run from the next one on." if scope == PolicyScope.TEAM else "This person's own policy: it only shows what they would have done, and places no orders.";
+def brief_for(policy: Policy, message: str, earlier: list[ChatTurn]) -> Brief {
+    run = latest_run_of_mine();
+    whose = "The user's own policy: changing it changes their agent's morning runs from the next one on.";
     conversation = "\n".join(f"{t.role}: {t.text}" for t in earlier[-MAX_TURNS_IN_PROMPT:]) or "None yet.";
     view = replay(policy, run) if run is not None else ReplayView();
     return Brief(message=message, policy_scope=whose, current_rules=rules_text(policy), settings=settings_text(policy), metrics=metrics_text(), latest_run=run_text(view, run, mentioned(message, run)), conversation=conversation);
 }
 
-"""Ask the assistant, on a pool thread: no graph here."""
-def ask(brief: Brief) -> AssistantResult {
+"""Ask the assistant, on a pool thread and on `keys` (the server's own when None): no graph here."""
+def ask(brief: Brief, keys: Credentials | None = None) -> AssistantResult {
     budget = RequestBudget(remaining=REQUESTS_PER_MESSAGE, deadline=time.monotonic() + ANSWER_DEADLINE_S);
     token = REQUEST_BUDGET.set(budget);
+    scope = enter_credentials(keys) if keys is not None else None;
     try {
         answer = answer_policy_message(brief.message, brief.policy_scope, brief.current_rules, brief.settings, brief.metrics, brief.latest_run, brief.conversation);
         return AssistantResult(answer=answer, requests=budget.used);
@@ -263,6 +300,9 @@ def ask(brief: Brief) -> AssistantResult {
         LOG.warning("policy assistant failed: %s", str(e)[:500]);
         return AssistantResult(error=type(e).__name__, requests=budget.used);
     } finally {
+        if scope is not None {
+            leave_credentials(scope);
+        }
         REQUEST_BUDGET.reset(token);
     }
 }
@@ -304,8 +344,8 @@ def forget(key: str) -> Callable[[], object] {
     return lambda { ANSWERS.pop(key, None); };
 }
 
-def start_answer(key: str, brief: Brief) -> Callable[[], object] {
-    return lambda { ANSWERS[key] = POOL.submit(ask, brief); };
+def start_answer(key: str, brief: Brief, keys: Credentials | None) -> Callable[[], object] {
+    return lambda { ANSWERS[key] = POOL.submit(ask, brief, keys); };
 }
 
 """Collect any finished answers among `turns`, in this request's transaction."""
@@ -362,22 +402,14 @@ def own_turn(turn_id: str) -> ChatTurn | None {
 
 # --- Endpoints ----------------------------------------------------------------------------
 
-"""The caller's chat about `scope`, collecting any answer that has finished."""
-def:priv get_policy_chat(scope: str) -> ChatState {
-    target = scope_of(scope);
-    if target is None {
-        return ChatState(scope=scope, note="Choose your own policy or the team's.");
-    }
-    return chat_state(target, utc_now());
+"""The caller's chat about their policy, collecting any answer that has finished."""
+def:priv get_policy_chat -> ChatState {
+    return chat_state(my_scope(), utc_now());
 }
 
 """Send `text` to the assistant. It answers in the background; `get_policy_chat` collects it."""
-def:priv send_policy_message(scope: str, text: str) -> ChatState {
-    target = scope_of(scope);
-    refusal = save_refusal(target);
-    if refusal or target is None {
-        return ChatState(scope=scope, note=refusal);
-    }
+def:priv send_policy_message(text: str) -> ChatState {
+    target = my_scope();
     now = utc_now();
     state = chat_state(target, now);
     message = " ".join(text.split());
@@ -391,12 +423,12 @@ def:priv send_policy_message(scope: str, text: str) -> ChatState {
     earlier = [t for t in turns_of(target) if t.status != "error"];
     (policy, _) = current_of(versions_of(target));
     turn = root ++> ChatTurn(scope=target, role="user", text=message, at=now.isoformat(), status="pending");
-    on_commit(start_answer(jid(turn), brief_for(target, policy, message, earlier)));
+    on_commit(start_answer(jid(turn), brief_for(policy, message, earlier), keys_for_chat()));
     return chat_state(target, now);
 }
 
-"""Apply proposal `turn_id`: only the caller's own, only as its scope allows, and only if the
-policy has not moved since it was drafted."""
+"""Apply proposal `turn_id`: only the caller's own, and only if the policy has not moved since it
+was drafted."""
 def:priv apply_policy_proposal(turn_id: str) -> ChatActionReply {
     now = utc_now();
     turn = own_turn(turn_id);
@@ -404,10 +436,9 @@ def:priv apply_policy_proposal(turn_id: str) -> ChatActionReply {
         return ChatActionReply(ok=False, message="That proposal is not on record.", chat=ChatState(scope=""));
     }
     scope = turn.scope;
-    refusal = save_refusal(scope);
     proposal = turn.proposal;
-    if refusal or turn.status != "proposed" or proposal is None {
-        return ChatActionReply(ok=False, message=refusal or "That proposal is no longer open.", chat=chat_state(scope, now));
+    if turn.status != "proposed" or proposal is None {
+        return ChatActionReply(ok=False, message="That proposal is no longer open.", chat=chat_state(scope, now));
     }
     done = save_policy(scope, proposal, turn.base_version, "chat", turn.question);
     if done.saved {

@@ -4,7 +4,7 @@ import from action.fixtures { Call, finished_run, team }
 import from models.graph { Concluded, ConsensusResult, Coverage, Covers, Decision, Decided, Holds, OpenedBy, Portfolio, Position, Run, TradeAction }
 import from models.policy { Condition, Op, Policy, PolicyRule, RuleEffect }
 import from models.policy_views { ReplayRow, ReplayView }
-import from policy.replay { StoredRun, held_on, replay, replay_team_run, stored_run }
+import from policy.replay { StoredRun, held_on, replay, replay_my_run, stored_run }
 
 glob DAY: str = "2026-11-03";
 
@@ -51,7 +51,7 @@ test "the defaults reproduce the run's decisions" {
     (portfolio, _) = seeded();
     view = replay(Policy(), stored(portfolio));
     assert view.run_date == DAY and view.differs == 0;
-    assert view.counts == view.team_counts == {"HOLD": 1, "BUY": 1, "NO_ACTION": 1};
+    assert view.counts == view.run_counts == {"HOLD": 1, "BUY": 1, "NO_ACTION": 1};
 }
 
 test "a looser bar buys what the team did not, marked as never reviewed by the Arbiter" {
@@ -131,6 +131,6 @@ test "the newest run with decisions is the default, with its neighbors" {
 }
 
 test "a draft past its limits gets its problems back, not a replay" {
-    view = replay_team_run(Policy(max_position_weight=0.5));
+    view = replay_my_run(Policy(max_position_weight=0.5));
     assert view.problems and not view.rows and "Largest position" in view.problems[0];
 }

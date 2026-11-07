@@ -1,4 +1,4 @@
-"""The policy endpoints on a real server: who may read and save what, optimistic concurrency,
+"""The policy endpoints on a real server: whose policy each account sees, optimistic concurrency,
 hard limits the client cannot loosen, and replay."""
 import tempfile;
 import from pathlib { Path }
@@ -10,90 +10,108 @@ def call(c: JacTestClient, name: str, body: dict = {}) -> any {
     return c.post(f"/function/{name}", json=body).json()["data"]["result"];
 }
 
-test "anyone can read the team policy and catalog and try a draft; saving takes an account" {
+test "every policy endpoint takes an account" {
     c = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
     try {
+        for (name, body) in [
+            ("get_policy_catalog", {}),
+            ("get_my_policy", {}),
+            ("preview_policy", {"policy": {}}),
+            ("save_policy_version", {"policy": {}, "base_version": 0}),
+            ("restore_policy_version", {"version": 0, "base_version": 0})
+        ] {
+            assert c.post(f"/function/{name}", json=body).status_code == 401, name;
+        }
+    } finally { c.close(); }
+}
+
+test "a new account starts from the defaults, and can try a draft with no run yet" {
+    c = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
+    try {
+        c.register_user("alice", "test-password-1");
+        assert call(c, "set_admin", {"on": False}) == "ok";
         catalog = call(c, "get_policy_catalog");
         assert catalog["defaults"]["buy_score"] == 0.2 and catalog["max_rules"] == 20;
         assert any(k["name"] == "max_position_weight" and k["high"] == 0.15 for k in catalog["knobs"]);
         assert any(m["name"] == "rsi_14" for m in catalog["metrics"]);
-        team = call(c, "get_team_policy");
-        assert team["version"] == 0 and team["history"] == [] and team["sentences"];
-        draft = dict(team["policy"], buy_agreement=0.4);
-        # No team portfolio yet: an empty replay, not an error.
-        assert call(c, "preview_policy", {"policy": draft})["rows"] == [];
-        assert c.post("/function/get_policy_workspace", json={}).status_code == 401;
-        assert c.post("/function/save_policy_version", json={"scope": "personal", "policy": draft, "base_version": 0}).status_code == 401;
+        mine = call(c, "get_my_policy");
+        assert mine["version"] == 0 and mine["history"] == [] and mine["sentences"];
+        # No run yet: an empty replay, not an error.
+        assert call(c, "preview_policy", {"policy": dict(mine["policy"], buy_agreement=0.4)})["rows"] == [];
     } finally { c.close(); }
 }
 
-test "a draft replays the team's run without saving anything" {
+test "a draft replays the agent's own run without saving anything" {
     c = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
     try {
-        c.register_user("alice", "test-password-1");
+        c.register_user("team-admin", "test-password-1");
+        assert call(c, "set_admin", {"on": True}) == "ok";
         assert call(c, "seed_policy_run") == "ok";
-        c.clear_auth();
-        draft = dict(call(c, "get_team_policy")["policy"], buy_agreement=0.4);
+        draft = dict(call(c, "get_my_policy")["policy"], buy_agreement=0.4);
         view = call(c, "preview_policy", {"policy": draft});
         assert view["run_date"] == "2026-11-03" and view["differs"] == 1;
         changed = [r for r in view["rows"] if r["changed"]][0];
-        assert changed["ticker"] == "AAPL" and changed["action"] == "BUY" and changed["team_action"] == "NO_ACTION" and changed["unreviewed"];
+        assert changed["ticker"] == "AAPL" and changed["action"] == "BUY" and changed["run_action"] == "NO_ACTION" and changed["unreviewed"];
         too_big = dict(draft, max_position_weight=0.5);
         refused = call(c, "preview_policy", {"policy": too_big});
         assert refused["problems"] and refused["rows"] == [];
-        assert call(c, "get_team_policy")["version"] == 0;
+        assert call(c, "get_my_policy")["version"] == 0;
+
+        # Another account has no run of its own, so it replays nothing of the team's.
+        c.clear_auth();
+        c.register_user("bob", "test-password-2");
+        assert call(c, "set_admin", {"on": False}) == "ok";
+        assert call(c, "preview_policy", {"policy": draft})["rows"] == [];
     } finally { c.close(); }
 }
 
-test "a personal policy is private, versioned, and checked; a stale save is refused" {
+test "a policy is its owner's, versioned, and checked; a stale save is refused" {
     c = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
     try {
         c.register_user("alice", "test-password-1");
-        space = call(c, "get_policy_workspace");
-        assert space["mine"]["version"] == 0 and not space["can_edit_team"];
-        mine = dict(space["mine"]["policy"], buy_score=0.5);
-        saved = call(c, "save_policy_version", {"scope": "personal", "policy": mine, "base_version": 0, "note": "Stricter"});
+        assert call(c, "set_admin", {"on": False}) == "ok";
+        doc = call(c, "get_my_policy");
+        assert doc["version"] == 0;
+        mine = dict(doc["policy"], buy_score=0.5);
+        saved = call(c, "save_policy_version", {"policy": mine, "base_version": 0, "note": "Stricter"});
         assert saved["saved"] and saved["version"] == 1 and saved["doc"]["history"][0]["note"] == "Stricter";
-        stale = call(c, "save_policy_version", {"scope": "personal", "policy": dict(mine, buy_score=0.6), "base_version": 0});
+        stale = call(c, "save_policy_version", {"policy": dict(mine, buy_score=0.6), "base_version": 0});
         assert not stale["saved"] and "changed since" in stale["message"];
-        over = call(c, "save_policy_version", {"scope": "personal", "policy": dict(mine, gross_limit=2.0), "base_version": 1});
+        over = call(c, "save_policy_version", {"policy": dict(mine, gross_limit=2.0), "base_version": 1});
         assert not over["saved"] and over["problems"];
-        restored = call(c, "restore_policy_version", {"scope": "personal", "version": 0, "base_version": 1});
+        restored = call(c, "restore_policy_version", {"version": 0, "base_version": 1});
         assert restored["saved"] and restored["version"] == 2 and restored["doc"]["policy"]["buy_score"] == 0.2;
         assert restored["doc"]["history"][0]["source"] == "restore";
-        again = call(c, "restore_policy_version", {"scope": "personal", "version": 1, "base_version": 2});
+        again = call(c, "restore_policy_version", {"version": 1, "base_version": 2});
         assert again["saved"] and again["doc"]["policy"]["buy_score"] == 0.5;
-        # Nobody else sees it, and the team's policy did not move.
+        # Nobody else sees it.
         c.clear_auth();
         c.register_user("bob", "test-password-2");
-        other = call(c, "get_policy_workspace");
-        assert other["mine"]["version"] == 0 and other["team"]["version"] == 0;
+        assert call(c, "get_my_policy")["version"] == 0;
     } finally { c.close(); }
 }
 
-test "only the admin saves the team policy, and everyone then reads it" {
+test "the admin's policy is the team agent's, and no other account's save reaches it" {
     c = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
     try {
-        c.register_user("member", "test-password-1");
-        assert call(c, "set_admin", {"on": False}) == "ok";
-        draft = dict(call(c, "get_team_policy")["policy"], buy_score=0.3);
-        refused = call(c, "save_policy_version", {"scope": "team", "policy": draft, "base_version": 0});
-        assert not refused["saved"] and refused["message"] == "Only the admin can change the team policy.";
-        assert not call(c, "restore_policy_version", {"scope": "team", "version": 0, "base_version": 0})["saved"];
-        assert not call(c, "save_policy_version", {"scope": "everyone", "policy": draft, "base_version": 0})["saved"];
-        assert call(c, "get_team_policy")["version"] == 0;
-
+        c.register_user("team-admin", "test-password-1");
         assert call(c, "set_admin", {"on": True}) == "ok";
-        assert call(c, "get_policy_workspace")["can_edit_team"];
-        saved = call(c, "save_policy_version", {"scope": "team", "policy": draft, "base_version": 0, "note": "Higher bar"});
-        assert saved["saved"] and saved["version"] == 1;
+        draft = dict(call(c, "get_my_policy")["policy"], buy_score=0.3);
+        saved = call(c, "save_policy_version", {"policy": draft, "base_version": 0, "note": "Higher bar"});
+        assert saved["saved"] and saved["version"] == 1 and saved["doc"]["scope"] == "team";
         assert any("0.2" in change and "0.3" in change for change in saved["changes"]);
+        assert saved["doc"]["history"][0]["note"] == "Higher bar";
 
         c.clear_auth();
-        team = call(c, "get_team_policy");
-        assert team["version"] == 1 and team["policy"]["buy_score"] == 0.3;
-        assert team["history"][0]["author"] == "Team admin" and team["history"][0]["note"] == "Higher bar";
-    } finally {
-        c.close();
-    }
+        c.register_user("member", "test-password-2");
+        assert call(c, "set_admin", {"on": False}) == "ok";
+        theirs = call(c, "get_my_policy");
+        assert theirs["scope"] == "personal" and theirs["version"] == 0 and theirs["policy"]["buy_score"] == 0.2;
+        assert call(c, "save_policy_version", {"policy": dict(theirs["policy"], buy_score=0.9), "base_version": 0})["saved"];
+
+        c.clear_auth();
+        c.login("team-admin", "test-password-1");
+        assert call(c, "set_admin", {"on": True}) == "ok";
+        assert call(c, "get_my_policy")["policy"]["buy_score"] == 0.3;
+    } finally { c.close(); }
 }

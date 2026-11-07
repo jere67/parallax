@@ -1,5 +1,7 @@
+import accounts.store as store;
 import reports.worker as worker;
 import from reports.api { request_report, list_reports, get_report, catalog }
+import from research.credentials { Credentials }
 import from reports.worker { reports_job, save_result, reuse_daily }
 import from models.policy { Policy }
 import from models.reports { ReportCatalog, ReportJob }
@@ -18,7 +20,7 @@ def fake_refresh(_team: Portfolio) -> ReportCatalog {
     return c;
 }
 
-def fake_generate(ticker: str, day: str, allowance: int, _policy: Policy = Policy(), _version: int = 0) -> RunSession {
+def fake_generate(ticker: str, day: str, allowance: int, _policy: Policy = Policy(), _version: int = 0, _keys: Credentials | None = None) -> RunSession {
     if ticker == "FAIL" { raise RuntimeError("secret-provider-detail"); }
     stubs = Stubs(symbols=[ticker]);
     stubs.install();
@@ -32,6 +34,9 @@ def fake_generate(ticker: str, day: str, allowance: int, _policy: Policy = Polic
 }
 
 def:priv setup_worker -> str {
+    # The admin's reports run on the server's keys; a member's are tested in accounts_api_tests.jac.
+    setattr(store, "is_admin_root", lambda (_users: object, _caller: str) -> bool { True; });
+    store._ROLES.clear();
     public(root.shared ++> ReportCatalog(symbols=["AAPL", "FAIL"], trading_date="2026-10-16", refreshed_at=utc_now().isoformat(), generation_enabled=True, model_requests_left=1000));
     worker.refresh_catalog = fake_refresh;
     worker.generate = fake_generate;

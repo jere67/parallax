@@ -1,23 +1,23 @@
-"""The dashboard's endpoints through a real server: anonymous readers see the team graph."""
+"""The dashboard's endpoints through a real server: each account sees its own agent, the admin's
+is the team's, and an anonymous reader sees nothing."""
 import tempfile;
 import from pathlib { Path }
 import from jaclang.testing.testing { JacTestClient }
 
 glob APP: str = str(Path(__file__).resolve().parent / "fixtures" / "dashboard_app.jac");
 
-def call(client: JacTestClient, name: str, body: dict[str, str] | None = None) -> object {
+def call(client: JacTestClient, name: str, body: dict[str, str | bool] | None = None) -> object {
     resp = client.post(f"/function/{name}", json=body or {});
     assert resp.status_code == 200, f"{name}: {resp.status_code} {resp.text[:300]}";
     return resp.json()["data"]["result"];
 }
 
-test "anonymous readers get the news feed and a story, leaving out what they do not need" {
+test "the admin reads the team agent's news feed and a story, leaving out what they do not need" {
     client = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
     try {
-        empty = call(client, "get_news_feed");
-        client.register_user("writer", "writer-password-1");
+        client.register_user("team-admin", "writer-password-1");
+        assert client.post("/function/set_admin", json={"on": True}).ok;
         assert client.post("/function/seed_team_graph", json={}).ok;
-        client.clear_auth();
         whole = call(client, "get_news_feed");
         filtered = call(client, "get_news_feed", {"desk": "news", "q": "guidance"});
         none = call(client, "get_news_feed", {"ticker": "MSFT"});
@@ -26,7 +26,6 @@ test "anonymous readers get the news feed and a story, leaving out what they do 
     } finally {
         client.close();
     }
-    assert empty["total"] == 0 and empty["items"] == [];
     assert whole["total"] == 2 and whole["desks"]["macro"] == 1 and whole["desks"]["news"] == 1;
     assert whole["tickers"] == ["AAPL"] and whole["days"] == ["2026-10-21"];
     assert [i["id"] for i in filtered["items"]] == ["2026-10-21/AAPL/news/0"];
@@ -37,13 +36,41 @@ test "anonymous readers get the news feed and a story, leaving out what they do 
     assert missing is None;
 }
 
-test "anonymous readers get the portfolio, its runs, and a decision trail" {
+test "a reader's feed holds their own agent's notes and their own reports, and nothing else" {
+    client = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
+    address = {"day": "2026-10-21", "ticker": "NVDA", "desk": "news", "requested": True};
+    try {
+        client.register_user("team-admin", "writer-password-1");
+        assert client.post("/function/set_admin", json={"on": True}).ok;
+        assert client.post("/function/seed_team_graph", json={}).ok;
+        assert client.post("/function/set_admin", json={"on": False}).ok;
+        client.clear_auth();
+        client.register_user("asker", "writer-password-1");
+        assert client.post("/function/seed_report", json={}).ok;
+        assert client.post("/function/ask_for_report", json={}).ok;
+        asked = call(client, "get_news_feed");
+        story = call(client, "get_news_story", address);
+        client.clear_auth();
+        client.register_user("bystander", "writer-password-1");
+        other = call(client, "get_news_feed");
+        unasked = call(client, "get_news_story", address);
+    } finally {
+        client.close();
+    }
+    assert [i["id"] for i in asked["items"]] == ["2026-10-21/NVDA/news/0/requested"];
+    assert asked["tickers"] == ["NVDA"];
+    assert story["body"] == "Sales rose 12%." and story["trail"] is False;
+    assert other["total"] == 0 and other["items"] == [];
+    assert unasked is None;
+}
+
+test "the admin reads the team agent's portfolio, runs, and decision trail" {
     client = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
     try {
+        client.register_user("team-admin", "writer-password-1");
+        assert client.post("/function/set_admin", json={"on": True}).ok;
         empty = call(client, "get_portfolio");
-        client.register_user("writer", "writer-password-1");
         assert client.post("/function/seed_team_graph", json={}).ok;
-        client.clear_auth();
         portfolio = call(client, "get_portfolio");
         performance = call(client, "get_performance");
         runs = call(client, "list_runs");
@@ -60,4 +87,36 @@ test "anonymous readers get the portfolio, its runs, and a decision trail" {
     assert run["run_date"] == "2026-10-21" and [r["ticker"] for r in run["rows"]] == ["AAPL"];
     assert trail["ticker"] == "AAPL" and trail["decision"]["action"] == "BUY" and trail["disclaimer"];
     assert missing is None;
+}
+
+test "every data endpoint refuses an anonymous reader" {
+    client = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
+    try {
+        for name in ["get_portfolio", "get_performance", "list_runs", "get_run", "get_news_feed"] {
+            assert client.post(f"/function/{name}", json={}).status_code == 401, name;
+        }
+        assert client.post("/function/get_decision_trail", json={"run_date": "2026-10-21", "ticker": "AAPL"}).status_code == 401;
+        assert client.post("/function/get_news_story", json={"day": "2026-10-21", "ticker": "AAPL", "desk": "news"}).status_code == 401;
+    } finally {
+        client.close();
+    }
+}
+
+test "a member sees only their own agent, never the team's" {
+    client = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
+    try {
+        client.register_user("team-admin", "writer-password-1");
+        assert client.post("/function/set_admin", json={"on": True}).ok;
+        assert client.post("/function/seed_team_graph", json={}).ok;
+        assert call(client, "get_portfolio")["started"] is True;
+        client.clear_auth();
+        client.register_user("member", "member-password-1");
+        assert client.post("/function/set_admin", json={"on": False}).ok;
+        mine = call(client, "get_portfolio");
+        assert mine["started"] is False and mine["positions"] == [];
+        assert call(client, "list_runs") == [];
+        assert call(client, "get_decision_trail", {"run_date": "2026-10-21", "ticker": "AAPL"}) is None;
+    } finally {
+        client.close();
+    }
 }

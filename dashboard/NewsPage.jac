@@ -8,7 +8,7 @@ back button works. The server filters, since the record outgrows what a page sho
 import from "@jac/runtime" { Link, useLocation, useNavigate }
 import from "react" { useEffect, useRef }
 import from "lucide-react" { Check, ChevronDown, ChevronLeft, ExternalLink, Link2, Search, X }
-import from dashboard.news { get_news_feed, get_news_story }
+import from dashboard.ui.rpc { get_news_feed, get_news_story }
 import from dashboard.ui.format { count, day_long, day_short, money, pct, stamp_et, time_et }
 import from dashboard.ui.parts {
     PILL_BASE,
@@ -67,7 +67,7 @@ def is_wide -> bool {
 }
 
 def to_story(id: str, search: str) -> str {
-    return "/news/" + id + search;
+    return "/app/news/" + id + search;
 }
 
 """The model's short name: "openrouter/nvidia/nemotron-3.5-super-vl:free" reads "nemotron-3.5-super-vl"."""
@@ -293,7 +293,7 @@ def Outcome(story: StoryData) -> JsxElement {
         return <></>;
     }
     if not item.ticker {
-        return <Link to={"/runs/" + item.day} className="mt-5 inline-block text-[13px] font-medium text-accent hover:underline">See the morning's run</Link>;
+        return <Link to={"/app/runs/" + item.day} className="mt-5 inline-block text-[13px] font-medium text-accent hover:underline">See the morning's run</Link>;
     }
     <div className="mt-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-md border border-line bg-panel-2 px-3 py-2.5">
         <span className="flex items-center gap-2 text-[13px] text-muted">
@@ -304,7 +304,7 @@ def Outcome(story: StoryData) -> JsxElement {
                 <span className="text-faint">not recorded</span>
             }}
         </span>
-        <Link to={"/runs/" + item.day + "/" + item.ticker} className="text-[13px] font-medium text-accent hover:underline">See the decision trail</Link>
+        <Link to={"/app/runs/" + item.day + "/" + item.ticker} className="text-[13px] font-medium text-accent hover:underline">See the decision trail</Link>
     </div>
 }
 
@@ -312,7 +312,7 @@ def CopyLink(id: str) -> JsxElement {
     has copied: bool = False;
 
     def copy {
-        address = window.location.origin + "/news/" + id;
+        address = window.location.origin + "/app/news/" + id;
         window.navigator.clipboard.writeText(address).then(lambda (_d: any) {
             copied = True;
             window.setTimeout(lambda { copied = False; }, 1600);
@@ -367,7 +367,7 @@ def StoryPane(item: ItemData | None, story: StoryData | None, missing: bool, id:
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
                 {if shown.ticker {
                     <Link
-                        to={"/news?ticker=" + shown.ticker}
+                        to={"/app/news?ticker=" + shown.ticker}
                         title={"All research on " + shown.ticker}
                         className={PILL_BASE + " num " + TONE_QUIET + " font-semibold text-text hover:border-accent/60"}
                     >
@@ -426,7 +426,7 @@ def:pub NewsPage -> JsxElement {
     params: any = new(URLSearchParams, search);  # jac:ignore[E1053]
     filters: dict[str, str] = {k: params.get(k) or "" for k in FILTER_KEYS};
     # By position, since the news desk's own notes have "news" in their address too.
-    route_id: str = location.pathname[len("/news"):].strip("/");
+    route_id: str = location.pathname[len("/app/news"):].strip("/");
     latest = useRef(search);
     latest.current = search;
     heading = useRef(None);
@@ -533,7 +533,7 @@ def:pub NewsPage -> JsxElement {
         if not wide and location.state is not None and location.state.from_feed {
             navigate(-1);
         } else {
-            navigate("/news" + search, {"replace": not wide});
+            navigate("/app/news" + search, {"replace": not wide});
         }
     }
 
@@ -568,13 +568,13 @@ def:pub NewsPage -> JsxElement {
     }
 
     def set_filter(name: str, value: str) {
-        navigate("/news" + with_filter(name, value), {"replace": True});
+        navigate("/app/news" + with_filter(name, value), {"replace": True});
     }
 
     def clear {
         window.clearTimeout(pause.current);
         text = "";
-        navigate("/news", {"replace": True});
+        navigate("/app/news", {"replace": True});
     }
 
     """The address changes when typing pauses, so a burst of keys makes one request."""

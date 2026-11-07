@@ -13,7 +13,7 @@ node ReportJob {
     has status: ReportStatus = ReportStatus.PENDING, error: str = "",
         started_at: str = "", finished_at: str = "", worker: str = "",
         card: InsightCard | None = None, demo: bool = False,
-        charged: bool = True, model_requests: int = 0;
+        charged: bool = True, model_requests: int = 0, requested_by: str = "";
 }
 
 obj ReportView {

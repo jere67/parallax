@@ -1,30 +1,15 @@
-"""The frame around every page: the top bar with navigation, the portfolio's status, and the
-theme switch; a banner when the graph holds demo history; and the disclaimer (TDD §9)."""
-import from "@jac/runtime" { Link, Outlet, useLocation }
-import from "lucide-react" { BookOpen, FileText, History, Moon, Newspaper, SlidersHorizontal, Sun }
-import from dashboard.api { get_portfolio }
+"""The frame around every page of the app: the top bar with navigation, the portfolio's status,
+the theme switch, settings, and logging out; a banner when the graph holds demo history; and the disclaimer (TDD §9)."""
+import from "@jac/runtime" { Link, Outlet, jacLogout, useLocation, useNavigate }
+import from "lucide-react" { BookOpen, FileText, History, Newspaper, Settings, SlidersHorizontal }
+import from dashboard.ui.brand { DISCLAIMER, REPO_URL, ThemeSwitch, Wordmark }
+import from dashboard.ui.rpc { get_portfolio }
 import from models.views { PortfolioView as Portfolio }
 import from dashboard.ui.format { stamp_et, title }
 import from dashboard.ui.parts { StatusBadge }
 import from dashboard.ui.pwa { InstallHint, OfflineBanner, register_worker }
-import from dashboard.ui.theme { is_dark, set_theme }
 
-# The same words as action/insights.jac DISCLAIMER, which stays server-side with the cards.
-glob DISCLAIMER: str = "An educational student project trading simulated money. Nothing here is investment advice, and past simulated performance does not predict future results.";
-glob REPO_URL: str = "https://github.com/jere67/eecs449-project";
 glob CHARTS_URL: str = "https://www.tradingview.com/lightweight-charts/";
-
-"""The mark: five specialists' votes on an arc, meeting in one decision."""
-def Mark -> JsxElement {
-    <svg viewBox="0 0 20 20" className="size-5 text-accent" aria-hidden="true">
-        <circle cx="3" cy="13" r="1.6" fill="currentColor" opacity="0.55"/>
-        <circle cx="5.6" cy="6.4" r="1.6" fill="currentColor" opacity="0.7"/>
-        <circle cx="10" cy="3.4" r="1.6" fill="currentColor" opacity="0.85"/>
-        <circle cx="14.4" cy="6.4" r="1.6" fill="currentColor" opacity="0.7"/>
-        <circle cx="17" cy="13" r="1.6" fill="currentColor" opacity="0.55"/>
-        <circle cx="10" cy="13" r="3" fill="currentColor"/>
-    </svg>
-}
 
 def NavLink(to: str, active: bool, children: any = None) -> JsxElement {
     tone = "text-text after:bg-accent" if active else "text-muted hover:text-text after:bg-transparent";
@@ -48,25 +33,6 @@ def TabLink(to: str, label: str, active: bool, children: any = None) -> JsxEleme
     </Link>
 }
 
-def ThemeSwitch -> JsxElement {
-    has dark: bool = is_dark();
-
-    def flip {
-        set_theme("light" if dark else "dark");
-        dark = not dark;
-    }
-
-    <button
-        type="button"
-        onClick={flip}
-        className="press grid size-11 place-items-center rounded-md text-muted hover:bg-hover hover:text-text md:size-8"
-        aria-label={"Switch to light theme" if dark else "Switch to dark theme"}
-        title={"Light theme" if dark else "Dark theme"}
-    >
-        {<Sun size={16} strokeWidth={1.75}/> if dark else <Moon size={16} strokeWidth={1.75}/>}
-    </button>
-}
-
 def:pub Layout -> JsxElement {
     has info: Portfolio | None = None;
 
@@ -77,21 +43,23 @@ def:pub Layout -> JsxElement {
     }
 
     path = useLocation().pathname;
-    register_worker();
+    nav = useNavigate();
+
+    def leave {
+        jacLogout();
+        nav("/", {"replace": True});
+    }
 
     <div className="flex min-h-dvh flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
         <header className="sticky top-0 z-20 border-b border-line bg-bg/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
             <div className="mx-auto flex h-12 max-w-[1200px] items-center gap-6 px-4 sm:px-6 lg:px-8">
-                <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="Trading Agent, home">
-                    <Mark/>
-                    <span className="display whitespace-nowrap text-[19px] leading-none">Trading Agent</span>
-                </Link>
+                <Wordmark to="/app"/>
                 <nav className="hidden shrink-0 items-center gap-6 md:flex">
-                    <NavLink to="/" active={path == "/"}>Portfolio</NavLink>
-                    <NavLink to="/news" active={path.startsWith("/news")}>News</NavLink>
-                    <NavLink to="/runs" active={path.startsWith("/runs")}>Runs</NavLink>
-                    <NavLink to="/policy" active={path.startsWith("/policy")}>Policy</NavLink>
-                    <NavLink to="/reports" active={path.startsWith("/reports")}>Reports</NavLink>
+                    <NavLink to="/app" active={path == "/app"}>Portfolio</NavLink>
+                    <NavLink to="/app/news" active={path.startsWith("/app/news")}>News</NavLink>
+                    <NavLink to="/app/runs" active={path.startsWith("/app/runs")}>Runs</NavLink>
+                    <NavLink to="/app/policy" active={path.startsWith("/app/policy")}>Policy</NavLink>
+                    <NavLink to="/app/reports" active={path.startsWith("/app/reports")}>Reports</NavLink>
                 </nav>
                 <div className="ml-auto flex items-center gap-3">
                     {if info is not None and info.started {
@@ -107,6 +75,10 @@ def:pub Layout -> JsxElement {
                         </span>
                     }}
                     <ThemeSwitch/>
+                    <Link to="/app/settings" aria-label="Settings" title="Settings" className={"press grid size-11 place-items-center rounded-md hover:bg-hover hover:text-text md:size-8 " + ("text-accent" if path.startsWith("/app/settings") else "text-muted")}>
+                        <Settings size={16} strokeWidth={1.75} aria-hidden="true"/>
+                    </Link>
+                    <button type="button" onClick={leave} className="press hidden h-8 rounded-md px-2 text-[12px] font-medium text-muted hover:bg-hover hover:text-text md:block">Log out</button>
                 </div>
             </div>
         </header>
@@ -136,11 +108,11 @@ def:pub Layout -> JsxElement {
             </div>
         </footer>
         <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
-            <TabLink to="/" label="Portfolio" active={path == "/"}><BookOpen size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
-            <TabLink to="/news" label="News" active={path.startsWith("/news")}><Newspaper size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
-            <TabLink to="/runs" label="Runs" active={path.startsWith("/runs")}><History size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
-            <TabLink to="/policy" label="Policy" active={path.startsWith("/policy")}><SlidersHorizontal size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
-            <TabLink to="/reports" label="Reports" active={path.startsWith("/reports")}><FileText size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app" label="Portfolio" active={path == "/app"}><BookOpen size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app/news" label="News" active={path.startsWith("/app/news")}><Newspaper size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app/runs" label="Runs" active={path.startsWith("/app/runs")}><History size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app/policy" label="Policy" active={path.startsWith("/app/policy")}><SlidersHorizontal size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app/reports" label="Reports" active={path.startsWith("/app/reports")}><FileText size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
         </nav>
     </div>
 }

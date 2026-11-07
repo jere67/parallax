@@ -79,7 +79,7 @@ jobs:
         run: jac build
 
       # The demo history gives the end-to-end check pages with data. This server is this job's
-      # alone; TRADING_AGENT_DEMO is never set on a deployed one. The fake OpenRouter lets the
+      # alone; TRADING_AGENT_DEMO is never set on a deployed one. The fake providers let the
       # policy assistant's whole path run with no key and no network.
       - name: Boot the production build
         env:
@@ -88,8 +88,12 @@ jobs:
           ADMIN_PASSWORD: e2e-admin-password
           OPENROUTER_API_KEY: e2e-fake
           OPENROUTER_API_BASE: http://127.0.0.1:8399
+          ALPACA_BASE_URL: http://127.0.0.1:8399
+          FINNHUB_BASE_URL: http://127.0.0.1:8399
+          PARALLAX_KEYS_SECRET: e2e-keys-secret-that-is-long-enough-to-use
+          PARALLAX_MAX_AGENTS: "1000"
         run: |
-          node e2e/fake-openrouter.js > fake-openrouter.log 2>&1 &
+          node e2e/fake-providers.js > fake-providers.log 2>&1 &
           jac run dist/trading-agent.jab < /dev/null > server.log 2>&1 &
           for _ in $(seq 1 120); do
             curl -sf http://localhost:8000/healthz > /dev/null && break

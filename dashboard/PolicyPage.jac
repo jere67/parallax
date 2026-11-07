@@ -1,29 +1,25 @@
 """The Policy page: when to buy, sell, trim, and hold, as numbers with hard limits and as rules
 over a fixed set of metrics, tried against the latest morning run as they change.
 
-A reader's own policy only ever shows what it would have done; it places no orders. The team's
-drives the real morning run from the next one on, so only the admin can change it. A reader who
-is not signed in sees the team's, read-only. Every draft goes to the server for its replay, its
-words, and its limits, so what this page says is what a save would do."""
-import from "@jac/runtime" { Link, jacIsLoggedIn, jacLogout }
+The policy here is the one this account's agent runs on, from its next morning run. Every draft
+goes to the server for its replay, its words, and its limits, so what this page says is what a
+save would do."""
+import from "@jac/runtime" { Link, jacIsLoggedIn }
 import from dashboard.ui.retry { call_function }
 import from "lucide-react" { ChevronLeft, ChevronRight, MessageCircle, Pause, Play, Plus, RotateCcw, Trash2 }
 import from "react" { useEffect }
 import from dashboard.PolicyChat { PolicyChat }
-import from dashboard.ui.account { SignInForm }
 import from dashboard.ui.format { day_long, day_short, num, signed, stamp_et }
-import from dashboard.ui.parts { ActionBadge, ErrorBox, Loading, Overline, PILL_BASE, Panel, SEGMENTS, TAP_BUTTON, TAP_INPUT, TAP_QUIET, TONE_ACCENT, TONE_QUIET, TONE_WARN }
+import from dashboard.ui.parts { ActionBadge, ErrorBox, Loading, Overline, PILL_BASE, Panel, TAP_BUTTON, TAP_INPUT, TAP_QUIET, TONE_ACCENT, TONE_QUIET, TONE_WARN }
 import from models.policy { Knob as KnobData, Metric as MetricData, PolicyRule as RuleData }
 import from models.policy_views {
     OpView as OpData,
     PolicyCatalog as CatalogData,
     PolicyDoc as DocData,
     PolicySaveReply as SaveReply,
-    PolicyWorkspace as WorkspaceData,
     ReplayRow as RowData,
     VersionView as VersionData
 }
-import from policy.api { get_policy_catalog, get_team_policy }
 
 glob PREVIEW_DELAY_MS: int = 250;
 glob SOURCES: dict[str, str] = {"form": "Edited in the form", "chat": "From the assistant", "restore": "Restored"};
@@ -35,6 +31,7 @@ def contract(name: str) -> dict[str, str] {
 """A draft is a plain object once edited, so it goes over the runtime's RPC helper as JSON: the
 typed bridge expects a wire class instance. The server rebuilds and checks it either way."""
 async def preview_draft(policy: any, run_date: str) -> any {
+    if not jacIsLoggedIn() { return None; }
     return await call_function("preview_policy", {"policy": policy, "run_date": run_date}, contract("preview_policy"));
 }
 
@@ -45,19 +42,24 @@ def with_field(thing: any, field: str, value: any) -> any {
     return copied;
 }
 
-async def load_workspace -> WorkspaceData | None {
+async def load_catalog -> CatalogData | None {
     if not jacIsLoggedIn() { return None; }
-    return await call_function("get_policy_workspace", {}, contract("get_policy_workspace"));
+    return await call_function("get_policy_catalog", {}, contract("get_policy_catalog"));
 }
 
-async def save_version(scope: str, policy: any, base_version: int, note: str) -> SaveReply | None {
+async def load_mine -> DocData | None {
     if not jacIsLoggedIn() { return None; }
-    return await call_function("save_policy_version", {"scope": scope, "policy": policy, "base_version": base_version, "note": note}, contract("save_policy_version"));
+    return await call_function("get_my_policy", {}, contract("get_my_policy"));
 }
 
-async def restore_version(scope: str, version: int, base_version: int) -> SaveReply | None {
+async def save_version(policy: any, base_version: int, note: str) -> SaveReply | None {
     if not jacIsLoggedIn() { return None; }
-    return await call_function("restore_policy_version", {"scope": scope, "version": version, "base_version": base_version}, contract("restore_policy_version"));
+    return await call_function("save_policy_version", {"policy": policy, "base_version": base_version, "note": note}, contract("save_policy_version"));
+}
+
+async def restore_version(version: int, base_version: int) -> SaveReply | None {
+    if not jacIsLoggedIn() { return None; }
+    return await call_function("restore_policy_version", {"version": version, "base_version": base_version}, contract("restore_policy_version"));
 }
 
 """A knob's value as a reader says it; the same words as the server's knob_text."""
@@ -297,15 +299,15 @@ def RuleCard(rule: RuleData, sentence: str, editable: bool, toggle: Callable[[],
     </li>
 }
 
-"""One stock in a replay: what the team did and what this policy would, and why they differ."""
+"""One stock in a replay: what the run did and what this policy would, and why they differ."""
 def ReplayCard(row: RowData, day: str) -> JsxElement {
     <li className="border-b border-line/60 py-2.5 last:border-b-0" data-testid="replay-row">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <Link to={"/runs/" + day + "/" + row.ticker} className="display min-h-6 text-[17px] leading-6 hover:text-accent">{row.ticker}</Link>
+            <Link to={"/app/runs/" + day + "/" + row.ticker} className="display min-h-6 text-[17px] leading-6 hover:text-accent">{row.ticker}</Link>
             <div className="flex items-center gap-1.5">
                 {if row.changed {
                     <span className="flex items-center gap-1.5">
-                        <span className="opacity-70"><ActionBadge action={row.team_action}/></span>
+                        <span className="opacity-70"><ActionBadge action={row.run_action}/></span>
                         <ChevronRight size={12} className="text-faint" aria-label="would become"/>
                     </span>
                 }}
@@ -316,7 +318,7 @@ def ReplayCard(row: RowData, day: str) -> JsxElement {
             {(row.sector + " · " if row.sector else "") + ("Held · " if row.held else "") + ("score " + signed(row.score, 2) + " · agreement " + num(row.agreement, 2) if row.score is not None and row.agreement is not None else "No panel score")}
         </div>
         {for note in row.notes { <p key={note} className="mt-1 text-[12px] leading-[18px]">{note}</p> }}
-        {if row.unreviewed { <p className="mt-1 text-[12px] leading-[18px] text-warn">The Arbiter never reviewed this buy, because the team's rule did not propose it.</p> }}
+        {if row.unreviewed { <p className="mt-1 text-[12px] leading-[18px] text-warn">The Arbiter never reviewed this buy, because the policy that run used did not propose it.</p> }}
         {for note in row.skipped { <p key={note} className="mt-1 text-[12px] leading-[18px] text-faint">{note}</p> }}
     </li>
 }
@@ -347,7 +349,7 @@ def ReplayPanel(view: any, loading: bool, scope_words: str, move: Callable[[str]
         } else {
             <div className={"transition-opacity duration-150 " + ("opacity-60" if loading else "")}>
                 <p className="text-[13px]" role="status">
-                    {("No decision differs from the team's" if differs == 0 else (str(differs) + (" decision differs" if differs == 1 else " decisions differ") + " from the team's")) + " on " + day_long(view.run_date) + "."}
+                    {("Nothing differs from what the run decided" if differs == 0 else (str(differs) + (" decision differs" if differs == 1 else " decisions differ") + " from what the run decided")) + " on " + day_long(view.run_date) + "."}
                 </p>
                 <p className="mt-0.5 text-[12px] text-faint">{scope_words}</p>
                 {if differs > 0 {
@@ -410,11 +412,7 @@ def next_rule_id(rules: list[RuleData]) -> str {
 
 def:pub PolicyPage -> JsxElement {
     has catalog: CatalogData | None = None,
-        team: DocData | None = None,
-        mine: DocData | None = None,
-        can_edit_team: bool = False,
-        signed_in: bool = jacIsLoggedIn(),
-        scope: str = "personal" if jacIsLoggedIn() else "team",
+        doc: DocData | None = None,
         draft: any = None,
         dirty: bool = False,
         note: str = "",
@@ -426,30 +424,12 @@ def:pub PolicyPage -> JsxElement {
         message: str = "",
         problems: list[str] = [],
         error: str = "",
-        chat_open: bool = False,
-        show_signin: bool = False;
-
-    doc: DocData | None = mine if scope == "personal" else team;
-    editable: bool = (scope == "personal" and signed_in) or (scope == "team" and can_edit_team);
+        chat_open: bool = False;
 
     async def load_all {
-        catalog_now: CatalogData | None = None;
-        team_now: DocData | None = None;
-        space: WorkspaceData | None = None;
         try {
-            catalog_now = await get_policy_catalog();
-            catalog = catalog_now;
-            if jacIsLoggedIn() {
-                space = await load_workspace();
-                if space is not None {
-                    mine = space.mine;
-                    team = space.team;
-                    can_edit_team = space.can_edit_team;
-                }
-            } else {
-                team_now = await get_team_policy();
-                team = team_now;
-            }
+            catalog = await load_catalog();
+            doc = await load_mine();
         } except Exception as e {
             error = str(e);
         }
@@ -459,8 +439,8 @@ def:pub PolicyPage -> JsxElement {
         load_all();
     }
 
-    # The editor starts from the policy in force, whenever that policy or the page's scope changes.
-    doc_key: str = (doc.scope + ":" + str(doc.version)) if doc is not None else "";
+    # The editor starts from the policy in force, whenever that policy changes.
+    doc_key: str = str(doc.version) if doc is not None else "";
     useEffect(lambda {
         if doc is not None {
             draft = doc.policy;
@@ -501,9 +481,7 @@ def:pub PolicyPage -> JsxElement {
         if reply is None { return; }
         message = reply.message;
         problems = reply.problems;
-        if reply.doc is not None {
-            if scope == "personal" { mine = reply.doc; } else { team = reply.doc; }
-        }
+        if reply.doc is not None { doc = reply.doc; }
     }
 
     async def save(e: FormEvent) {
@@ -512,7 +490,7 @@ def:pub PolicyPage -> JsxElement {
         busy = True;
         reply: SaveReply | None = None;
         try {
-            reply = await save_version(scope, draft, doc.version, note);
+            reply = await save_version(draft, doc.version, note);
             apply_reply(reply);
             if reply is not None and reply.saved { note = ""; }
         } except Exception {
@@ -527,7 +505,7 @@ def:pub PolicyPage -> JsxElement {
         busy = True;
         reply: SaveReply | None = None;
         try {
-            reply = await restore_version(scope, version, doc.version);
+            reply = await restore_version(version, doc.version);
             apply_reply(reply);
         } except Exception {
             message = "Could not restore that version. Check your connection and try again.";
@@ -544,31 +522,8 @@ def:pub PolicyPage -> JsxElement {
     }
 
     def proposal_saved(saved_doc: DocData) {
-        if saved_doc.scope == "personal" { mine = saved_doc; } else { team = saved_doc; }
+        doc = saved_doc;
         message = "Applied as version " + str(saved_doc.version) + ".";
-    }
-
-    def signed_in_now {
-        signed_in = True;
-        scope = "personal";
-        show_signin = False;
-        load_all();
-    }
-
-    def sign_out {
-        jacLogout();
-        signed_in = False;
-        can_edit_team = False;
-        mine = None;
-        scope = "team";
-        chat_open = False;
-    }
-
-    def pick_scope(s: str) {
-        scope = s;
-        message = "";
-        problems = [];
-        chat_open = False;
     }
 
     if error {
@@ -581,39 +536,14 @@ def:pub PolicyPage -> JsxElement {
     rule_words: list[str] = replay_view.rule_sentences if replay_view is not None and len(replay_view.rule_sentences) == len(draft.rules) else [r.effect for r in draft.rules];
     if not dirty { rule_words = doc.rule_sentences; }
     sentences: list[str] = replay_view.sentences if dirty and replay_view is not None and len(replay_view.sentences) > 0 else doc.sentences;
-    scope_words: str = "Your own policy only shows what it would have done. It places no orders." if scope == "personal" else "The team policy decides every morning run from the next one on. A run already decided keeps the version it used.";
-    chat_ok: bool = editable and signed_in;
 
     <div className={"flex flex-col gap-5 " + ("pb-20 md:pb-16" if dirty else "")}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-                <h1 className="display text-[30px] leading-9">Policy</h1>
-                <p className="mt-1 max-w-2xl text-[13px] text-muted">{"When to buy, sell, trim, and hold. " + scope_words}</p>
-            </div>
-            <div className="flex items-center gap-2">
-                {if signed_in {
-                    <div className={SEGMENTS + " !h-11 md:!h-8"} role="group" aria-label="Whose policy">
-                        <button type="button" aria-pressed={scope == "personal"} onClick={lambda { pick_scope("personal"); }} className={"press h-full rounded-[3px] px-3 text-[12px] font-medium " + ("bg-panel text-text shadow-[0_1px_2px_rgb(0_0_0/0.12)]" if scope == "personal" else "text-muted hover:text-text")}>My policy</button>
-                        <button type="button" aria-pressed={scope == "team"} onClick={lambda { pick_scope("team"); }} className={"press h-full rounded-[3px] px-3 text-[12px] font-medium " + ("bg-panel text-text shadow-[0_1px_2px_rgb(0_0_0/0.12)]" if scope == "team" else "text-muted hover:text-text")}>Team policy</button>
-                    </div>
-                    <button type="button" onClick={sign_out} className="press min-h-11 text-[12px] text-muted hover:text-text md:min-h-8">Sign out</button>
-                } else {
-                    <button type="button" onClick={lambda { show_signin = not show_signin; }} className={TAP_BUTTON}>Sign in to make your own</button>
-                }}
-            </div>
+        <div className="min-w-0">
+            <h1 className="display text-[30px] leading-9">Your policy</h1>
+            <p className="mt-1 max-w-2xl text-[13px] text-muted">When to buy, sell, trim, and hold. Your agent uses this from its next morning run.</p>
         </div>
 
-        {if show_signin and not signed_in {
-            <div className="max-w-md rounded-md border border-line bg-panel p-4">
-                <SignInForm heading="Make your own policy" blurb="Keep a private policy, see what it would have done each morning, and shape it in plain English." done={signed_in_now}/>
-            </div>
-        }}
-
-        {if scope == "team" and signed_in and not can_edit_team {
-            <p className="rounded-md border border-line bg-panel-2 px-3 py-2 text-[12px] text-muted">Only the team's admin can change this policy. You can read it here, and try ideas in your own.</p>
-        }}
-
-        <div className={"grid items-start gap-5 " + ("lg:grid-cols-[minmax(0,1fr)_360px]" if chat_ok else "")}>
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div className="flex min-w-0 flex-col gap-5">
                 <Panel title="In plain English" aside={("Version " + str(doc.version)) if doc.version > 0 else "Defaults"}>
                     <ul className="flex flex-col gap-1.5 text-[13px] leading-5">
@@ -634,7 +564,7 @@ def:pub PolicyPage -> JsxElement {
                                     key={rule.id}
                                     rule={rule}
                                     sentence={rule_words[i]}
-                                    editable={editable}
+                                    editable={True}
                                     toggle={lambda { edit({**draft, "rules": [({**r, "enabled": not r.enabled} if r.id == rule.id else r) for r in draft.rules]}); }}
                                     remove={lambda { edit({**draft, "rules": [r for r in draft.rules if r.id != rule.id]}); }}
                                 />
@@ -642,7 +572,7 @@ def:pub PolicyPage -> JsxElement {
                         </ul>
                         {if building {
                             <RuleBuilder catalog={catalog} next_id={next_rule_id(draft.rules)} add={lambda (r: any) { edit({**draft, "rules": draft.rules + [r]}); building = False; }} cancel={lambda { building = False; }}/>
-                        } elif editable and len(draft.rules) < catalog.max_rules {
+                        } elif len(draft.rules) < catalog.max_rules {
                             <button type="button" onClick={lambda { building = True; }} className={TAP_QUIET + " self-start"}><Plus size={14} strokeWidth={2} aria-hidden="true"/>Add a rule</button>
                         }}
                     </div>
@@ -654,7 +584,7 @@ def:pub PolicyPage -> JsxElement {
                             <div className="flex flex-col divide-y divide-line/60">
                                 {for knob in catalog.knobs {
                                     if knob.group == group {
-                                        <KnobRow key={knob.name} knob={knob} value={draft[knob.name]} editable={editable} change={lambda (name: str, value: float) { edit(with_field(draft, name, value)); }}/>
+                                        <KnobRow key={knob.name} knob={knob} value={draft[knob.name]} editable={True} change={lambda (name: str, value: float) { edit(with_field(draft, name, value)); }}/>
                                     }
                                 }}
                             </div>
@@ -662,22 +592,18 @@ def:pub PolicyPage -> JsxElement {
                     }}
                 </div>
 
-                <HistoryPanel doc={doc} editable={editable} busy={busy} restore={restore}/>
+                <HistoryPanel doc={doc} editable={True} busy={busy} restore={restore}/>
             </div>
 
-            {if chat_ok {
-                <PolicyChat
-                    scope={scope}
-                    whose={"About your own policy" if scope == "personal" else "About the team policy"}
-                    blocked={dirty}
-                    open_sheet={chat_open}
-                    close={lambda { chat_open = False; }}
-                    saved={proposal_saved}
-                />
-            }}
+            <PolicyChat
+                blocked={dirty}
+                open_sheet={chat_open}
+                close={lambda { chat_open = False; }}
+                saved={proposal_saved}
+            />
         </div>
 
-        {if chat_ok and not chat_open {
+        {if not chat_open {
             <button type="button" onClick={lambda { chat_open = True; }} className={TAP_BUTTON + " fixed right-4 z-30 rounded-full shadow-[var(--shadow-overlay)] lg:hidden " + ("bottom-[calc(12rem+env(safe-area-inset-bottom))]" if dirty else "bottom-[calc(4.75rem+env(safe-area-inset-bottom))]")}>
                 <MessageCircle size={16} strokeWidth={1.75} aria-hidden="true"/>Ask
             </button>
@@ -687,7 +613,7 @@ def:pub PolicyPage -> JsxElement {
             <p className="fixed inset-x-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 mx-auto max-w-md rounded-md border border-line-strong bg-overlay px-3 py-2 text-center text-[13px] shadow-[var(--shadow-overlay)] md:bottom-4" role="status">{message}</p>
         }}
 
-        {if dirty and editable {
+        {if dirty {
             <form onSubmit={save} className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-20 border-t border-line-strong bg-overlay md:bottom-0" data-testid="save-bar">
                 <div className="mx-auto flex max-w-[1200px] flex-col gap-2 px-4 py-2.5 sm:px-6 md:flex-row md:items-center lg:px-8">
                     <div className="min-w-0 flex-1">
@@ -698,7 +624,7 @@ def:pub PolicyPage -> JsxElement {
                     </div>
                     <div className="flex shrink-0 gap-2">
                         <button type="button" disabled={busy} onClick={discard_edits} className={TAP_QUIET + " flex-1"}>Discard</button>
-                        <button type="submit" disabled={busy or (replay_view is not None and len(replay_view.problems) > 0)} className={TAP_BUTTON + " flex-1"}>{"Saving…" if busy else ("Save for the next run" if scope == "team" else "Save")}</button>
+                        <button type="submit" disabled={busy or (replay_view is not None and len(replay_view.problems) > 0)} className={TAP_BUTTON + " flex-1"}>{"Saving…" if busy else "Save"}</button>
                     </div>
                 </div>
             </form>
