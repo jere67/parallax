@@ -161,6 +161,67 @@ Returned by [`get_run`](/api/get-run).
 | `order_qty`, `filled_qty` | integer | |
 | `filled_avg_price` | number or null | |
 
+## News
+
+### NewsFeed
+
+Returned by [`get_news_feed`](/api/get-news-feed).
+
+| Field | Type | |
+| --- | --- | --- |
+| `items` | [`NewsItem[]`](#newsitem) | This page of the feed |
+| `total` | integer | Notes matching the filters, across all pages |
+| `next_offset` | integer \| null | The next page's offset, or `null` on the last page |
+| `desks` | object | Matching notes per desk, ignoring the desk filter |
+| `tickers` | string[] | Every ticker in the feed |
+| `days` | string[] | Every day in the feed, newest first |
+| `held` | integer | Tickers in the feed the team holds now |
+
+### NewsItem
+
+| Field | Type | |
+| --- | --- | --- |
+| `id` | string | The note's address, `{day}/{ticker or "market"}/{desk}/{n}`, plus `/requested` for a reader's report |
+| `day` | string | The run's trading date |
+| `desk` | string | `market`, `fundamentals`, `news`, or `macro` |
+| `as_of` | string | When the note was written, in UTC |
+| `headline` | string | Cut from the note's summary, or a follow-up's question |
+| `view` | string | The desk's stance, or the macro desk's regime |
+| `lean` | string | `up`, `flat`, or `down` |
+| `confidence` | number | From 0 to 1 |
+| `ticker` | string | Empty for a macro brief |
+| `sector` | string | |
+| `sources` | integer | Sources the note cited |
+| `followup` | boolean | `true` when it answers the Orchestrator's question |
+| `requested` | boolean | `true` when a signed-in reader asked for it |
+
+### NewsStory
+
+Returned by [`get_news_story`](/api/get-news-story).
+
+| Field | Type | |
+| --- | --- | --- |
+| `item` | [`NewsItem`](#newsitem) | The note's feed line |
+| `body` | string | The summary after its headline |
+| `sources` | [`NewsSource[]`](#newssource) | Newest first |
+| `risks` | string[] | What the desk said could prove it wrong |
+| `data_gaps` | string[] | What the desk could not get |
+| `model` | string | The model that wrote it |
+| `followup_question` | string | The Orchestrator's question, for a follow-up |
+| `last_close` | number \| null | The ticker's close that morning |
+| `action` | string | The panel's decision on the ticker that morning |
+| `trail` | boolean | `true` when a decision trail exists for it |
+
+### NewsSource
+
+| Field | Type | |
+| --- | --- | --- |
+| `label` | string | The provider's name |
+| `url` | string | |
+| `claims` | string[] | What the desk took from it |
+| `day` | string | When it was published, when known |
+| `link` | boolean | `false` for an API address that needs the project's keys |
+
 ## Decision trail
 
 ### TrailView

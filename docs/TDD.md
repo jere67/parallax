@@ -847,13 +847,14 @@ Every page states that the product is an educational student project using simul
 
 ## 10. Dashboard
 
-The dashboard is a jac-client React-style app served by the same `jac run` process, with six pages built around one idea: every number links down to the evidence behind it.
+The dashboard is a jac-client React-style app served by the same `jac run` process, with eight pages built around one idea: every number links down to the evidence behind it.
 It is built last, but a read-only Portfolio page and Decision page must exist for Pitch Week.
 The backing endpoints are `def:pub` functions that read `root.shared` explicitly (Section 11), and `main.jac` imports every one of them (Section 3; [endpoints guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-endpoints.md)).
 
 | Page | Access | Shows | Backing endpoints |
 | --- | --- | --- | --- |
 | Portfolio | Public | Equity curve against SPY, Sharpe, max drawdown, open positions with entry, P&L, stop, and thesis | `get_portfolio`, `get_performance` |
+| News | Public | Every research note as a filterable feed of headlines beside the note itself: its view, confidence, sources, risks, data gaps, and a link to the decision it fed | `get_news_feed`, `get_news_story` |
 | Today | Public | The run's shortlist, each ticker's action and conviction, run status (normal or fallback), run summary, and the past runs | `get_run`, `list_runs` |
 | Decision detail | Public | The full trail for one ticker: research reports and sources → every specialist sample → consensus score, agreement, interval → Arbiter → risk gate → order and fill | `get_decision_trail` |
 | Specialists | Public | Hit rate, calibration curve, and recent votes per specialist | `get_specialist_stats` |

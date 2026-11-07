@@ -77,6 +77,8 @@ These docs leave them out of the examples; ignore them.
 <Card title="get_performance" icon="chart" link="/api/get-performance">Daily equity of the portfolio and both baselines.</Card>
 <Card title="list_runs" icon="clock" link="/api/list-runs">Every morning run, newest first.</Card>
 <Card title="get_run" icon="clock" link="/api/get-run">One run, with a row per covered ticker.</Card>
+<Card title="get_news_feed" icon="clock" link="/api/get-news-feed">One page of research headlines, filtered.</Card>
+<Card title="get_news_story" icon="clock" link="/api/get-news-story">One research note in full.</Card>
 <Card title="get_decision_trail" icon="search" link="/api/get-decision-trail">Everything behind one decision.</Card>
 <Card title="start_morning_run" icon="terminal" link="/api/start-morning-run">Start today's run by hand. Admin only.</Card>
 </Cards>
@@ -89,6 +91,8 @@ These docs leave them out of the examples; ignore them.
 | [`get_performance`](/api/get-performance) | `POST /function/get_performance` | none |
 | [`list_runs`](/api/list-runs) | `POST /function/list_runs` | none |
 | [`get_run`](/api/get-run) | `POST /function/get_run` | none |
+| [`get_news_feed`](/api/get-news-feed) | `POST /function/get_news_feed` | none |
+| [`get_news_story`](/api/get-news-story) | `POST /function/get_news_story` | none |
 | [`get_decision_trail`](/api/get-decision-trail) | `POST /function/get_decision_trail` | none |
 | [`user/login`](/api/login) | `POST /user/login` | none |
 | [`start_morning_run`](/api/start-morning-run) | `POST /function/start_morning_run` | admin token |

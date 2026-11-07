@@ -119,7 +119,9 @@ const api: DefaultTheme.SidebarItem[] = [
           { text: 'get_performance', link: '/api/get-performance', badge: 'POST' },
           { text: 'list_runs', link: '/api/list-runs', badge: 'POST' },
           { text: 'get_run', link: '/api/get-run', badge: 'POST' },
-          { text: 'get_decision_trail', link: '/api/get-decision-trail', badge: 'POST' }
+          { text: 'get_decision_trail', link: '/api/get-decision-trail', badge: 'POST' },
+          { text: 'get_news_feed', link: '/api/get-news-feed', badge: 'POST' },
+          { text: 'get_news_story', link: '/api/get-news-story', badge: 'POST' }
         ]
       },
       {
