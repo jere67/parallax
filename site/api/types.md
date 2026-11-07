@@ -327,6 +327,70 @@ Returned by [`get_decision_trail`](/api/get-decision-trail).
 | `detail` | string | |
 | `qty_before`, `qty_after` | integer | |
 
+## Market types
+
+Returned by the [market endpoints](/system/market-data).
+A row is a plain dictionary because a page asks only for the fields it shows.
+
+### ScreenerView
+
+Returned by [`screen_stocks`](/api/screen-stocks).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `rows` | array | One page of rows: field name to number, text, or `null` |
+| `total` | number | How many stocks passed, across all pages |
+| `ready` | boolean | `false` until the first sweep has listed the stocks |
+| `demo` | boolean | `true` on a server with the invented market |
+| `as_of` | string | When the quotes were last read, in UTC |
+| `quote_day` | string | The newest session among the quotes |
+| `sectors` | array | The sector names to filter by |
+| `exchanges` | array | The exchanges to filter by |
+| `coverage` | object | How many stocks have prices, stats, figures, and analyst records |
+
+### StockView
+
+Returned by [`get_stock`](/api/get-stock).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `found` | boolean | `false` for a symbol the screener does not cover |
+| `symbol`, `name` | string | The ticker and company |
+| `market_phase` | string | `open`, `pre-market`, `after-hours`, or `closed` |
+| `values` | object | The stock's full screener row |
+| `profile` | object | Headquarters, incorporation, fiscal year, industry, website, IPO date, and EDGAR link |
+| `peers` | array | Comparable stocks: same industry nearest in size, then same sector |
+| `annual`, `quarterly` | array | Reported periods, each with `end`, `label`, and `values` |
+| `filings` | array | Recent filings, each with `form`, `filed`, `report_date`, and `url` |
+| `signals` | array | Each indicator's `name`, `value`, and `vote`: 1 buy, -1 sell, 0 neutral, or `null` |
+| `rating_trend` | array | The analyst consensus by month, from -1 to 1 |
+| `surprises` | array | How far each quarter beat or missed the consensus, in percent |
+| `committee` | object | Whether the reader's own agent holds it, and its last decision with a link to the trail |
+
+### HistoryView
+
+Returned by [`get_stock_history`](/api/get-stock-history).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `symbol` | string | The ticker |
+| `daily` | array | Bars back to 2016, with `time` as a `YYYY-MM-DD` session |
+| `intraday` | array | Five sessions of bars, with `time` in Unix seconds |
+| `seasons` | array | Each `year`'s `months`, January to December, and its `total` |
+| `busy` | boolean | The allowance was spent, so ask again shortly |
+
+### StockAboutView
+
+Returned by [`get_stock_about`](/api/get-stock-about).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `symbol` | string | The ticker |
+| `news` | array | Recent headlines, each with `headline`, `source`, `url`, and `at` |
+| `description` | string | The opening of the company's Wikipedia article, or empty |
+| `description_url` | string | The article |
+| `busy` | boolean | The allowance was spent, so ask again shortly |
+
 ## Other types
 
 ### Health

@@ -372,6 +372,7 @@ trading-agent/
   models/                  # node, edge, obj, and enum definitions; no server-only imports
   agents/                  # role model instances, orchestrator, research sub-agents, specialists, arbiter
   research/                # collectors (one module per source, with caching and rate limits), screener
+  market/                  # whole-market data for the screener and stock pages, apart from the research pipeline
   analysis/                # consensus engine, indicators
   action/                  # portfolio constructor, risk gate, executor
   run/                     # DailyRun walker, Run Guard, scheduled jobs
@@ -892,6 +893,8 @@ The backing endpoints are `def:priv` functions that read the caller's own agent 
 | Today | Signed in | The run's shortlist, each ticker's action and conviction, run status (normal or fallback), run summary, and the past runs | `get_run`, `list_runs` |
 | Decision detail | Signed in | The full trail for one ticker: research reports and sources → every specialist sample → consensus score, agreement, interval → Arbiter → risk gate → order and fill | `get_decision_trail` |
 | Specialists | Signed in | Hit rate, calibration curve, and recent votes per specialist | `get_specialist_stats` |
+| Screener | Signed in | Every U.S.-listed stock, filtered and sorted by any of about 90 fields, with the screen held in the address | `screen_stocks` |
+| Stock | Signed in | One stock's price chart with peers to compare, key figures, company, financials, technicals, analyst view, seasonality, headlines, and filings | `get_stock`, `get_stock_history`, `get_stock_about` |
 | Reports | Signed in | Request a ticker report, view past reports, remaining daily quota, and what the reader's policy makes of each report | `request_report`, `list_reports` |
 | Policy | Signed in | The policy in plain English, the latest run replayed under it, its rules and numbers, its version history, and the policy assistant | `get_policy_catalog`, `get_team_policy`, `preview_policy`, `get_policy_workspace`, `save_policy_version`, `restore_policy_version`, `get_policy_chat`, `send_policy_message`, `apply_policy_proposal`, `discard_policy_proposal` |
 | Settings | Signed in | Connect and remove keys, today's run, paper trading, change password, log out | `get_agent_settings`, `save_agent_keys`, `remove_agent_keys`, `start_my_run`, `set_paper_trading` |
@@ -911,6 +914,24 @@ A long list of orders or closed trades shows its ten newest cards and adds ten o
 The worker keeps the app's shell for a phone with no signal and serves hashed bundles from its cache, and it never caches an API call or a POST, so a figure on screen is never older than the page says.
 A banner says when the browser is offline.
 The Playwright device matrix (Section 14) checks all of this on Chromium and WebKit phones.
+
+### Market pages
+
+The Screener and Stock pages cover the whole U.S. market, about 5,600 stocks: what SEC lists and Alpaca can trade, without warrants, units, rights, preferreds, notes, or funds.
+They are separate from the universe screen (Section 5), and nothing in them reaches an agent.
+Like the rest of the app they need an account, and a stock's page shows what the reader's own agent last did about it.
+
+- **Filled by background sweeps.** A job fires every minute and starts two passes on their own threads, each behind a lock, so a slow pass is skipped rather than stacked and the scheduler's other jobs never wait.
+  The main pass reads quotes, earnings dates, a year of bars, and company filings, resuming where it stopped; the analyst pass reads six stocks' Finnhub records a minute on a three-day cycle.
+  SEC and Finnhub sweeps stand aside from 7:15 to 9:45 ET on weekdays for the morning run (Section 4).
+- **Stored in files, not the graph.** Each domain is a JSON file under `.jac/market/`, replaced atomically, since about 5,600 rows a minute would be far too slow as nodes (Section 11).
+- **Pages read memory.** `screen_stocks` and `get_stock` answer from rows rebuilt only when a pass changes something, so a query takes no source call.
+  Price history, headlines, and descriptions are read on demand under a shared allowance of 40 calls a minute, past which the endpoint answers `busy` and the page retries.
+- **Numbers from filings, not vendors.** P/E is market cap over trailing net income, which holds for ADRs and share classes alike, and a loss has none.
+  Filers reporting in IFRS have prices and technicals but no SEC figures, and a figure with no source is a dash.
+- **Doubt shows as a dash.** XBRL carries filers' scale errors and stray tags, and one of them would otherwise top every sort, so a share count, EPS, dividend, or ratio outside a believable range is unknown rather than shown.
+  Today's move is measured from the split-adjusted close when the snapshot's own is far from it, since a reverse split that morning would otherwise read as a thirty-fold gain.
+- **Left out for want of a free source.** Community posts, options, bonds, ETF holdings, company logos, employee counts, and share float.
 
 ### Design notes
 
@@ -934,6 +955,8 @@ The Playwright device matrix (Section 14) checks all of this on Chromium and Web
   The portfolio is flagged `demo`, every page says so, and the scheduled jobs never run, trade, reconcile, or score it.
   The variable is never set on a deployed server.
 - **No raw data redistribution.** Pages show derived analysis, short quotes of our own agents' text, and links to original sources.
+  The market pages are the exception for prices: they show Alpaca's quotes and bars as they come, which needs checking against Alpaca's terms before any public launch.
+  Their company figures are SEC's public filings, and from Finnhub they show only derived scores and percentages and public facts such as a website.
 - **Pages never trigger model calls.** Public pages read state the pipeline already stored, so they load instantly and cannot spend the request budget.
 
 ## 11. Data model and storage

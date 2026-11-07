@@ -1,9 +1,10 @@
 ---
 title: Reading the dashboard
-description: What the Portfolio, News, Runs, and Decision trail pages show, and how to follow one decision from research to order.
+description: What the Portfolio, News, Runs, Decision trail, Screener, and stock pages show, and how to follow one decision from research to order.
 related:
   - { text: Dashboard internals, link: /system/dashboard }
   - { text: get_decision_trail, link: /api/get-decision-trail }
+  - { text: Market data, link: /system/market-data }
 ---
 
 The dashboard needs an account and shows the signed-in user's own agent.
@@ -11,6 +12,7 @@ A visitor who is not signed in is sent to `/login?next=<path>` and comes back to
 The landing page at `/` is the only public page.
 
 The pages below show the portfolio, the research, runs, and decision trails, and every ticker on them links to the decision trail that explains it.
+The Screener and stock pages cover the whole market, whether or not your agent has looked at a stock.
 The Policy and Reports pages have their own guides, and Settings is described in [Your agent](/guide/your-agent).
 The admin account sees the team agent's portfolio instead of its own.
 On a server in demo mode, every account sees the same demo history.
@@ -23,11 +25,14 @@ On a server in demo mode, every account sees the same demo history.
 | `/app/runs` | Runs, showing the newest run |
 | `/app/runs/:day` | Runs, showing the run on a trading date |
 | `/app/runs/:day/:ticker` | Decision trail for one ticker on one day |
+| `/app/screener` | Screener |
+| `/app/stocks/:symbol` | A stock's page |
+| `/app/stocks/:symbol/:tab` | One section of a stock's page |
 | `/app/policy` | [Your policy](/guide/policies) |
 | `/app/reports` | On-demand reports |
 | `/app/settings` | [Your agent](/guide/your-agent): keys, paper trading, and the password |
 
-The old addresses `/news...`, `/runs...`, `/policy`, and `/reports` redirect to `/app/...` once you are signed in.
+The old addresses `/news...`, `/runs...`, `/policy`, `/reports`, `/screener`, and `/stocks...` redirect to `/app/...` once you are signed in.
 
 The header shows when the portfolio was last marked, a **Paper** badge, the portfolio's mode (insight or auto), and the theme switch.
 The dark theme is the default until you pick light.
@@ -184,3 +189,36 @@ It follows the decision through six stages, and a strip at the top links to each
 
 A side column shows the ticker's facts (last close, ATR, volatility, volume, days to earnings, why it was covered, its screen score), the position if one is open, and the market backdrop.
 Arrows step to the previous or next ticker of the same run.
+
+## Screener
+
+The screener lists every U.S.-listed stock, biggest first.
+
+- **Filters.** Each pill opens a card with presets, typed bounds, or a list of words, and **Filter** adds any other field. Filters all have to hold, and a stock missing a figure does not match it.
+- **Tabs.** Each tab is a set of columns: Overview, Performance, Technicals, Extended hours, Forecasts, Valuation, Dividends, Profitability, Income statement, Balance sheet, Cash flow, and Per share. The column button changes them.
+- **Sorting.** A column head sorts by it, and again the other way. A missing figure stays last.
+- **The address holds the screen.** A screen survives a reload and can be sent to someone, and the browser's back and forward buttons undo and redo a change.
+- **Watchlist and saved screens.** The star and **Save screen** keep your choices in this browser.
+
+Prices are delayed about 15 minutes during a session.
+The note under the table says how much of the market each sweep has reached so far, since a new server takes hours to read every company.
+
+## Stock page
+
+A stock's page opens from any ticker in the screener.
+Its header shows the price, the day's change, the market's phase, any extended-hours price, and, when your agent has looked at the stock, its last decision with a link to the trail.
+
+| Tab | Shows |
+| --- | --- |
+| Overview | The price chart, peers, key figures, the day's trading, earnings, ratings, the company, its financials, headlines, and filings |
+| Financials | Revenue and profit by year or quarter, revenue down to profit, debt and cash, and returns and ratios |
+| Technicals | The rating, each indicator's value and vote, and performance over six periods |
+| Forecasts | The analyst consensus now and by month, and earnings against the consensus |
+| Seasonals | Returns by month and year since 2016 |
+| News | Recent headlines, linking to their sources |
+| Filings | Recent SEC filings, linking to EDGAR |
+
+Each button under the chart is a range, with that range's change on it.
+**Add** on a peer draws it on the chart, up to three, which turns the chart into percent change from the range's start so stocks at different prices share one axis.
+
+The market pages are not advice, and your agent's decisions rest on its own research, not on these ratings.

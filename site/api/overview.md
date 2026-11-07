@@ -82,6 +82,10 @@ These docs leave them out of the examples; ignore them.
 <Card title="get_news_feed" icon="clock" link="/api/get-news-feed">One page of research headlines, filtered.</Card>
 <Card title="get_news_story" icon="clock" link="/api/get-news-story">One research note in full.</Card>
 <Card title="get_decision_trail" icon="search" link="/api/get-decision-trail">Everything behind one decision.</Card>
+<Card title="screen_stocks" icon="search" link="/api/screen-stocks">Filter and sort every U.S.-listed stock.</Card>
+<Card title="get_stock" icon="chart" link="/api/get-stock">One stock's figures, peers, and filings.</Card>
+<Card title="get_stock_history" icon="chart" link="/api/get-stock-history">A stock's bars back to 2016.</Card>
+<Card title="get_stock_about" icon="search" link="/api/get-stock-about">A stock's headlines and description.</Card>
 <Card title="Accounts" icon="user" link="/api/accounts">Connect keys, turn on paper trading, and start your own run.</Card>
 <Card title="start_morning_run" icon="terminal" link="/api/start-morning-run">Start the team agent's run by hand. Admin only.</Card>
 </Cards>
@@ -97,6 +101,10 @@ These docs leave them out of the examples; ignore them.
 | [`get_news_feed`](/api/get-news-feed) | `POST /function/get_news_feed` | token |
 | [`get_news_story`](/api/get-news-story) | `POST /function/get_news_story` | token |
 | [`get_decision_trail`](/api/get-decision-trail) | `POST /function/get_decision_trail` | token |
+| [`screen_stocks`](/api/screen-stocks) | `POST /function/screen_stocks` | token |
+| [`get_stock`](/api/get-stock) | `POST /function/get_stock` | token |
+| [`get_stock_history`](/api/get-stock-history) | `POST /function/get_stock_history` | token |
+| [`get_stock_about`](/api/get-stock-about) | `POST /function/get_stock_about` | token |
 | [Policy endpoints](/api/policy) | `POST /function/<name>` | token |
 | [Account endpoints](/api/accounts) | `POST /function/<name>` | token |
 | [`user/register`, `user/login`, `user/password`](/api/login) | `POST /user/register`, `POST /user/login`, `PUT /user/password` | none, none, token |

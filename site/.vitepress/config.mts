@@ -86,7 +86,8 @@ const system: DefaultTheme.SidebarItem[] = [
     text: 'Platform',
     items: [
       { text: 'Data model', link: '/system/data-model' },
-      { text: 'Dashboard internals', link: '/system/dashboard' }
+      { text: 'Dashboard internals', link: '/system/dashboard' },
+      { text: 'Market data', link: '/system/market-data' }
     ]
   }
 ]
@@ -131,6 +132,16 @@ const api: DefaultTheme.SidebarItem[] = [
         items: [
           { text: 'Account endpoints', link: '/api/accounts' },
           { text: 'user/login', link: '/api/login', badge: 'POST' }
+        ]
+      },
+      {
+        text: 'Market',
+        collapsed: false,
+        items: [
+          { text: 'screen_stocks', link: '/api/screen-stocks', badge: 'POST' },
+          { text: 'get_stock', link: '/api/get-stock', badge: 'POST' },
+          { text: 'get_stock_history', link: '/api/get-stock-history', badge: 'POST' },
+          { text: 'get_stock_about', link: '/api/get-stock-about', badge: 'POST' }
         ]
       },
       {
