@@ -22,6 +22,9 @@ export default async function seeded(config) {
     try {
       const view = await portfolio(baseURL);
       if (view?.started && view.orders?.length) {
+        // The first read of the runs walks the graph and holds up every other request, so it goes
+        // now rather than during a test on a busy machine.
+        await fetch(`${baseURL}/function/list_runs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
         return;
       }
       last = view ? "portfolio not started" : "no portfolio";
