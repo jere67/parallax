@@ -23,6 +23,7 @@ import from agents.models {
     PRIMARY_MODEL,
     RequestLimiter,
     model_error,
+    limiter_now,
     arbiter_llm,
     orchestrator_llm,
     provider_requests_left,
@@ -35,6 +36,7 @@ import from models.agents { Stance, Vote }
 import agents.specialists as specialists_module;
 import from agents.specialists { Packet, sample_vote }
 import from models.agents { Specialist }
+import from research.credentials { Credentials, OPENROUTER_KEY, enter_credentials, leave_credentials }
 import from tests.fakes.openrouter { FakeOpenRouter }
 
 glob VOTE_JSON: str = '{"stance": "BUY", "confidence": 0.7, "horizon_days": 10, "rationale": "r", "cited_evidence": [0]}';
@@ -74,6 +76,80 @@ def scripted_vote(script: list[tuple[int, str]]) -> tuple[Vote, list[dict[str, o
     before = test_limiter.sent;
     vote = cast_vote("AAPL");
     return (vote, fake.requests, test_limiter.sent - before);
+}
+
+# As the shared models are: no limiter of its own, so it uses the one for this work's key.
+glob shared_llm: LimitedModel = LimitedModel(
+    model_name=PRIMARY_MODEL,
+    api_key="server-key",
+    config=test_llm.config,
+    chain=test_chain,
+    role="specialist",
+    backoff_s=0.0,
+    request_timeout_s=1.0
+);
+
+def cast_shared_vote(ticker: str) -> Vote by shared_llm(max_output_retries=1);
+
+def vote_with_key(key: str) -> Vote {
+    token = enter_credentials(Credentials({OPENROUTER_KEY: key}));
+    try {
+        return cast_shared_vote("AAPL");
+    } finally {
+        leave_credentials(token);
+    }
+}
+
+test "inside an owner's scope a call uses their key and their limiter, and the server's outside it" {
+    test_chain.reset([PRIMARY_MODEL]);
+    fake.script = [(200, VOTE_JSON)] * 3;
+    fake.requests = [];
+    fake.auth = [];
+    before = LIMITER.sent;
+    vote_with_key("owner-key-a");
+    vote_with_key("owner-key-b");
+    assert fake.auth == ["owner-key-a", "owner-key-b"];
+    assert LIMITER.sent == before;
+    assert shared_llm.api_key == "server-key";
+    cast_shared_vote("AAPL");
+    assert fake.auth[-1] == "server-key";
+    assert LIMITER.sent == before + 1;
+}
+
+test "two owners' calls at once each use their own key" {
+    test_chain.reset([PRIMARY_MODEL]);
+    fake.script = [(200, VOTE_JSON)] * 40;
+    fake.requests = [];
+    fake.auth = [];
+    owners = [f"owner-{i % 4}" for i in range(20)];
+    with ThreadPoolExecutor(max_workers=8) as pool {
+        list(pool.map(vote_with_key, owners));
+    }
+    assert sorted(fake.auth) == sorted(owners);
+}
+
+test "each owner's key has its own limiter, and the server's stays the shared one" {
+    assert limiter_now() is LIMITER;
+    def owners_limiter(key: str) -> RequestLimiter {
+        token = enter_credentials(Credentials({OPENROUTER_KEY: key}));
+        try {
+            return limiter_now();
+        } finally {
+            leave_credentials(token);
+        }
+    }
+    assert owners_limiter("key-a") is owners_limiter("key-a");
+    assert owners_limiter("key-a") is not owners_limiter("key-b");
+    assert owners_limiter("key-a") is not LIMITER;
+}
+
+test "a provider's error that quotes the owner's key has it removed" {
+    token = enter_credentials(Credentials({OPENROUTER_KEY: "sk-or-owner-secret"}));
+    try {
+        assert "sk-or-owner-secret" not in model_error(RuntimeError("bad key sk-or-owner-secret"));
+    } finally {
+        leave_credentials(token);
+    }
 }
 
 test "a call goes through the limiter to the primary model at low reasoning effort" {
@@ -170,7 +246,7 @@ test "a late wake-up does not let the next request go out early" {
 test "every role has its own model instance and all share one limiter" {
     roles = [research_llm, specialist_llm, arbiter_llm, orchestrator_llm, retry_llm];
     assert len({id(m) for m in roles}) == len(roles);
-    assert all(m.limiter is LIMITER for m in roles);
+    assert all(m.limiter is None for m in roles) and limiter_now() is LIMITER;
     assert LIMITER.per_minute == 18;
     assert {m.role for m in roles} == {"research", "specialist", "arbiter", "orchestrator", "retry"};
 }

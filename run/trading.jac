@@ -38,7 +38,8 @@ import from analysis.scoring { score_votes }
 import from models.graph { DailyMark, Portfolio, PortfolioMode, Ran, Run, RunStatus }
 import from research.alpaca { MarketDay, market_calendar }
 import from research.collector { run_budget }
-import from policy.store { team_policy_version }
+import from policy.store { policy_version }
+import from research.credentials { redact }
 import from run.guard { NEW_YORK }
 
 glob EXECUTION_START: time = time(9, 45);
@@ -59,7 +60,8 @@ obj TradingDeps {
     has broker: Broker | None = None,
         view: Callable[[list[str]], MarketView] | None = None,
         calendar: Callable[[str], MarketDay | None] | None = None,
-        history: History | None = None;
+        history: History | None = None,
+        start_day: str | None = None;
 
     def broker_client -> Broker {
         if self.broker is None {
@@ -111,7 +113,7 @@ def trading_step(portfolio: Portfolio, run: Run | None, day: str, local: datetim
         broker = deps.broker_client();
         if run is not None and run.status not in (RunStatus.RUNNING, RunStatus.SKIPPED) and not run.executed_at {
             tickers = sorted(set(decisions_of(run)) | set(open_positions(portfolio)));
-            policy = team_policy_version(run.policy_version);
+            policy = policy_version(run.policy_version);
             done = execute_run(portfolio, run, broker, now, deps.read_market(tickers), sizing_config(policy), gate_config(policy));
             lines.append(f"execute: {done.line()}");
             lines.extend(f"fill: {c}" for c in sync_orders(portfolio, broker, now));
@@ -144,7 +146,7 @@ def evening_due(portfolio: Portfolio, run: Run) -> bool {
 """Start the forward test once the operator has set its date, on a session day before the
 cancel window and before the day's run has executed, so the team still trades that day."""
 def start_due(portfolio: Portfolio, run: Run | None, now: datetime, day: str, deps: TradingDeps) -> list[str] {
-    wanted = forward_test_day();
+    wanted = deps.start_day if deps.start_day is not None else forward_test_day();
     if not wanted or wanted > day or baselines_of(portfolio) or (run is not None and run.executed_at) {
         return [];
     }
@@ -217,16 +219,24 @@ def team_trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = T
         return ["skipped: the previous tick is still running"];
     }
     try {
+        return guarded_tick(portfolio, now, deps);
+    } finally {
+        _TICK_LOCK.release();
+    }
+}
+
+"""`trading_tick`, with a failure logged and recorded on the day's run, for the next tick to try
+again."""
+def guarded_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps) -> list[str] {
+    try {
         return trading_tick(portfolio, now, deps);
     } except Exception as e {
-        reason = f"{type(e).__name__}: {str(e)[:300]}";
-        LOG.exception("trading tick failed");
+        reason = redact(f"{type(e).__name__}: {str(e)[:300]}");
+        LOG.error("trading tick failed: %s", reason);
         run = run_for(portfolio, now.astimezone(NEW_YORK).date().isoformat());
         if run is not None {
             run.action_log = (run.action_log + [f"{now.astimezone(NEW_YORK).strftime('%H:%M')} error: {reason}"])[-MAX_LOG_LINES:];
         }
         return [f"error: {reason}"];
-    } finally {
-        _TICK_LOCK.release();
     }
 }

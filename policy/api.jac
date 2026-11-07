@@ -6,13 +6,12 @@ Replays read stored runs, so these endpoints spend no model request and place no
 checks a policy against its hard limits (analysis/policy.jac) whoever sends it, so the client
 is never trusted with them.
 """
-import from jaclang.server.identity.user_manager { UserManager }
 import from analysis.policy { EFFECT_LEADS, KNOBS, KNOB_GROUPS, MAX_CONDITIONS, MAX_RULES, METRICS, describe, rule_sentence }
 import from models.policy { Op, Policy, PolicyScope, PolicyVersion, RuleEffect }
 import from models.policy_views { EffectView, OpView, PolicyCatalog, PolicyDoc, PolicySaveReply, PolicyWorkspace, ReplayView, VersionView }
 import from policy.replay { replay_team_run }
 import from policy.store { current_of, personal_versions, save_policy, team_versions, versions_of }
-import from run.manual { is_admin_root }
+import from accounts.store { caller_is_admin }
 
 glob OP_LABELS: dict[Op, str] = {Op.LT: "is below", Op.LE: "is at most", Op.GT: "is above", Op.GE: "is at least", Op.IN: "is one of", Op.NOT_IN: "is none of"};
 glob MAX_HISTORY: int = 50;
@@ -34,10 +33,6 @@ def policy_doc(scope: PolicyScope, versions: list[PolicyVersion]) -> PolicyDoc {
         rule_sentences=[rule_sentence(r) for r in policy.rules],
         history=[version_view(v) for v in reversed(versions[-MAX_HISTORY:])]
     );
-}
-
-def caller_is_admin -> bool {
-    return is_admin_root(UserManager(base_path="."), str(jid(root)));
 }
 
 """The scope named by the client, or None when it names neither."""

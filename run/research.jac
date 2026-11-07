@@ -10,7 +10,7 @@ and a failed sub-agent a safe default, so one bad ticker or provider never stops
 import time;
 import from concurrent.futures { Future }
 import from datetime { date, datetime, timedelta }
-import from agents.models { FALLBACK_MODEL, LIMITER, PRIMARY_MODEL, request_total }
+import from agents.models { FALLBACK_MODEL, PRIMARY_MODEL, limiter_now, request_total }
 import from agents.research { MacroResult, ResearchResult, macro_research, research }
 import from models.agents { Domain }
 import from models.graph {
@@ -175,13 +175,13 @@ obj Collection {
 and every symbol in `open_positions`. Never touches the graph; pass the result to
 `record_pass`."""
 def research_pass(run_day: str, open_positions: list[str], config: PassConfig = PassConfig()) -> ResearchPass {
-    counts_before = LIMITER.snapshot();
+    counts_before = limiter_now().snapshot();
     found = collect_pass(run_day, open_positions, config);
     phases = dict(found.phase_seconds);
     clock = time.monotonic();
     (per_ticker, macro) = write_reports(run_day, found.tickers, found.macro_inputs);
     phases["research"] = time.monotonic() - clock;
-    counts = LIMITER.since(counts_before);
+    counts = limiter_now().since(counts_before);
     return ResearchPass(
         run_day=run_day,
         started_at=found.started_at,

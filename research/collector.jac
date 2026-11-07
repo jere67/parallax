@@ -31,6 +31,7 @@ import from urllib.parse { urlencode }
 import httpx;
 import from jaclang.data.storage.storage { Storage }
 import from models.research { Stamp, Stamped }
+import from research.credentials { ALPACA_KEY, FINNHUB_KEY, current_credentials, key_fingerprint, user_key }
 import from research.sources { Dataset, SOURCES, Source }
 
 """Set to a directory to save every live response as a replayable fixture."""
@@ -74,14 +75,17 @@ obj SourceError(Exception) {
 """The run has spent its calls for a source; the collector reports the gap."""
 obj BudgetExceeded(SourceError) {}
 
-"""A key the source needs is not set in the environment."""
+"""A key the source needs is not set: not connected by this agent's owner, or for the server's
+own work, not in the environment."""
 obj MissingKey(SourceError) {}
 
-"""The value of the environment variable `name`, which holds a key for `source`."""
+"""The key `name` for `source`, from the owner of this work (research/credentials.jac) or the
+server's environment."""
 def env_key(source: str, name: str) -> str {
-    value = os.environ.get(name, "").strip();
+    value = user_key(name);
     if not value {
-        raise MissingKey(source=source, url="", detail=f"{name} is not set; see .env.example");
+        where = "not connected in Settings" if current_credentials() is not None else "not set; see .env.example";
+        raise MissingKey(source=source, url="", detail=f"{name} is {where}");
     }
     return value;
 }
@@ -128,16 +132,20 @@ obj TokenBucket {
 
 glob _BUCKETS: dict[str, TokenBucket] = {};
 glob _BUCKETS_LOCK: threading.Lock = threading.Lock();
+# A source whose rate limit belongs to the key that calls it, by the key that holds the limit.
+# The others, such as the SEC's, limit this server however many agents it runs.
+glob LIMIT_KEYS: dict[str, str] = {"alpaca_data": ALPACA_KEY, "alpaca_trading": ALPACA_KEY, "finnhub": FINNHUB_KEY};
 
-"""The process-wide bucket for a source's limit group, so every client of it shares one."""
+"""The process-wide bucket for a source's limit group, so every client of it shares one, and
+per user where the source limits each key."""
 def bucket_for(source: Source) -> TokenBucket {
+    holder = LIMIT_KEYS.get(source.limit_group);
+    name = source.limit_group + (":" + key_fingerprint(holder) if holder else "");
     with _BUCKETS_LOCK {
-        if source.limit_group not in _BUCKETS {
-            _BUCKETS[source.limit_group] = TokenBucket(
-                per_minute=source.per_minute, burst=source.burst
-            );
+        if name not in _BUCKETS {
+            _BUCKETS[name] = TokenBucket(per_minute=source.per_minute, burst=source.burst);
         }
-        return _BUCKETS[source.limit_group];
+        return _BUCKETS[name];
     }
 }
 

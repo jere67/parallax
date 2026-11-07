@@ -13,6 +13,8 @@ httpx = ">=0.28,<1"
 # a plain `jac install` skips [dev-dependencies] and `jac install --dev` fails to build
 # watchdog on macOS with Python 3.14.
 hypothesis = ">=6.100,<7"
+# Seals each user's API keys at rest (accounts/vault.jac).
+cryptography = ">=44,<47"
 
 [dependencies.npm]
 react = "^19.2.0"
