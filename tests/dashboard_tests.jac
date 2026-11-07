@@ -6,7 +6,7 @@ import from jaclang.testing.testing { JacTestClient }
 
 glob APP: str = str(Path(__file__).resolve().parent / "fixtures" / "dashboard_app.jac");
 
-def call(client: JacTestClient, name: str, body: dict[str, str] | None = None) -> object {
+def call(client: JacTestClient, name: str, body: dict[str, str | bool] | None = None) -> object {
     resp = client.post(f"/function/{name}", json=body or {});
     assert resp.status_code == 200, f"{name}: {resp.status_code} {resp.text[:300]}";
     return resp.json()["data"]["result"];
@@ -17,7 +17,6 @@ test "the admin reads the team agent's news feed and a story, leaving out what t
     try {
         client.register_user("team-admin", "writer-password-1");
         assert client.post("/function/set_admin", json={"on": True}).ok;
-        empty = call(client, "get_news_feed");
         assert client.post("/function/seed_team_graph", json={}).ok;
         whole = call(client, "get_news_feed");
         filtered = call(client, "get_news_feed", {"desk": "news", "q": "guidance"});
@@ -27,7 +26,6 @@ test "the admin reads the team agent's news feed and a story, leaving out what t
     } finally {
         client.close();
     }
-    assert empty["total"] == 0 and empty["items"] == [];
     assert whole["total"] == 2 and whole["desks"]["macro"] == 1 and whole["desks"]["news"] == 1;
     assert whole["tickers"] == ["AAPL"] and whole["days"] == ["2026-10-21"];
     assert [i["id"] for i in filtered["items"]] == ["2026-10-21/AAPL/news/0"];
@@ -36,6 +34,34 @@ test "the admin reads the team agent's news feed and a story, leaving out what t
     assert story["body"] == "Sales rose 12%." and story["trail"] is True and story["action"] == "BUY";
     assert story["sources"][0]["url"] == "https://example.com/apple" and story["sources"][0]["claims"] == ["Guidance rose."];
     assert missing is None;
+}
+
+test "a reader's feed holds their own agent's notes and their own reports, and nothing else" {
+    client = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
+    address = {"day": "2026-10-21", "ticker": "NVDA", "desk": "news", "requested": True};
+    try {
+        client.register_user("team-admin", "writer-password-1");
+        assert client.post("/function/set_admin", json={"on": True}).ok;
+        assert client.post("/function/seed_team_graph", json={}).ok;
+        assert client.post("/function/set_admin", json={"on": False}).ok;
+        client.clear_auth();
+        client.register_user("asker", "writer-password-1");
+        assert client.post("/function/seed_report", json={}).ok;
+        assert client.post("/function/ask_for_report", json={}).ok;
+        asked = call(client, "get_news_feed");
+        story = call(client, "get_news_story", address);
+        client.clear_auth();
+        client.register_user("bystander", "writer-password-1");
+        other = call(client, "get_news_feed");
+        unasked = call(client, "get_news_story", address);
+    } finally {
+        client.close();
+    }
+    assert [i["id"] for i in asked["items"]] == ["2026-10-21/NVDA/news/0/requested"];
+    assert asked["tickers"] == ["NVDA"];
+    assert story["body"] == "Sales rose 12%." and story["trail"] is False;
+    assert other["total"] == 0 and other["items"] == [];
+    assert unasked is None;
 }
 
 test "the admin reads the team agent's portfolio, runs, and decision trail" {
@@ -66,10 +92,11 @@ test "the admin reads the team agent's portfolio, runs, and decision trail" {
 test "every data endpoint refuses an anonymous reader" {
     client = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
     try {
-        for name in ["get_portfolio", "get_performance", "list_runs", "get_run"] {
+        for name in ["get_portfolio", "get_performance", "list_runs", "get_run", "get_news_feed"] {
             assert client.post(f"/function/{name}", json={}).status_code == 401, name;
         }
         assert client.post("/function/get_decision_trail", json={"run_date": "2026-10-21", "ticker": "AAPL"}).status_code == 401;
+        assert client.post("/function/get_news_story", json={"day": "2026-10-21", "ticker": "AAPL", "desk": "news"}).status_code == 401;
     } finally {
         client.close();
     }
