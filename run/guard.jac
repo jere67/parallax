@@ -17,7 +17,7 @@ import from datetime { date, datetime }
 import from zoneinfo { ZoneInfo }
 import from action.insights { publish_card }
 import from agents.catalog { resolve_models }
-import from agents.models { CHAIN, FREE_REQUESTS_PER_DAY, limiter_now, model_error, provider_requests_left, request_total }
+import from agents.models { CHAIN, FREE_REQUESTS_PER_DAY, RequestLimiter, limiter_now, model_error, provider_requests_left, request_total }
 import from agents.research { MacroResult, ResearchResult, fallback, macro_research, research }
 import from analysis.consensus { CONSENSUS_VERSION, ConsensusConfig }
 import from analysis.policy { Facts, POLICY_ENGINE_VERSION, consensus_config }
@@ -200,12 +200,16 @@ obj RunSession {
         started: float = 0.0,
         requests_at_start: int = 0;
     has request_counts_at_start: dict[str, dict[str, int]] = {};
-    has _lock: threading.RLock | None = None;
+    has _lock: threading.RLock | None = None,
+        limiter: RequestLimiter by postinit;
 
     def postinit {
         self._lock = threading.RLock();
         self.started = time.monotonic();
-        self.request_counts_at_start = limiter_now().snapshot();
+        # Held for the whole session: a report's result is recorded on another thread, outside
+        # the scope of the key it ran on.
+        self.limiter = limiter_now();
+        self.request_counts_at_start = self.limiter.snapshot();
         self.requests_at_start = request_total(self.request_counts_at_start);
     }
 
@@ -214,7 +218,7 @@ obj RunSession {
     }
 
     def requests_used -> int {
-        return limiter_now().sent - self.requests_at_start;
+        return self.limiter.sent - self.requests_at_start;
     }
 
     def requests_left -> int {
@@ -696,7 +700,7 @@ def record_run(portfolio: Portfolio, run: Run, s: RunSession, status: RunStatus)
     }
     run.model_versions = {**model_chain_versions(), "sources": SOURCES_VERSION, "screen": s.collection.shortlist.version, "consensus": CONSENSUS_VERSION, "policy": f"team v{s.policy_version}", "policy_engine": POLICY_ENGINE_VERSION};
     run.policy_version = s.policy_version;
-    run.model_requests_by_role = limiter_now().since(s.request_counts_at_start);
+    run.model_requests_by_role = s.limiter.since(s.request_counts_at_start);
     run.model_requests = request_total(run.model_requests_by_role);
     count_requests(portfolio, utc_now().date().isoformat(), run.model_requests);
     _close(run, status, s.summary);

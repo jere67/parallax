@@ -37,7 +37,7 @@ test "a draft replays the team's run without saving anything" {
         view = call(c, "preview_policy", {"policy": draft});
         assert view["run_date"] == "2026-11-03" and view["differs"] == 1;
         changed = [r for r in view["rows"] if r["changed"]][0];
-        assert changed["ticker"] == "AAPL" and changed["action"] == "BUY" and changed["team_action"] == "NO_ACTION" and changed["unreviewed"];
+        assert changed["ticker"] == "AAPL" and changed["action"] == "BUY" and changed["run_action"] == "NO_ACTION" and changed["unreviewed"];
         too_big = dict(draft, max_position_weight=0.5);
         refused = call(c, "preview_policy", {"policy": too_big});
         assert refused["problems"] and refused["rows"] == [];

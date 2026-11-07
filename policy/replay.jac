@@ -3,13 +3,14 @@ so it costs no model request, places no order, and answers as fast as a slider m
 
 A run stores each ticker's consensus, figures, and decision. `run_facts` reads them once, and
 the read is cached, since a finished run does not change; `replay` then applies a policy to
-them. "Held" means the team held the stock that morning, so a replay answers "what if the team
-ran these rules today". The Arbiter reviewed only the action the team's own rule proposed, so
+them. "Held" means the agent held the stock that morning, so a replay answers "what if it had
+run these rules today". The Arbiter reviewed only the action the agent's own rule proposed, so
 a replay honors a downgrade of a buy, and marks a buy the Arbiter never saw as unreviewed.
 """
 import from analysis.consensus { Consensus }
 import from analysis.policy { Facts, describe, evaluate, rule_sentence, validate }
-import from dashboard.api { find_team, runs_by_day, view_key }
+import from accounts.store { my_portfolio }
+import from dashboard.api { runs_by_day, view_key }
 import from dashboard.cache { VIEWS }
 import from models.graph { Concluded, ConsensusResult, Coverage, Covers, Decided, Decision, HasMacro, Holds, InsightCard, MacroRecord, OpenedBy, Portfolio, Position, Run, TradeAction }
 import from models.policy { Policy }
@@ -25,11 +26,11 @@ obj StoredTicker {
         sector: str,
         held: bool,
         facts: Facts,
-        team_action: TradeAction;
+        run_action: TradeAction;
     has panel: Consensus | None = None,
         exit_due: bool = False,
         forced: bool = False,
-        team_draft: TradeAction | None = None,
+        run_draft: TradeAction | None = None,
         downgrade_reason: str = "";
 }
 
@@ -43,7 +44,7 @@ obj StoredRun {
         tickers: list[StoredTicker] = [];
 }
 
-"""The team's positions open on the morning of `day`, by ticker."""
+"""The agent's positions open on the morning of `day`, by ticker."""
 def held_on(portfolio: Portfolio, day: str) -> dict[str, Position] {
     found: dict[str, Position] = {};
     for p in [portfolio ->:Holds:->[?:Position]] {
@@ -104,11 +105,11 @@ def read_run(portfolio: Portfolio, run: Run, days: list[str]) -> StoredRun {
             sector=cov.sector,
             held=held,
             facts=facts,
-            team_action=d.action,
+            run_action=d.action,
             panel=panel,
             exit_due=bool(stop) and stop <= run.run_date,
             forced=bool(d.forced_hold_reason),
-            team_draft=draft,
+            run_draft=draft,
             downgrade_reason=d.downgrade_reason
         ));
     }
@@ -139,23 +140,23 @@ def replay_ticker(policy: Policy, t: StoredTicker) -> ReplayRow {
     notes = [s.detail for s in outcome.steps];
     unreviewed = False;
     if action in BUYS {
-        if t.downgrade_reason and t.team_draft in BUYS {
+        if t.downgrade_reason and t.run_draft in BUYS {
             action = REVIEWED_DOWNGRADE[action];
-            notes.append(f"The Arbiter downgraded the team's buy: {t.downgrade_reason}");
-        } elif t.team_draft not in BUYS {
+            notes.append(f"The Arbiter downgraded the agent's buy: {t.downgrade_reason}");
+        } elif t.run_draft not in BUYS {
             unreviewed = True;
         }
     }
     return ReplayRow(
         ticker=t.ticker,
-        team_action=t.team_action.value,
+        run_action=t.run_action.value,
         action=action.value,
         sector=t.sector,
         held=t.held,
         score=t.panel.score if t.panel is not None else None,
         agreement=t.panel.agreement if t.panel is not None else None,
         conviction=t.panel.conviction() if t.panel is not None else 0.0,
-        changed=action != t.team_action,
+        changed=action != t.run_action,
         notes=notes,
         skipped=outcome.skipped,
         unreviewed=unreviewed
@@ -165,31 +166,31 @@ def replay_ticker(policy: Policy, t: StoredTicker) -> ReplayRow {
 """`run` under `policy`: changed tickers first, then by conviction."""
 def replay(policy: Policy, run: StoredRun) -> ReplayView {
     rows = sorted([replay_ticker(policy, t) for t in run.tickers], key=lambda (r: ReplayRow) { (not r.changed, -r.conviction, r.ticker); });
-    view = ReplayView(run_date=run.run_date, previous_day=run.previous_day, next_day=run.next_day, demo=run.demo, team_version=run.version, rows=rows, differs=len([r for r in rows if r.changed]));
+    view = ReplayView(run_date=run.run_date, previous_day=run.previous_day, next_day=run.next_day, demo=run.demo, run_version=run.version, rows=rows, differs=len([r for r in rows if r.changed]));
     for r in rows {
         view.counts[r.action] = view.counts.get(r.action, 0) + 1;
-        view.team_counts[r.team_action] = view.team_counts.get(r.team_action, 0) + 1;
+        view.run_counts[r.run_action] = view.run_counts.get(r.run_action, 0) + 1;
     }
     return view;
 }
 
-"""What the team's run for `run_date` (or the newest) stored, through the read cache."""
-def team_run(run_date: str = "") -> StoredRun | None {
-    team = find_team();
-    if team is None {
+"""What the caller's agent's run for `run_date` (or the newest) stored, through the read cache."""
+def latest_run_of_mine(run_date: str = "") -> StoredRun | None {
+    portfolio = my_portfolio();
+    if portfolio is None {
         return None;
     }
-    return VIEWS.get(view_key(team, "policy-run", run_date), stored_run, team, run_date);
+    return VIEWS.get(view_key(portfolio, "policy-run", run_date), stored_run, portfolio, run_date);
 }
 
-"""The team's run for `run_date` (or the newest) under `policy`. An invalid draft gets its
+"""The caller's agent's run for `run_date` (or the newest) under `policy`. An invalid draft gets its
 problems back instead of a replay."""
-def replay_team_run(policy: Policy, run_date: str = "") -> ReplayView {
+def replay_my_run(policy: Policy, run_date: str = "") -> ReplayView {
     problems = validate(policy);
     if problems {
         return ReplayView(problems=problems);
     }
-    found = team_run(run_date);
+    found = latest_run_of_mine(run_date);
     view = replay(policy, found) if found is not None else ReplayView();
     view.sentences = describe(policy);
     view.rule_sentences = [rule_sentence(r) for r in policy.rules];
@@ -217,7 +218,7 @@ def replay_card(policy: Policy, card: InsightCard) -> ReplayRow {
     }
     return ReplayRow(
         ticker=card.ticker,
-        team_action=card.action.value,
+        run_action=card.action.value,
         action=action.value,
         score=card.score,
         agreement=card.agreement,

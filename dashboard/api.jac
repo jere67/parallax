@@ -1,11 +1,11 @@
-"""The dashboard's endpoints (TDD §10): public, read-only views of the team graph on
-root.shared.
+"""The dashboard's endpoints (TDD §10): read-only views of the signed-in user's own agent. None
+is public, and none takes an argument that names an agent: `my_portfolio` finds the caller's.
 
-Each endpoint finds the team portfolio without creating it, walks the stored graph, and
-returns a view from models/views.jac. Nothing here writes, calls a model, or reaches Alpaca,
+Each endpoint finds the portfolio without creating it, walks the stored graph, and returns a
+view from models/views.jac. Nothing here writes, calls a model, or reaches Alpaca,
 so a page loads from what the pipeline already stored and cannot spend the request budget
 (TDD §10, design notes). The builders take the portfolio as an argument, so tests can run
-them on any graph; the endpoints only pick the team's.
+them on any graph; the endpoints only pick the caller's.
 
 Views come through the read cache in dashboard/cache.jac, and refresh_job rebuilds the
 portfolio, performance, and run list every minute, so a page shows the graph as of at most
@@ -14,6 +14,7 @@ a minute or two ago.
 import math;
 import statistics;
 import from urllib.parse { urlsplit }
+import from accounts.store { AGENT_PORTFOLIO, my_portfolio }
 import from action.baselines { baselines_of, sim_marks }
 import from action.insights { DISCLAIMER }
 import from action.reconcile { marks_of }
@@ -81,7 +82,7 @@ glob TRADING_DAYS: int = 252;
 glob RECENT_ORDERS: int = 60;
 glob RECENT_CLOSED: int = 40;
 glob MAX_RUNS: int = 250;
-glob SERIES_LABELS: dict[str, str] = {"team": "Team portfolio", "equal_weight": "Equal-weight shortlist", "spy": "SPY buy-and-hold"};
+glob SERIES_LABELS: dict[str, str] = {"team": "Your agent", "equal_weight": "Equal-weight shortlist", "spy": "SPY buy-and-hold"};
 # Research is shown nearest the price first, as on the insight cards (action/insights.jac).
 glob DOMAIN_ORDER: list[Domain] = [Domain.MARKET, Domain.FUNDAMENTALS, Domain.NEWS, Domain.MACRO];
 
@@ -95,23 +96,23 @@ def find_team -> Portfolio | None {
     return None;
 }
 
-"""A cache key for one of the team portfolio's views; the portfolio's id keeps graphs apart."""
+"""A cache key for one of a portfolio's views; the portfolio's id keeps agents apart."""
 def view_key(team: Portfolio, *parts: str) -> str {
     return ":".join([jid(team)] + list(parts));
 }
 
-"""The team portfolio at its last mark, with its positions and its most recently submitted orders."""
-def:pub get_portfolio -> PortfolioView {
-    team = find_team();
+"""The caller's portfolio at its last mark, with its positions and its most recently submitted orders."""
+def:priv get_portfolio -> PortfolioView {
+    team = my_portfolio();
     if team is None {
-        return PortfolioView(name=TEAM_PORTFOLIO, mode="insight", started=False);
+        return PortfolioView(name=AGENT_PORTFOLIO, mode="insight", started=False);
     }
     return VIEWS.get(view_key(team, "portfolio"), portfolio_view, team);
 }
 
 """The team portfolio's daily equity beside both forward-test baselines."""
-def:pub get_performance -> PerformanceView {
-    team = find_team();
+def:priv get_performance -> PerformanceView {
+    team = my_portfolio();
     if team is None {
         return PerformanceView(started=False);
     }
@@ -119,8 +120,8 @@ def:pub get_performance -> PerformanceView {
 }
 
 """The team's runs, newest first."""
-def:pub list_runs -> list[RunSummary] {
-    team = find_team();
+def:priv list_runs -> list[RunSummary] {
+    team = my_portfolio();
     if team is None {
         return [];
     }
@@ -128,8 +129,8 @@ def:pub list_runs -> list[RunSummary] {
 }
 
 """The run for `run_date`, or the newest run when it is empty; None when there is none."""
-def:pub get_run(run_date: str = "") -> RunView | None {
-    team = find_team();
+def:priv get_run(run_date: str = "") -> RunView | None {
+    team = my_portfolio();
     if team is None {
         return None;
     }
@@ -137,8 +138,8 @@ def:pub get_run(run_date: str = "") -> RunView | None {
 }
 
 """One ticker's trail in the run for `run_date`, or None when the run did not cover it."""
-def:pub get_decision_trail(run_date: str, ticker: str) -> TrailView | None {
-    team = find_team();
+def:priv get_decision_trail(run_date: str, ticker: str) -> TrailView | None {
+    team = my_portfolio();
     if team is None {
         return None;
     }
