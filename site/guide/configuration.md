@@ -8,7 +8,8 @@ related:
 ---
 
 The server is configured by environment variables and by `jac.toml`.
-Keys and passwords come only from the environment, never from a file in the repo.
+Server-wide keys and passwords come only from the environment, never from a file in the repo.
+A user's own keys are entered in Settings, not here.
 
 ::: warning Secrets stay out of the repo
 Never commit keys, tokens, or account IDs.
@@ -17,6 +18,10 @@ Share keys through a password manager, not in chat.
 :::
 
 ## Keys
+
+These variables are the server's own keys.
+The admin's team agent uses them.
+Every other account's agent uses the keys its owner entered in Settings, and never reads them (see [Your agent](/guide/your-agent)).
 
 A collector that needs a key and does not find it raises a `MissingKey` error that names the variable.
 The run records the error and carries on with the data it has.
@@ -29,6 +34,8 @@ The run records the error and carries on with the data it has.
 | `SEC_USER_AGENT` | SEC EDGAR | No key, but SEC fair access requires a User-Agent with a contact email. A value without `@`, or the template's `example.com` placeholder, is refused. |
 | `OPENROUTER_API_KEY` | Every model call | Free models only. |
 | `ADMIN_PASSWORD` | The admin account | Read once, when the admin user is created. Defaults to `changeme`, so always set it on a shared server. |
+| `PARALLAX_KEYS_SECRET` | Users' stored keys | At least 32 characters. Each user's keys are sealed with AES-256-GCM under a key derived from it. Without it, the server refuses to store keys. Generate one with `openssl rand -base64 48`. Changing it makes every stored key unreadable, so users must connect their keys again. |
+| `PARALLAX_MAX_AGENTS` | Sign-ups | How many agents the server keeps. Defaults to 10. A user who has no agent yet is refused once the server is full. |
 
 ## Trading switches
 
@@ -37,11 +44,11 @@ Leave them unset unless you mean to change that.
 
 | Variable | Effect |
 | --- | --- |
-| `TRADING_AGENT_FORWARD_TEST_START` | A trading date, `YYYY-MM-DD`. On that date, the first trading tick before the day's run executes starts the [forward test](/guide/forward-test) and switches the team portfolio to auto mode. Set it only with the team's go-ahead. |
+| `TRADING_AGENT_FORWARD_TEST_START` | For the admin's team agent. A trading date, `YYYY-MM-DD`. On that date, the first trading tick before the day's run executes starts the [forward test](/guide/forward-test) and switches the team portfolio to auto mode. Set it only with the team's go-ahead. |
 | `TRADING_AGENT_DISABLE_ORDERS` | `1` stops every order. The executor still sizes and gates each decision and records the checks, but sends nothing and places no stop. |
 | `TRADING_AGENT_DISABLE_MODELS` | `1`, `true`, or `yes` stops every model request. Each call raises `ModelsDisabledError`, so the Run Guard falls back to HOLD for every ticker. |
 | `POLICY_CHAT_PER_USER_DAY` | Messages each user may send the [policy assistant](/guide/policies) in a UTC day. Defaults to 20. |
-| `TRADING_AGENT_DEMO` | `1` fills an empty team portfolio with simulated history. See [Demo data](/guide/demo-data). Never set it on a deployed server. |
+| `TRADING_AGENT_DEMO` | `1` fills an empty team portfolio with simulated history, and every account sees it. Runs and trading are refused. See [Demo data](/guide/demo-data). Never set it on a deployed server. |
 
 ## Base URLs
 

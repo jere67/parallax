@@ -6,27 +6,37 @@ related:
   - { text: get_decision_trail, link: /api/get-decision-trail }
 ---
 
-The team's portfolio, research, and runs are public and read-only, and every ticker on those pages links to the decision trail that explains it.
-Reports need an account, and a policy of your own does too.
+The dashboard needs an account and shows the signed-in user's own agent.
+A visitor who is not signed in is sent to `/login?next=<path>` and comes back to that page after logging in.
+The landing page at `/` is the only public page.
+
+The pages below show the portfolio, the research, runs, and decision trails, and every ticker on them links to the decision trail that explains it.
+The Policy and Reports pages have their own guides, and Settings is described in [Your agent](/guide/your-agent).
+The admin account sees the team agent's portfolio instead of its own.
+On a server in demo mode, every account sees the same demo history.
 
 | Path | Page |
 | --- | --- |
-| `/` | Portfolio |
-| `/news` | News, the research feed |
-| `/news/:day/:ticker/:desk/:n` | News, with one note open |
-| `/runs` | Runs, showing the newest run |
-| `/runs/:day` | Runs, showing the run on a trading date |
-| `/runs/:day/:ticker` | Decision trail for one ticker on one day |
-| `/policy` | [Policies](/guide/policies) |
-| `/reports` | Reports on any ticker |
+| `/app` | Portfolio |
+| `/app/news` | News, the research feed |
+| `/app/news/:day/:ticker/:desk/:n` | News, with one note open |
+| `/app/runs` | Runs, showing the newest run |
+| `/app/runs/:day` | Runs, showing the run on a trading date |
+| `/app/runs/:day/:ticker` | Decision trail for one ticker on one day |
+| `/app/policy` | [Your policy](/guide/policies) |
+| `/app/reports` | On-demand reports |
+| `/app/settings` | [Your agent](/guide/your-agent): keys, paper trading, and the password |
+
+The old addresses `/news...`, `/runs...`, `/policy`, and `/reports` redirect to `/app/...` once you are signed in.
 
 The header shows when the portfolio was last marked, a **Paper** badge, the portfolio's mode (insight or auto), and the theme switch.
+The dark theme is the default until you pick light.
 The footer repeats the disclaimer: the project trades simulated money, and nothing on it is investment advice.
 
 ## Portfolio
 
-The Portfolio page answers one question: how is the team doing against the market?
-Before the [forward test](/guide/forward-test) starts, it says so and shows nothing else.
+The Portfolio page answers one question: how is the agent doing against the market?
+Until the agent's paper trading starts (the [forward test](/guide/forward-test) for the team agent), it says so and shows what the agent's next step is.
 
 ### Return since start
 
@@ -35,7 +45,7 @@ The chart plots the cumulative return of three series from the start date:
 
 | Series | What it is |
 | --- | --- |
-| Team portfolio | The real paper account. |
+| Your agent | The real paper account. |
 | Equal-weight shortlist | The same daily shortlist, sized and gated the same way, without the agents' votes. |
 | SPY buy-and-hold | The whole starting balance in SPY on day one. |
 
@@ -72,7 +82,7 @@ The Activity panel has two tabs: recent **Orders** with their fills, and **Close
 ## News
 
 The News page answers: what did the research desks find?
-It lists every note from every morning run, newest first, one line per note.
+It lists every note from your agent's morning runs and the reports you asked for, newest first, one line per note.
 
 | Column | Shows |
 | --- | --- |
@@ -88,7 +98,7 @@ The note's first sentence or clause becomes the headline, and the story continue
 ### Filtering
 
 The bar above the feed filters by desk, ticker, view, and date, and searches the words of each note and its sources.
-**Holdings** keeps only the tickers the team holds now.
+**Holdings** keeps only the tickers your agent holds now.
 Filters live in the page's address, so a filtered feed can be bookmarked or shared.
 
 ### Reading a story

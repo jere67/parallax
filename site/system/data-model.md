@@ -81,9 +81,11 @@ Two conventions hold everywhere:
 
 ## Making nodes public
 
-The dashboard is public, but the team graph belongs to the server.
+The team graph belongs to the server.
 Other users and anonymous callers see a node only after it is granted read access, and a grant covers one node, not its subtree.
-So every team node is created through one helper, which grants read access as it attaches the node:
+So every team node is created through one helper, which grants read access as it attaches the node.
+This grant is a storage rule, not what makes the dashboard private: every data endpoint is `def:priv` and answers 401 to an anonymous caller, and each user's own agent graph sits on that user's root with no grant at all.
+The helper looks like this:
 
 ```jac
 def public[T](child: T) -> T {
