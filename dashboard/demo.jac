@@ -468,7 +468,7 @@ obj DemoSim {
                 ]
             ),
             Domain.NEWS: (
-                f"{self.rng.randint(4, 19)} articles over the past week. The tone was {'mostly positive' if signal > 0.15 else ('mixed' if signal > -0.15 else 'mostly negative')}, and no new legal or regulatory matter appeared. Earnings are {'due in ' + str(c.sessions_to_earnings) + ' sessions' if c.sessions_to_earnings is not None else 'not scheduled within the calendar'}.",
+                f"Coverage was {'mostly positive' if signal > 0.15 else ('mixed' if signal > -0.15 else 'mostly negative')} across {self.rng.randint(4, 19)} articles this week. No new legal or regulatory matter appeared. Earnings are {'due in ' + str(c.sessions_to_earnings) + ' sessions' if c.sessions_to_earnings is not None else 'not scheduled within the calendar'}.",
                 [
                     Evidence(claim="Headlines from the past seven days.", source_url=f"https://data.alpaca.markets/v1beta1/news?symbols={t}", published=last),
                     Evidence(claim="Company background and business segments.", source_url=f"https://en.wikipedia.org/wiki/{s.name}", published=last)

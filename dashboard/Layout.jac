@@ -1,7 +1,7 @@
 """The frame around every page: the top bar with navigation, the portfolio's status, and the
 theme switch; a banner when the graph holds demo history; and the disclaimer (TDD §9)."""
 import from "@jac/runtime" { Link, Outlet, useLocation }
-import from "lucide-react" { BookOpen, FileText, History, Moon, SlidersHorizontal, Sun }
+import from "lucide-react" { BookOpen, FileText, History, Moon, Newspaper, SlidersHorizontal, Sun }
 import from dashboard.api { get_portfolio }
 import from models.views { PortfolioView as Portfolio }
 import from dashboard.ui.format { stamp_et, title }
@@ -82,19 +82,20 @@ def:pub Layout -> JsxElement {
     <div className="flex min-h-dvh flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
         <header className="sticky top-0 z-20 border-b border-line bg-bg/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
             <div className="mx-auto flex h-12 max-w-[1200px] items-center gap-6 px-4 sm:px-6 lg:px-8">
-                <Link to="/" className="flex items-center gap-2" aria-label="Trading Agent, home">
+                <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="Trading Agent, home">
                     <Mark/>
-                    <span className="display text-[19px] leading-none">Trading Agent</span>
+                    <span className="display whitespace-nowrap text-[19px] leading-none">Trading Agent</span>
                 </Link>
-                <nav className="hidden items-center gap-6 md:flex">
+                <nav className="hidden shrink-0 items-center gap-6 md:flex">
                     <NavLink to="/" active={path == "/"}>Portfolio</NavLink>
+                    <NavLink to="/news" active={path.startsWith("/news")}>News</NavLink>
                     <NavLink to="/runs" active={path.startsWith("/runs")}>Runs</NavLink>
                     <NavLink to="/policy" active={path.startsWith("/policy")}>Policy</NavLink>
                     <NavLink to="/reports" active={path.startsWith("/reports")}>Reports</NavLink>
                 </nav>
                 <div className="ml-auto flex items-center gap-3">
                     {if info is not None and info.started {
-                        <span className="num hidden items-center gap-1.5 text-[11px] text-faint md:flex">
+                        <span className="num hidden items-center gap-1.5 whitespace-nowrap text-[11px] text-faint lg:flex">
                             <span className="size-1.5 rounded-full bg-up" aria-hidden="true"></span>
                             {"Marked " + stamp_et(info.as_of)}
                         </span>
@@ -136,6 +137,7 @@ def:pub Layout -> JsxElement {
         </footer>
         <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
             <TabLink to="/" label="Portfolio" active={path == "/"}><BookOpen size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/news" label="News" active={path.startsWith("/news")}><Newspaper size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/runs" label="Runs" active={path.startsWith("/runs")}><History size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/policy" label="Policy" active={path.startsWith("/policy")}><SlidersHorizontal size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/reports" label="Reports" active={path.startsWith("/reports")}><FileText size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>

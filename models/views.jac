@@ -313,3 +313,64 @@ obj TrailView {
         tickers: list[str] = [],
         disclaimer: str = "";
 }
+
+"""One research note in the news feed (TDD §10, News): a desk's note on one ticker in one run,
+or the run's macro brief. It carries only what a line in the feed shows; the note itself comes
+from get_news_story. `id` is the note's address under /news, `ticker` is empty for the macro
+brief, `view` is a stance or a regime, `lean` sorts it into "up", "flat", or "down", and
+`requested` marks a note written for a reader's report rather than the morning run."""
+obj NewsItem {
+    has id: str,
+        day: str,
+        desk: str,
+        as_of: str,
+        headline: str,
+        view: str,
+        lean: str,
+        confidence: float;
+    has ticker: str = "",
+        sector: str = "",
+        sources: int = 0,
+        followup: bool = False,
+        requested: bool = False;
+}
+
+"""One page of the feed, with what its filters offer. `desks` counts the matches under each desk
+with every other filter applied; `tickers` and `days` list all there is, so a filter can always
+be changed. `next_offset` is None on the last page."""
+obj NewsFeed {
+    has items: list[NewsItem],
+        total: int;
+    has next_offset: int | None = None,
+        desks: dict[str, int] = {},
+        tickers: list[str] = [],
+        days: list[str] = [],
+        held: int = 0;
+}
+
+"""One source a note cites, with every claim the note took from it. `link` says the address is a
+page a reader can open; a data API's address needs the project's keys, so it is named, not
+linked. `day` is the source's date, empty when the record has none that can be read."""
+obj NewsSource {
+    has label: str,
+        url: str,
+        claims: list[str];
+    has day: str = "",
+        link: bool = True;
+}
+
+"""A note in full. `body` is what its headline leaves out. `action` is what the panel decided on
+the ticker that morning, and `trail` says a decision trail exists to link to, which is true of
+the morning run's notes and not of a reader's report."""
+obj NewsStory {
+    has item: NewsItem,
+        body: str;
+    has sources: list[NewsSource] = [],
+        risks: list[str] = [],
+        data_gaps: list[str] = [],
+        model: str = "",
+        followup_question: str = "",
+        last_close: float | None = None,
+        action: str = "",
+        trail: bool = False;
+}

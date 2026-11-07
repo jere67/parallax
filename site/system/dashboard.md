@@ -46,6 +46,20 @@ Lists are capped: the portfolio view carries the 60 most recent orders and the 4
 A run's rows are sorted by conviction, highest first, then by ticker.
 A trail's research is in domain order (market, fundamentals, news, macro), first reports before follow-ups, and each vote carries the sources it cited from its specialist's evidence packet.
 
+## News feed
+
+[`dashboard/news.jac`](https://github.com/jere67/parallax/blob/main/dashboard/news.jac) reads research records from the graph and turns each one into a feed line.
+A note's address is `{day}/{ticker or "market"}/{desk}/{n}`, where `n` counts that desk's notes for the ticker that day, so a follow-up has `n` above 0.
+A reader's report adds `/requested` to its address.
+
+The records hold no headline, so the server cuts one from the summary.
+The cut takes the first sentence, or its first clause when a colon, semicolon, or spaced dash leaves at least 24 characters, and it stops at about 200 characters.
+Whatever the headline leaves out stays in the story's body, and a cut sentence keeps the whole summary as the body.
+
+The whole feed is held as an in-memory index with each note's searchable text, so filtering and paging never touch the graph.
+`get_news_feed` returns light lines, 50 to a page, and `get_news_story` returns one note in full.
+A finished run's notes are read once and kept, since they never change, and a running one's are read at each rebuild.
+
 ## Read cache
 
 The persistent graph loads about one node per query, so building a full view takes about 1,000 queries.
@@ -60,6 +74,7 @@ A small in-process cache keeps that off the page load.
 A stale entry is rebuilt under one lock, after a second freshness check, so a burst of requests builds a view once.
 The scheduled `refresh_job` rebuilds the portfolio, performance, the run list, and the newest run every minute, so those are always warm.
 Runs for other dates and decision trails are built on first request and cached for 120 seconds.
+The news index and each story follow the same rule, and `news_refresh_job` keeps the index warm.
 
 ## Client
 
@@ -68,6 +83,7 @@ The route table is in [`dashboard/App.jac`](https://github.com/jere67/parallax/b
 | Path | Component |
 | --- | --- |
 | `/` | `PortfolioPage` |
+| `/news`, `/news/:day/:ticker/:desk/:n` | `NewsPage` |
 | `/runs`, `/runs/:day` | `RunPage` |
 | `/runs/:day/:ticker` | `DecisionPage` |
 | anything else | `NotFound` |
@@ -107,11 +123,12 @@ These docs use the same tokens.
 | `dashboard/cache_tests.jac` | Freshness and eviction. |
 | `dashboard/demo_tests.jac` | The demo history is consistent, every view builds from it, and the seed writes once. |
 | `dashboard/ui/format_tests.jac` | Number formatting and New York time across daylight saving changes. |
-| `tests/dashboard_tests.jac` | All five endpoints, called anonymously through a real server. |
+| `dashboard/news_tests.jac` | News headlines, source lists, filters, paging, and feed order. |
+| `tests/dashboard_tests.jac` | The read endpoints, called anonymously through a real server. |
 | `e2e/dashboard.spec.js` | Every page in real browsers on four devices. See [Checks and tests](/guide/testing#browser-checks). |
 
 ::: info Where it differs from the TDD
 [TDD §10](/design/tdd#_10-dashboard) plans six pages (Portfolio, Today, Decision detail, Specialists, Reports, Admin) and the endpoints `get_specialist_stats`, `request_report`, and `list_reports`.
-The code has the Portfolio, Runs, and Decision trail pages, and none of those three endpoints.
+The code has the Portfolio, News, Runs, Decision trail, Policy, and Reports pages, and no `get_specialist_stats`.
 The "Today" page is the Runs page.
 :::
