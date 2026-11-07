@@ -1,17 +1,19 @@
 ---
 title: Installing on a phone
-description: The dashboard works on a phone in the browser and can be installed to the home screen.
+description: Parallax works on a phone in the browser and can be installed to the home screen.
 related:
   - { text: Reading the dashboard, link: /guide/dashboard }
 ---
 
 The dashboard works in a phone's browser, with a tab bar along the bottom, and can be installed like an app.
+The installed app is named Parallax and opens at `/app`, so a signed-in user lands on the Portfolio and anyone else on the login page.
+The service worker registers on every page.
 Tables become cards: a shortlist card opens that stock's decision trail, and a position's card opens its thesis and the rest of its figures.
 
 ## Installing
 
-- **Android:** open the dashboard in Chrome and tap **Install the app** at the bottom of the page, or use Chrome's menu.
-- **iPhone:** open the dashboard in Safari, tap **Share**, then **Add to Home Screen**.
+- **Android:** open Parallax in Chrome and tap **Install the app** at the bottom of the page, or use Chrome's menu.
+- **iPhone:** open Parallax in Safari, tap **Share**, then **Add to Home Screen**.
 
 A browser offers this only over HTTPS, or on `localhost`.
 

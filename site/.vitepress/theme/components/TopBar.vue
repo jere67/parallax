@@ -16,9 +16,9 @@ const repo = (theme.value.socialLinks ?? [])[0]?.link
 <template>
   <header class="topbar">
     <div class="topbar-row">
-      <a :href="withBase('/')" class="brand" aria-label="Trading Agent docs, home">
+      <a :href="withBase('/')" class="brand" aria-label="Parallax docs, home">
         <Mark />
-        <span class="brand-name display">Trading Agent</span>
+        <span class="brand-name display">Parallax</span>
         <span class="brand-tag">Docs</span>
       </a>
       <div class="topbar-search">

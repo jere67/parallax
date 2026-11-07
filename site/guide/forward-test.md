@@ -7,6 +7,9 @@ related:
   - { text: Execution, link: /system/execution }
 ---
 
+This page covers the admin's team agent.
+A user's own agent starts its test when its owner turns on paper trading in Settings; see [Your agent](/guide/your-agent#turn-on-paper-trading).
+
 The forward test is the live evaluation of the system: from its start date, the team portfolio trades the Alpaca paper account every trading day, next to two baselines that get the same starting balance.
 Until it starts, the team portfolio is in insight mode and only publishes its decisions.
 

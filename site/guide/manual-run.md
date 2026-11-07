@@ -1,15 +1,20 @@
 ---
 title: Starting a run by hand
-description: Start the day's morning run later than 7:30 a.m., as the admin, after a server was down at the scheduled time.
+description: Start the team agent's morning run later than 7:30 a.m., as the admin, after a server was down at the scheduled time.
 related:
   - { text: start_morning_run, link: /api/start-morning-run }
   - { text: Authentication, link: /api/authentication }
   - { text: Run Guard, link: /system/run-guard }
 ---
 
-The morning run starts by itself only between 7:30 and 7:45 a.m. New York time.
-A server that was down then has no run that day.
+The team agent's morning run starts by itself only between 7:30 and 7:45 a.m. New York time.
+A server that was down then has no team run that day.
 The admin account can start it later with one request.
+
+This page is about the admin's team agent.
+Every other account runs its own agent by itself on a weekday between 7:30 and 9:15 a.m., or when its owner presses **Start today's run** in Settings.
+See [Your agent](/guide/your-agent).
+The admin can also press that button; it does the same as `start_morning_run`.
 
 ## Start the run
 
@@ -61,7 +66,7 @@ The request answers with `started: false` and a reason when:
 
 | Reason | Message |
 | --- | --- |
-| The caller is signed in, but not as the admin | `Only the admin can start a run.` |
+| The caller is signed in, but not as the admin | `Only the admin can start a run.` Other accounts start their own run with `start_my_run`. |
 | It is a weekend in New York | `2026-11-07 is a weekend; the market is closed.` |
 | The team portfolio holds demo history | `The team portfolio holds the demo history, which never runs.` |
 | The day already has a run, including a failed or skipped one | `The run for 2026-11-02 has already started (status: normal).` |

@@ -1,12 +1,13 @@
 ---
 title: list_runs
 description: Every morning run, newest first, with how many tickers it covered, how many orders filled, and its decisions by action.
-api: { method: POST, path: /function/list_runs, auth: none }
+api: { method: POST, path: /function/list_runs, auth: Bearer token }
 related:
   - { text: get_run, link: /api/get-run }
 ---
 
-Returns a one-line summary of every run, newest first, up to 250.
+Returns a one-line summary of every run of the caller's own agent, newest first, up to 250.
+It needs a bearer token.
 The Runs page lists them, and links each one to [`get_run`](/api/get-run).
 
 <div class="api-grid">

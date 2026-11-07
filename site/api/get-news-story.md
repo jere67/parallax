@@ -1,13 +1,13 @@
 ---
 title: get_news_story
 description: One research note in full - its body, sources, risks, data gaps, and the decision it fed.
-api: { method: POST, path: /function/get_news_story, auth: none }
+api: { method: POST, path: /function/get_news_story, auth: token }
 related:
   - { text: get_news_feed, link: /api/get-news-feed }
   - { text: Reading the dashboard, link: /guide/dashboard#news }
 ---
 
-Returns one research note in full, by the parts of its address.
+Returns one research note in full, by the parts of its address, or `null` when no such note is in the caller's feed.
 A story is built on first request and cached for 120 seconds.
 
 <div class="api-grid">
