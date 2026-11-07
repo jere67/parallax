@@ -78,6 +78,10 @@ These docs leave them out of the examples; ignore them.
 <Card title="list_runs" icon="clock" link="/api/list-runs">Every morning run, newest first.</Card>
 <Card title="get_run" icon="clock" link="/api/get-run">One run, with a row per covered ticker.</Card>
 <Card title="get_decision_trail" icon="search" link="/api/get-decision-trail">Everything behind one decision.</Card>
+<Card title="screen_stocks" icon="search" link="/api/screen-stocks">Filter and sort every U.S.-listed stock.</Card>
+<Card title="get_stock" icon="chart" link="/api/get-stock">One stock's figures, peers, and filings.</Card>
+<Card title="get_stock_history" icon="chart" link="/api/get-stock-history">A stock's bars back to 2016.</Card>
+<Card title="get_stock_about" icon="search" link="/api/get-stock-about">A stock's headlines and description.</Card>
 <Card title="start_morning_run" icon="terminal" link="/api/start-morning-run">Start today's run by hand. Admin only.</Card>
 </Cards>
 
@@ -90,6 +94,10 @@ These docs leave them out of the examples; ignore them.
 | [`list_runs`](/api/list-runs) | `POST /function/list_runs` | none |
 | [`get_run`](/api/get-run) | `POST /function/get_run` | none |
 | [`get_decision_trail`](/api/get-decision-trail) | `POST /function/get_decision_trail` | none |
+| [`screen_stocks`](/api/screen-stocks) | `POST /function/screen_stocks` | none |
+| [`get_stock`](/api/get-stock) | `POST /function/get_stock` | none |
+| [`get_stock_history`](/api/get-stock-history) | `POST /function/get_stock_history` | none |
+| [`get_stock_about`](/api/get-stock-about) | `POST /function/get_stock_about` | none |
 | [`user/login`](/api/login) | `POST /user/login` | none |
 | [`start_morning_run`](/api/start-morning-run) | `POST /function/start_morning_run` | admin token |
 

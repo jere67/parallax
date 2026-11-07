@@ -34,6 +34,9 @@ The project's own code:
 
 So the numbers on a demo dashboard behave like real ones: positions respect the caps, stops sit at twice the ATR, and the baselines move with SPY.
 
+The screener and stock pages show an invented market of about 70 well-known names.
+Their prices, figures, ratings, and dates are all made up, are never written to disk, and cost no source calls.
+
 ## What the job writes
 
 A scheduled job, `demo_job`, runs every minute and does nothing unless `TRADING_AGENT_DEMO` is `1`.

@@ -17,6 +17,7 @@ research/       data collectors and the S&P 500 screener
 analysis/       indicators, the consensus engine, and vote scoring
 action/         broker client, sizing, risk gate, executor, reconciliation, insight cards, baselines
 run/            daily run, Run Guard, trading day, scheduled jobs, health
+market/         whole-market data for the screener and stock pages
 dashboard/      client pages and components
 assets/         static files served at /static/assets/
 tests/          integration and smoke tests, fixtures, fakes
@@ -32,6 +33,7 @@ site/           this documentation site (VitePress)
 | What a node or report holds | `models/graph.jac` (graph), `models/research.jac` and `models/agents.jac` (typed reports and votes), `models/views.jac` (API responses) |
 | A data source, its limits, or its cache lifetime | `research/sources.jac`, then the source's collector |
 | The universe screen | `research/screener.jac` |
+| A screener field or tab | `market/rows.jac`, then `dashboard/market/columns.jac` |
 | A technical indicator | `research/indicators.jac` |
 | An agent's prompt or output type | `agents/` |
 | The consensus or the decision rule | `analysis/consensus.jac` |

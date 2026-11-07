@@ -1,13 +1,15 @@
 ---
 title: Reading the dashboard
-description: What the Portfolio, Runs, and Decision trail pages show, and how to follow one decision from research to order.
+description: What the Portfolio, Runs, Decision trail, Screener, and stock pages show, and how to follow one decision from research to order.
 related:
   - { text: Dashboard internals, link: /system/dashboard }
   - { text: get_decision_trail, link: /api/get-decision-trail }
+  - { text: Market data, link: /system/market-data }
 ---
 
 The dashboard is public and read-only.
-It has three pages, and every ticker on them links to the decision trail that explains it.
+Three pages follow the committee, and every ticker on them links to the decision trail that explains it.
+Two more cover the whole market, whether or not the committee has looked at a stock.
 
 | Path | Page |
 | --- | --- |
@@ -15,6 +17,9 @@ It has three pages, and every ticker on them links to the decision trail that ex
 | `/runs` | Runs, showing the newest run |
 | `/runs/:day` | Runs, showing the run on a trading date |
 | `/runs/:day/:ticker` | Decision trail for one ticker on one day |
+| `/screener` | Screener |
+| `/stocks/:symbol` | A stock's page |
+| `/stocks/:symbol/:tab` | One section of a stock's page |
 
 The header shows when the portfolio was last marked, a **Paper** badge, the portfolio's mode (insight or auto), and the theme switch.
 The footer repeats the disclaimer: the project trades simulated money, and nothing on it is investment advice.
@@ -136,3 +141,36 @@ It follows the decision through six stages, and a strip at the top links to each
 
 A side column shows the ticker's facts (last close, ATR, volatility, volume, days to earnings, why it was covered, its screen score), the position if one is open, and the market backdrop.
 Arrows step to the previous or next ticker of the same run.
+
+## Screener
+
+The screener lists every U.S.-listed stock, biggest first.
+
+- **Filters.** Each pill opens a card with presets, typed bounds, or a list of words, and **Filter** adds any other field. Filters all have to hold, and a stock missing a figure does not match it.
+- **Tabs.** Each tab is a set of columns: Overview, Performance, Technicals, Extended hours, Forecasts, Valuation, Dividends, Profitability, Income statement, Balance sheet, Cash flow, and Per share. The column button changes them.
+- **Sorting.** A column head sorts by it, and again the other way. A missing figure stays last.
+- **The address holds the screen.** A screen survives a reload and can be sent to someone, and the browser's back and forward buttons undo and redo a change.
+- **Watchlist and saved screens.** The star and **Save screen** keep your choices in this browser.
+
+Prices are delayed about 15 minutes during a session.
+The note under the table says how much of the market each sweep has reached so far, since a new server takes hours to read every company.
+
+## Stock page
+
+A stock's page opens from any ticker in the screener.
+Its header shows the price, the day's change, the market's phase, any extended-hours price, and, when the committee has looked at the stock, its last decision with a link to the trail.
+
+| Tab | Shows |
+| --- | --- |
+| Overview | The price chart, peers, key figures, the day's trading, earnings, ratings, the company, its financials, headlines, and filings |
+| Financials | Revenue and profit by year or quarter, revenue down to profit, debt and cash, and returns and ratios |
+| Technicals | The rating, each indicator's value and vote, and performance over six periods |
+| Forecasts | The analyst consensus now and by month, and earnings against the consensus |
+| Seasonals | Returns by month and year since 2016 |
+| News | Recent headlines, linking to their sources |
+| Filings | Recent SEC filings, linking to EDGAR |
+
+Each button under the chart is a range, with that range's change on it.
+**Add** on a peer draws it on the chart, up to three, which turns the chart into percent change from the range's start so stocks at different prices share one axis.
+
+The market pages are not advice, and the committee's decisions rest on its own research, not on these ratings.
