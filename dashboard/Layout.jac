@@ -1,7 +1,7 @@
 """The frame around every page of the app: the top bar with navigation, the portfolio's status,
 the theme switch, settings, and logging out; a banner when the graph holds demo history; and the disclaimer (TDD §9)."""
 import from "@jac/runtime" { Link, Outlet, jacLogout, useLocation, useNavigate }
-import from "lucide-react" { BookOpen, FileText, History, Newspaper, Settings, SlidersHorizontal }
+import from "lucide-react" { BookOpen, ChartCandlestick, FileText, History, Newspaper, Settings, SlidersHorizontal }
 import from dashboard.ui.brand { DISCLAIMER, REPO_URL, ThemeSwitch, Wordmark }
 import from dashboard.ui.rpc { get_portfolio }
 import from models.views { PortfolioView as Portfolio }
@@ -44,6 +44,8 @@ def:pub Layout -> JsxElement {
 
     path = useLocation().pathname;
     nav = useNavigate();
+    # The screener's table has more columns than the other pages have room for.
+    width = "max-w-[1560px]" if path.startsWith("/app/screener") else "max-w-[1200px]";
 
     def leave {
         jacLogout();
@@ -52,10 +54,11 @@ def:pub Layout -> JsxElement {
 
     <div className="flex min-h-dvh flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
         <header className="sticky top-0 z-20 border-b border-line bg-bg/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
-            <div className="mx-auto flex h-12 max-w-[1200px] items-center gap-6 px-4 sm:px-6 lg:px-8">
+            <div className={"mx-auto flex h-12 items-center gap-6 px-4 sm:px-6 lg:px-8 " + width}>
                 <Wordmark to="/app"/>
-                <nav className="hidden shrink-0 items-center gap-6 md:flex">
+                <nav className="hidden shrink-0 items-center gap-4 md:flex lg:gap-6">
                     <NavLink to="/app" active={path == "/app"}>Portfolio</NavLink>
+                    <NavLink to="/app/screener" active={path.startsWith("/app/screener") or path.startsWith("/app/stocks")}>Screener</NavLink>
                     <NavLink to="/app/news" active={path.startsWith("/app/news")}>News</NavLink>
                     <NavLink to="/app/runs" active={path.startsWith("/app/runs")}>Runs</NavLink>
                     <NavLink to="/app/policy" active={path.startsWith("/app/policy")}>Policy</NavLink>
@@ -84,18 +87,18 @@ def:pub Layout -> JsxElement {
         </header>
         {if info is not None and info.demo {
             <div className="border-b border-warn/25 bg-warn/10">
-                <p className="mx-auto max-w-[1200px] px-4 py-2 text-[12px] text-warn sm:px-6 lg:px-8">
+                <p className={"mx-auto px-4 py-2 text-[12px] text-warn sm:px-6 lg:px-8 " + width}>
                     <span className="font-semibold">Demo data.</span>
                     {" "}These sessions were simulated on this machine by the real consensus, risk gate, and baselines, with made-up prices and votes. Nothing here was traded.
                 </p>
             </div>
         }}
         <OfflineBanner/>
-        <main className="mx-auto w-full max-w-[1200px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <main className={"mx-auto w-full flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 " + width}>
             <Outlet/>
         </main>
         <footer className="border-t border-line">
-            <div className="mx-auto flex max-w-[1200px] flex-col gap-2 px-4 py-6 text-[12px] text-faint sm:flex-row sm:items-start sm:justify-between sm:gap-8 sm:px-6 lg:px-8">
+            <div className={"mx-auto flex flex-col gap-2 px-4 py-6 text-[12px] text-faint sm:flex-row sm:items-start sm:justify-between sm:gap-8 sm:px-6 lg:px-8 " + width}>
                 <div className="max-w-2xl">
                     <p>{DISCLAIMER}</p>
                     <InstallHint/>
@@ -109,6 +112,7 @@ def:pub Layout -> JsxElement {
         </footer>
         <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
             <TabLink to="/app" label="Portfolio" active={path == "/app"}><BookOpen size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app/screener" label="Screener" active={path.startsWith("/app/screener") or path.startsWith("/app/stocks")}><ChartCandlestick size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/app/news" label="News" active={path.startsWith("/app/news")}><Newspaper size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/app/runs" label="Runs" active={path.startsWith("/app/runs")}><History size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/app/policy" label="Policy" active={path.startsWith("/app/policy")}><SlidersHorizontal size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>

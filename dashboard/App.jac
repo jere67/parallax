@@ -13,6 +13,7 @@ import from dashboard.PortfolioPage { PortfolioPage }
 import from dashboard.ReportsPage { ReportsPage }
 import from dashboard.RunPage { RunPage }
 import from dashboard.SettingsPage { SettingsPage }
+import from dashboard.market.ScreenerPage { ScreenerPage }
 import from dashboard.ui.pwa { register_worker }
 import from dashboard.ui.theme { restore_theme }
 
@@ -43,9 +44,11 @@ def:pub App -> JsxElement {
             <Route path="/runs/*" element={<Moved/>}/>
             <Route path="/policy" element={<Moved/>}/>
             <Route path="/reports" element={<Moved/>}/>
+            <Route path="/screener" element={<Moved/>}/>
             <Route path="/app" element={<RequireAccount/>}>
                 <Route element={<Layout/>}>
                     <Route index={True} element={<PortfolioPage/>}/>
+                    <Route path="screener" element={<ScreenerPage/>}/>
                     <Route path="news/*" element={<NewsPage/>}/>
                     <Route path="policy" element={<PolicyPage/>}/>
                     <Route path="reports" element={<ReportsPage/>}/>
