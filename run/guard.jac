@@ -200,8 +200,8 @@ obj RunSession {
         started: float = 0.0,
         requests_at_start: int = 0;
     has request_counts_at_start: dict[str, dict[str, int]] = {};
-    has _lock: threading.RLock | None = None,
-        limiter: RequestLimiter by postinit;
+    has _lock: threading.RLock | None = None;
+    has limiter: RequestLimiter postinit;
 
     def postinit {
         self._lock = threading.RLock();

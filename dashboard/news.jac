@@ -6,13 +6,17 @@ The notes hold no headline, so one is cut from the summary's first sentence, and
 summary becomes the body, so a story never says the same thing twice.
 
 A finished run's notes never change, so their lines are kept for good by the run's id, and the
-minute's rebuild only walks the runs and reads the notes it has not seen. Filters then run over
-those lines in memory, which keeps a search instant however long the record grows. A reader's
-report keeps its own one-run portfolio on root.shared, and its notes join the feed marked as
-requested; its macro brief does not, since the morning run's is the market's.
+minute's rebuild only walks the team's runs and reads the notes it has not seen. Filters then run
+over those lines in memory, which keeps a search instant however long the record grows. A report
+keeps its own one-run portfolio on root.shared, and its notes join the feed of whoever asked for
+it, marked as requested; its macro brief does not, since the morning run's is the market's.
+
+Each reader's feed is their own agent's research and their own reports, and neither endpoint takes
+an argument that names an agent: `my_portfolio` finds the caller's.
 """
 import re;
 import from urllib.parse { urlsplit }
+import from accounts.store { my_portfolio }
 import from dashboard.api { find_team, first_of, portfolio_view, runs_by_day, view_key }
 import from dashboard.cache { VIEWS }
 import from models.agents { Domain, Evidence }
@@ -30,6 +34,7 @@ import from models.graph {
     Run,
     RunStatus
 }
+import from models.users { ReportRequest }
 import from models.views { NewsFeed, NewsItem, NewsSource, NewsStory, PortfolioView }
 
 glob PAGE: int = 50;
@@ -279,11 +284,13 @@ def in_feed_order(entries: list[NewsEntry]) -> list[NewsEntry] {
     return sorted(sorted(entries, key=rank), key=lambda (e: NewsEntry) { (e.item.day, e.item.as_of); }, reverse=True);
 }
 
-"""Every line in the feed: the team's runs, then each reader's report on root.shared."""
-def news_index(team: Portfolio, reports: list[Portfolio]) -> list[NewsEntry] {
+"""Every line in a reader's feed: their agent's runs, then the reports they asked for."""
+def news_index(team: Portfolio | None, reports: list[Portfolio]) -> list[NewsEntry] {
     found: list[NewsEntry] = [];
-    for run in [team ->:Ran:->[?:Run]] {
-        found.extend(entries_of(run, False));
+    if team is not None {
+        for run in [team ->:Ran:->[?:Run]] {
+            found.extend(entries_of(run, False));
+        }
     }
     for portfolio in reports {
         for run in [portfolio ->:Ran:->[?:Run]] {
@@ -297,7 +304,25 @@ def report_portfolios -> list[Portfolio] {
     return [p for p in [root.shared -->[?:Portfolio]] if p.name.startswith(REPORT_PREFIX)];
 }
 
-def held_tickers(team: Portfolio) -> set[str] {
+"""The reports the caller asked for. Each is shared by all who ask, but only they see it listed."""
+def my_reports -> list[Portfolio] {
+    wanted = set(f"{REPORT_PREFIX}{r.trading_date}:{r.ticker}" for r in [root -->[?:ReportRequest]]);
+    return [p for p in report_portfolios() if p.name in wanted] if wanted else [];
+}
+
+"""The cache key of the caller's feed, which is theirs since their reports are in it."""
+def feed_key -> str {
+    return str(jid(root)) + ":news";
+}
+
+def my_feed(team: Portfolio | None) -> list[NewsEntry] {
+    return news_index(team, my_reports());
+}
+
+def held_tickers(team: Portfolio | None) -> set[str] {
+    if team is None {
+        return set();
+    }
     view: PortfolioView = VIEWS.get(view_key(team, "portfolio"), portfolio_view, team);
     return set(p.ticker for p in view.positions);
 }
@@ -403,8 +428,8 @@ def as_flag(value: bool | str) -> bool {
 
 """One page of the feed. `q` must appear word by word in a note's text; the others are exact, and
 an empty one does not filter. `lean` is "up", "flat", or "down", and `held` keeps the tickers the
-team holds now."""
-def:pub get_news_feed(
+caller's agent holds now."""
+def:priv get_news_feed(
     q: str = "",
     ticker: str = "",
     desk: str = "",
@@ -414,42 +439,33 @@ def:pub get_news_feed(
     offset: int = 0,
     limit: int = PAGE
 ) -> NewsFeed {
-    team = find_team();
-    if team is None {
-        return NewsFeed(items=[], total=0);
-    }
-    entries: list[NewsEntry] = VIEWS.get(view_key(team, "news"), news_index, team, report_portfolios());
+    team = my_portfolio();
+    entries: list[NewsEntry] = VIEWS.get(feed_key(), my_feed, team);
     wanted = NewsFilter(words=q.lower().split(), ticker=ticker.upper(), desk=desk, lean=lean, day=day, held_only=as_flag(held));
     return select(entries, wanted, held_tickers(team), int(offset), int(limit));
 }
 
-"""One note in full, by the parts of its address; None when there is no such note."""
-def:pub get_news_story(day: str, ticker: str, desk: str, n: int = 0, requested: bool = False) -> NewsStory | None {
+"""One note in full, by the parts of its address; None when there is no such note, or it is not in
+the caller's feed."""
+def:priv get_news_story(day: str, ticker: str, desk: str, n: int = 0, requested: bool = False) -> NewsStory | None {
     symbol = ticker.upper();
-    team = find_team();
-    if team is None {
-        return None;
-    }
-    portfolio: Portfolio | None = team;
     # Typed here, since the cache's key and the lookup below both need the real values.
     note = int(n);
     asked = as_flag(requested);
+    portfolio: Portfolio | None = my_portfolio();
     if asked {
         name = f"{REPORT_PREFIX}{day}:{symbol}";
-        portfolio = first_of([p for p in report_portfolios() if p.name == name]);
+        portfolio = first_of([p for p in my_reports() if p.name == name]);
     }
     if portfolio is None {
         return None;
     }
-    return VIEWS.get(view_key(team, "story", day, symbol, desk, str(note), str(asked)), story_view, portfolio, day, symbol, desk, note, asked);
+    return VIEWS.get(view_key(portfolio, "story", day, symbol, desk, str(note), str(asked)), story_view, portfolio, day, symbol, desk, note, asked);
 }
 
-"""Keep the feed built, so no reader waits for it (dashboard/cache.jac). A static job runs as the
-system user, which reaches root.shared."""
+"""Keep the team's lines read, so no reader waits for them (dashboard/cache.jac). A static job runs
+as the system user, which reaches root.shared. A finished run's lines stay kept in FINISHED."""
 @schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * *")
 def news_refresh_job {
-    team = find_team();
-    if team is not None {
-        VIEWS.put(view_key(team, "news"), news_index(team, report_portfolios()));
-    }
+    news_index(find_team(), []);
 }

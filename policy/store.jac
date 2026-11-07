@@ -120,7 +120,7 @@ def save_policy(scope: PolicyScope, policy: Policy, base_version: int, source: s
     );
     if scope == PolicyScope.TEAM {
         public(root.shared ++> made);
-        LOG.info("team policy version %s saved: %s", made.version, "; ".join(edits)[:500]);
+        LOG.info("policy version %s saved: %s", made.version, "; ".join(edits)[:500]);
     } else {
         root ++> made;
     }

@@ -1,5 +1,5 @@
 """Signed-in, insight-only reports: submit, poll, and read the stored card."""
-import from "@jac/runtime" { SignupResult, __jacCallFunction, jacIsLoggedIn, jacLogin, jacLogout, jacSignup }
+import from "@jac/runtime" { __jacCallFunction, jacIsLoggedIn }
 import from "react" { useEffect }
 import from "lucide-react" { ChevronDown, ExternalLink }
 import from models.reports { ReportsView as ReportsData, ReportView as ReportData, ReportReply as Reply }
@@ -9,9 +9,9 @@ import from dashboard.ui.parts { ActionBadge, Empty, ErrorBox, Loading, Overline
 # The pinned Jac build cannot seal implicit client bridges for private endpoints.
 # Call the same authenticated endpoint through the runtime RPC helper instead.
 #
-# None once signed out. A private call sent without a token gets a 401, and the runtime answers
-# any 401 by dropping the stored token and reloading the page, which would cancel a sign-in
-# already under way. A poll or a request that finishes just after "Sign out" must not send one.
+# None once logged out. A private call sent without a token gets a 401, and the runtime answers
+# any 401 by dropping the stored token and reloading the page, which would cancel a log-in
+# already under way. A poll or a request that finishes just after logging out must not send one.
 # The runtime reads the token synchronously when the call starts, so checking first is enough.
 async def list_reports -> ReportsData | None {
     if not jacIsLoggedIn() { return None; }
@@ -24,50 +24,6 @@ async def request_report(ticker: str) -> Reply {
 
 glob INPUT: str = "h-10 max-md:h-11 w-full rounded-md border border-line-strong bg-panel px-3 text-[13px] max-md:text-[16px] text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
 glob BUTTON: str = "press h-10 max-md:h-11 rounded-md bg-accent px-4 text-[13px] font-medium text-bg hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
-
-def SignIn(done: Callable[[], None]) -> JsxElement {
-    has email: str = "", password: str = "", signup: bool = False,
-        busy: bool = False, error: str = "";
-
-    async def submit(e: FormEvent) {
-        e.preventDefault();
-        busy = True;
-        error = "";
-        result: SignupResult | None = None;
-        ok: bool = False;
-        try {
-            if signup {
-                result = await jacSignup(email, password);
-                if not result.success { error = "Account creation failed. Check your details or sign in instead."; return; }
-            }
-            ok = await jacLogin(email, password);
-            if ok { password = ""; done(); }
-            else { error = "Sign-in failed. Check your email and password."; }
-        } except Exception { error = "Unable to sign in. Please try again."; }
-        finally { busy = False; }
-    }
-
-    <div className="mx-auto max-w-lg space-y-6">
-        <div>
-            <Overline>Private reports</Overline>
-            <h1 className="display mt-1 text-[34px] leading-tight">{ "Create an account" if signup else "Sign in for stock reports" }</h1>
-            <p className="mt-2 text-[13px] text-muted">Request a cited stock analysis and keep your report history private.</p>
-        </div>
-        <Panel>
-            <div className="space-y-4">
-                {if error { <ErrorBox message={error}/> }}
-                <form onSubmit={submit} className="flex flex-col gap-3">
-                    <label htmlFor="report-email" className="text-[12px] font-medium text-muted">Email</label>
-                    <input id="report-email" type="email" required={True} autoComplete="email" value={email} onChange={lambda (e: ChangeEvent) { email = e.target.value; }} className={INPUT}/>
-                    <label htmlFor="report-password" className="text-[12px] font-medium text-muted">Password</label>
-                    <input id="report-password" type="password" required={True} minLength={8} autoComplete={"new-password" if signup else "current-password"} value={password} onChange={lambda (e: ChangeEvent) { password = e.target.value; }} className={INPUT}/>
-                    <button type="submit" disabled={busy} className={BUTTON}>{"Please wait…" if busy else ("Create account" if signup else "Sign in")}</button>
-                </form>
-                <button type="button" disabled={busy} onClick={lambda { signup = not signup; error = ""; }} className="text-[12px] text-accent hover:underline">{ "Already have an account? Sign in" if signup else "New here? Create an account" }</button>
-            </div>
-        </Panel>
-    </div>
-}
 
 def ReportCard(item: ReportData) -> JsxElement {
     has show_votes: bool = True, show_sources: bool = True;
@@ -145,7 +101,7 @@ def ReportCard(item: ReportData) -> JsxElement {
     </article>
 }
 
-def ReportList(logout: Callable[[], None]) -> JsxElement {
+def:pub ReportsPage -> JsxElement {
     has data: ReportsData | None = None, ticker: str = "", error: str = "", message: str = "", busy: bool = False;
 
     useEffect(lambda {
@@ -159,7 +115,7 @@ def ReportList(logout: Callable[[], None]) -> JsxElement {
                 fresh = await list_reports();
                 if active and fresh is not None { data = fresh; error = ""; }
             } except Exception {
-                if active { error = "Could not load reports. Your session may have expired; sign in again."; }
+                if active { error = "Could not load reports. Your session may have expired; log in again."; }
             } finally { loading = False; }
         }
         refresh();
@@ -183,9 +139,8 @@ def ReportList(logout: Callable[[], None]) -> JsxElement {
     }
 
     <div className="mx-auto max-w-4xl space-y-6">
-        <header className="flex flex-wrap items-start justify-between gap-3">
-            <div><Overline>Private research</Overline><h1 className="display mt-1 text-[34px] leading-tight">Stock reports</h1><p className="mt-2 max-w-xl text-[13px] text-muted">Request research, specialist votes, and a cited insight. Requests never place trades.</p></div>
-            <button type="button" onClick={logout} className="press min-h-11 rounded-md border border-line px-3 py-1.5 text-[12px] text-muted hover:bg-hover hover:text-text md:min-h-0">Sign out</button>
+        <header>
+            <Overline>Private research</Overline><h1 className="display mt-1 text-[34px] leading-tight">Stock reports</h1><p className="mt-2 max-w-xl text-[13px] text-muted">Request research, specialist votes, and a cited insight. Requests never place trades.</p>
         </header>
         {if error { <ErrorBox message={error}/> }}
         {if data is None { <Loading label="Loading reports"/> } else {
@@ -211,10 +166,4 @@ def ReportList(logout: Callable[[], None]) -> JsxElement {
             </section>
         }}
     </div>
-}
-
-def:pub ReportsPage -> JsxElement {
-    has signed_in: bool = jacIsLoggedIn();
-    def logout { jacLogout(); signed_in = False; }
-    <div>{<ReportList logout={logout}/> if signed_in else <SignIn done={lambda { signed_in = True; }}/>}</div>
 }

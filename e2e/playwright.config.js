@@ -1,6 +1,6 @@
 // The dashboard's device matrix (GAP-13, TDD §10). Every page must render, without errors and
 // without scrolling sideways, on each of these. The server is started separately, with the demo
-// history (see README), and E2E_BASE_URL points at it.
+// history and the fake providers (see README), and E2E_BASE_URL points at it.
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
