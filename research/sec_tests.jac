@@ -139,6 +139,16 @@ test "a concept the filer switched to wins over the one it stopped using" {
     assert figure(funda, "revenue_quarter").value == 80.0;
 }
 
+test "revenue is the widest concept for the newest period, so a landlord's is not just its fees" {
+    facts = {
+        "us-gaap": usd("RevenueFromContractWithCustomerExcludingAssessedTax", [row("2026-01-01", "2026-03-31", 2.0, "2026-05-01")])
+        | usd("Revenues", [row("2026-01-01", "2026-03-31", 480.0, "2026-05-01")])
+        | usd("InterestAndDividendIncomeOperating", [row("2019-01-01", "2019-03-31", 900.0, "2019-05-01")])
+    };
+    (funda, _) = reduce_facts("X", "1", "X", facts, fetched());
+    assert figure(funda, "revenue_quarter").value == 480.0;
+}
+
 test "a restated period uses the newest filing, and a smaller loss is growth" {
     facts = {
         "us-gaap": usd(

@@ -269,7 +269,15 @@ obj Fact {
 # Each figure lists the us-gaap concepts that report it, in order of preference; filers
 # change concepts over time, so the one with the newest period wins.
 glob FLOW_CONCEPTS: dict[str, list[str]] = {
-    "revenue": ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet", "RevenueFromContractWithCustomerIncludingAssessedTax"],
+    "revenue": [
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "Revenues",
+        "SalesRevenueNet",
+        "RevenueFromContractWithCustomerIncludingAssessedTax",
+        "RevenuesNetOfInterestExpense",
+        "InterestAndDividendIncomeOperating",
+        "RealEstateRevenueNet"
+    ],
     "gross_profit": ["GrossProfit"],
     "operating_income": ["OperatingIncomeLoss"],
     "net_income": ["NetIncomeLoss", "ProfitLoss"],
@@ -298,7 +306,7 @@ def reduce_facts(symbol: str, cik: str, company: str, facts: dict[str, dict], fe
     }
     ttm: dict[str, tuple[float, Fact]] = {};
     for (name, concepts) in FLOW_CONCEPTS.items() {
-        series = _series(gaap, concepts, "USD", instant=False);
+        series = _series(gaap, concepts, "USD", instant=False, widest=name == "revenue");
         if not series {
             gaps.append(f"sec.companyfacts: {symbol} reports no {name.replace('_', ' ')}");
             continue;
@@ -533,8 +541,9 @@ def exhibit_path(index_html: str) -> str {
 }
 
 """The company's facts for the first of `concepts` with the newest period, deduplicated to
-the newest filing per period."""
-def _series(taxonomy: dict[str, dict], concepts: list[str], unit: str, instant: bool) -> list[Fact] {
+the newest filing per period. With `widest`, the concept with the largest value wins a tie: contract
+revenue leaves out a landlord's rent and a bank's interest, so it is only part of their top line."""
+def _series(taxonomy: dict[str, dict], concepts: list[str], unit: str, instant: bool, widest: bool = False) -> list[Fact] {
     best: list[Fact] = [];
     for concept in concepts {
         rows = ((taxonomy.get(concept) or {}).get("units") or {}).get(unit) or [];
@@ -560,11 +569,22 @@ def _series(taxonomy: dict[str, dict], concepts: list[str], unit: str, instant: 
             }
         }
         found = list(latest.values());
-        if found and (not best or max(f.end for f in found) > max(f.end for f in best)) {
+        if not found {
+            continue;
+        }
+        (end, top) = _headline(found);
+        (best_end, best_top) = _headline(best) if best else ("", 0.0);
+        if end > best_end or (widest and end == best_end and top > best_top) {
             best = found;
         }
     }
     return best;
+}
+
+"""A series' newest period end and its longest figure for that end."""
+def _headline(series: list[Fact]) -> tuple[str, float] {
+    newest = max(series, key=lambda (f: Fact) { (f.end, f.days()); });
+    return (newest.end, newest.value);
 }
 
 """The newest discrete quarter, and the quarter that ended about a year before it."""
