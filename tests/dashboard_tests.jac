@@ -1,8 +1,10 @@
 """The dashboard's endpoints through a real server: each account sees its own agent, the admin's
 is the team's, and an anonymous reader sees nothing."""
+import os;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.testing.testing { JacTestClient }
+import from market.demo { DEMO_ENV }
 
 glob APP: str = str(Path(__file__).resolve().parent / "fixtures" / "dashboard_app.jac");
 
@@ -97,6 +99,9 @@ test "every data endpoint refuses an anonymous reader" {
         }
         assert client.post("/function/get_decision_trail", json={"run_date": "2026-10-21", "ticker": "AAPL"}).status_code == 401;
         assert client.post("/function/get_news_story", json={"day": "2026-10-21", "ticker": "AAPL", "desk": "news"}).status_code == 401;
+        for name in ["screen_stocks", "get_stock", "get_stock_history", "get_stock_about"] {
+            assert client.post(f"/function/{name}", json={"symbol": "AAPL"} if name != "screen_stocks" else {}).status_code == 401, name;
+        }
     } finally {
         client.close();
     }
@@ -119,4 +124,30 @@ test "a member sees only their own agent, never the team's" {
     } finally {
         client.close();
     }
+}
+
+"""A stock page reads the caller's agent through get_portfolio and get_run, whose tests above keep a
+member from the team's agent. A demo server shows every account the demo agent, so this checks the
+lookup and its link into the app, not the isolation."""
+test "a stock page shows the agent's last decision on it, with a link into the app" {
+    before = os.environ.get(DEMO_ENV);
+    os.environ[DEMO_ENV] = "1";
+    client = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
+    try {
+        client.register_user("team-admin", "writer-password-1");
+        assert client.post("/function/set_admin", json={"on": True}).ok;
+        assert client.post("/function/seed_team_graph", json={}).ok;
+        held = call(client, "get_stock", {"symbol": "AAPL"});
+        other = call(client, "get_stock", {"symbol": "MSFT"});
+    } finally {
+        client.close();
+        if before is None {
+            del os.environ[DEMO_ENV];
+        } else {
+            os.environ[DEMO_ENV] = before;
+        }
+    }
+    assert held["found"] and held["committee"]["action"] == "BUY" and held["committee"]["run_day"] == "2026-10-21";
+    assert held["committee"]["trail"] == "/app/runs/2026-10-21/AAPL";
+    assert other["found"] and other["committee"]["action"] == "" and other["committee"]["trail"] == "";
 }
