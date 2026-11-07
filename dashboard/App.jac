@@ -8,6 +8,7 @@ import from dashboard.ReportsPage { ReportsPage }
 import from dashboard.RunPage { RunPage }
 import from dashboard.DecisionPage { DecisionPage }
 import from dashboard.market.ScreenerPage { ScreenerPage }
+import from dashboard.market.StockPage { StockPage }
 import from dashboard.ui.theme { restore_theme }
 
 def:pub App -> JsxElement {
@@ -17,6 +18,8 @@ def:pub App -> JsxElement {
             <Route path="/" element={<Layout/>}>
                 <Route index={True} element={<PortfolioPage/>}/>
                 <Route path="screener" element={<ScreenerPage/>}/>
+                <Route path="stocks/:symbol" element={<StockPage/>}/>
+                <Route path="stocks/:symbol/:tab" element={<StockPage/>}/>
                 <Route path="reports" element={<ReportsPage/>}/>
                 <Route path="runs" element={<RunPage/>}/>
                 <Route path="runs/:day" element={<RunPage/>}/>
