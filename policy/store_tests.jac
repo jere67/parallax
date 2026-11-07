@@ -2,7 +2,7 @@
 team and personal policies stay apart."""
 import from analysis.policy { with_knob }
 import from models.policy { Condition, Op, Policy, PolicyRule, PolicyScope, PolicyVersion, RuleEffect }
-import from policy.store { current_of, personal_versions, save_policy, team_policy, team_policy_version, team_versions }
+import from policy.store { current_of, personal_versions, save_policy, team_policy, policy_version, team_versions }
 
 def stop_rule -> PolicyRule {
     return PolicyRule(id="R1", effect=RuleEffect.SELL, conditions=[Condition(metric="return_since_entry", op=Op.LT, number=-0.08)]);
@@ -51,14 +51,14 @@ test "a saved policy keeps its own copy" {
 
 test "team versions live on root.shared, and an old or missing version is still readable" {
     (start, base) = team_policy();
-    assert team_policy_version(0).buy_score == Policy().buy_score;
+    assert policy_version(0).buy_score == Policy().buy_score;
     done = save_policy(PolicyScope.TEAM, with_knob(start, "new_positions_per_day", 1.0 if start.new_positions_per_day != 1 else 2.0), base, "form", "Fewer entries");
     assert done.saved;
     stored = team_versions()[-1];
     assert stored.author == "Team admin" and stored.scope == PolicyScope.TEAM;
     assert team_policy()[1] == done.version and team_policy()[0].new_positions_per_day == stored.policy.new_positions_per_day;
-    assert team_policy_version(done.version).new_positions_per_day == stored.policy.new_positions_per_day;
-    assert team_policy_version(done.version + 50).new_positions_per_day == Policy().new_positions_per_day;
+    assert policy_version(done.version).new_positions_per_day == stored.policy.new_positions_per_day;
+    assert policy_version(done.version + 50).new_positions_per_day == Policy().new_positions_per_day;
     # A team save is not a personal version.
     assert all(v.scope == PolicyScope.PERSONAL for v in personal_versions());
 }

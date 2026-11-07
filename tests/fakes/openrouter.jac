@@ -18,6 +18,7 @@ obj FakeOpenRouter {
         requests: list[dict] = [],
         key_usage: dict[str, int] | None = None,
         key_requests: list[str] = [],
+        auth: list[str] = [],
         models: list[dict] | None = None;
     has _server: ThreadingHTTPServer | None = None,
         _lock: threading.Lock | None = None;
@@ -95,6 +96,7 @@ class _Handler(BaseHTTPRequestHandler) {
         length = int(self.headers.get("Content-Length", "0"));
         body = json.loads(self.rfile.read(length));
         fake = getattr(self.server, "fake") as FakeOpenRouter;
+        fake.auth.append(self.headers.get("Authorization", "").removeprefix("Bearer "));
         (status, content) = fake.answer(body);
         if status == 200 {
             payload = completion_body(body.get("model", ""), content);

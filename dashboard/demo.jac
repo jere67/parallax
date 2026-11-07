@@ -76,10 +76,10 @@ import from models.graph {
 import from models.research { RegimeInputs }
 import from research.alpaca { Bar }
 import from run.analysis { DEFAULT_HORIZON_DAYS, trading_day_after }
+import from accounts.store { DEMO_ENV }
 import from run.guard { NEW_YORK, TEAM_PORTFOLIO }
 import from run.public { public }
 
-glob DEMO_ENV: str = "TRADING_AGENT_DEMO";
 glob LOG: logging.Logger = logging.getLogger("trading_agent.demo");
 glob _SEEDING: threading.Lock = threading.Lock();
 glob NOTHING_WRITTEN: str = "demo: the team portfolio already has history; nothing written";

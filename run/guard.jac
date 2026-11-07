@@ -17,7 +17,7 @@ import from datetime { date, datetime }
 import from zoneinfo { ZoneInfo }
 import from action.insights { publish_card }
 import from agents.catalog { resolve_models }
-import from agents.models { CHAIN, FREE_REQUESTS_PER_DAY, LIMITER, model_error, provider_requests_left, request_total }
+import from agents.models { CHAIN, FREE_REQUESTS_PER_DAY, limiter_now, model_error, provider_requests_left, request_total }
 import from agents.research { MacroResult, ResearchResult, fallback, macro_research, research }
 import from analysis.consensus { CONSENSUS_VERSION, ConsensusConfig }
 import from analysis.policy { Facts, POLICY_ENGINE_VERSION, consensus_config }
@@ -120,7 +120,7 @@ def preflight(run_day: str, portfolio: Portfolio, limits: RunLimits = RunLimits(
         found.note = f"market calendar unavailable, so weekdays count as trading days ({type(e).__name__}: {str(e)[:200]})";
     }
     today = utc_now().date().isoformat();
-    found.own_used = max(stored_requests(portfolio, today), LIMITER.sent_by_day.get(today, 0));
+    found.own_used = max(stored_requests(portfolio, today), limiter_now().sent_by_day.get(today, 0));
     found.provider_left = provider_requests_left();
     left = FREE_REQUESTS_PER_DAY - found.own_used;
     found.requests_left = max(0, min(left, found.provider_left) if found.provider_left is not None else left);
@@ -205,7 +205,7 @@ obj RunSession {
     def postinit {
         self._lock = threading.RLock();
         self.started = time.monotonic();
-        self.request_counts_at_start = LIMITER.snapshot();
+        self.request_counts_at_start = limiter_now().snapshot();
         self.requests_at_start = request_total(self.request_counts_at_start);
     }
 
@@ -214,7 +214,7 @@ obj RunSession {
     }
 
     def requests_used -> int {
-        return LIMITER.sent - self.requests_at_start;
+        return limiter_now().sent - self.requests_at_start;
     }
 
     def requests_left -> int {
@@ -696,7 +696,7 @@ def record_run(portfolio: Portfolio, run: Run, s: RunSession, status: RunStatus)
     }
     run.model_versions = {**model_chain_versions(), "sources": SOURCES_VERSION, "screen": s.collection.shortlist.version, "consensus": CONSENSUS_VERSION, "policy": f"team v{s.policy_version}", "policy_engine": POLICY_ENGINE_VERSION};
     run.policy_version = s.policy_version;
-    run.model_requests_by_role = LIMITER.since(s.request_counts_at_start);
+    run.model_requests_by_role = limiter_now().since(s.request_counts_at_start);
     run.model_requests = request_total(run.model_requests_by_role);
     count_requests(portfolio, utc_now().date().isoformat(), run.model_requests);
     _close(run, status, s.summary);

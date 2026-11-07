@@ -11,6 +11,7 @@ import logging;
 import from analysis.policy { changes, copy_policy, validate }
 import from models.policy { Policy, PolicyScope, PolicyVersion }
 import from research.collector { utc_now }
+import from research.credentials { current_credentials }
 import from run.public { public }
 
 glob LOG: logging.Logger = logging.getLogger("trading_agent.policy");
@@ -60,17 +61,18 @@ def team_policy -> tuple[Policy, int] {
     return current_of(team_versions());
 }
 
-"""Team version `number`, or the defaults for version 0 or one that is not on record."""
-def team_policy_version(number: int) -> Policy {
+"""Version `number` of the policy that drives this work's agent: its owner's inside their scope
+(research/credentials.jac), else the team's. The defaults for version 0 or one not on record."""
+def policy_version(number: int) -> Policy {
     if number <= 0 {
         return Policy();
     }
-    for v in team_versions() {
+    for v in (personal_versions() if current_credentials() is not None else team_versions()) {
         if v.version == number {
             return usable(v.policy, v.version);
         }
     }
-    LOG.warning("team policy version %s is not on record; using the defaults", number);
+    LOG.warning("policy version %s is not on record; using the defaults", number);
     return Policy();
 }
 
