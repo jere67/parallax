@@ -64,16 +64,19 @@ def:pub Layout -> JsxElement {
     }
 
     path = useLocation().pathname;
+    # The screener's table has more columns than the other pages have room for.
+    width = "max-w-[1560px]" if path.startsWith("/screener") else "max-w-[1200px]";
 
     <div className="flex min-h-dvh flex-col">
         <header className="sticky top-0 z-20 border-b border-line bg-bg/90 backdrop-blur-md">
-            <div className="mx-auto flex h-12 max-w-[1200px] items-center gap-6 px-4 sm:px-6 lg:px-8">
+            <div className={"mx-auto flex h-12 items-center gap-4 px-4 sm:gap-6 sm:px-6 lg:px-8 " + width}>
                 <Link to="/" className="flex items-center gap-2" aria-label="Trading Agent, home">
                     <Mark/>
                     <span className="display hidden text-[19px] leading-none sm:inline">Trading Agent</span>
                 </Link>
-                <nav className="flex items-center gap-6">
+                <nav className="flex items-center gap-4 sm:gap-6">
                     <NavLink to="/" active={path == "/"}>Portfolio</NavLink>
+                    <NavLink to="/screener" active={path.startsWith("/screener") or path.startsWith("/stocks")}>Screener</NavLink>
                     <NavLink to="/reports" active={path.startsWith("/reports")}>Reports</NavLink>
                     <NavLink to="/runs" active={path.startsWith("/runs")}>Runs</NavLink>
                 </nav>
@@ -96,17 +99,17 @@ def:pub Layout -> JsxElement {
         </header>
         {if info is not None and info.demo {
             <div className="border-b border-warn/25 bg-warn/10">
-                <p className="mx-auto max-w-[1200px] px-4 py-2 text-[12px] text-warn sm:px-6 lg:px-8">
+                <p className={"mx-auto px-4 py-2 text-[12px] text-warn sm:px-6 lg:px-8 " + width}>
                     <span className="font-semibold">Demo data.</span>
                     {" "}These sessions were simulated on this machine by the real consensus, risk gate, and baselines, with made-up prices and votes. Nothing here was traded.
                 </p>
             </div>
         }}
-        <main className="mx-auto w-full max-w-[1200px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <main className={"mx-auto w-full flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 " + width}>
             <Outlet/>
         </main>
         <footer className="border-t border-line">
-            <div className="mx-auto flex max-w-[1200px] flex-col gap-2 px-4 py-6 text-[12px] text-faint sm:flex-row sm:items-start sm:justify-between sm:gap-8 sm:px-6 lg:px-8">
+            <div className={"mx-auto flex flex-col gap-2 px-4 py-6 text-[12px] text-faint sm:flex-row sm:items-start sm:justify-between sm:gap-8 sm:px-6 lg:px-8 " + width}>
                 <p className="max-w-2xl">{DISCLAIMER}</p>
                 <p className="shrink-0">
                     <a href={REPO_URL} className="transition-colors duration-150 hover:text-text">Source</a>
