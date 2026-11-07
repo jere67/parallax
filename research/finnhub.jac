@@ -222,7 +222,7 @@ obj CompanyProfile {
 
 """`symbol`'s profile, or None when Finnhub does not cover it."""
 def company_profile(symbol: str, budget: RunBudget, client: SourceClient | None = None) -> CompanyProfile | None {
-    fetched = _get(client, "market.profile", "/stock/profile2", budget, {"symbol": symbol}, symbol, _check_object);
+    fetched = _get(client, "finnhub.market_profile", "/stock/profile2", budget, {"symbol": symbol}, symbol, _check_object);
     row = json.loads(fetched.body);
     if not row {
         return None;

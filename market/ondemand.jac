@@ -136,7 +136,7 @@ def stock_history(symbol: str) -> list[Bar] {
     now = datetime.now(timezone.utc) - timedelta(minutes=DELAY_MINUTES);
     bars = _bars_of(
         symbol,
-        "market.history",
+        "alpaca.market_history",
         {"timeframe": "1Day", "start": HISTORY_START, "end": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "adjustment": "all"},
         run_budget(),
         HISTORY_MAX_PAGES
@@ -156,7 +156,7 @@ def stock_intraday(symbol: str) -> list[Bar] {
     client = on_demand_client(alpaca_data_client());
     ALLOWANCE.take();
     page = json.loads(client.get(
-        DATASETS["market.intraday"],
+        DATASETS["alpaca.market_intraday"],
         "/v2/stocks/bars",
         run_budget(),
         params={
@@ -221,7 +221,7 @@ def stock_news(symbol: str) -> list[Headline] {
     }
     ALLOWANCE.take();
     fetched = on_demand_client(alpaca_data_client()).get(
-        DATASETS["market.news"],
+        DATASETS["alpaca.market_news"],
         "/v1beta1/news",
         run_budget(),
         params={"symbols": symbol, "limit": NEWS_ITEMS, "sort": "desc", "include_content": "false", "exclude_contentless": "false"},
@@ -272,7 +272,7 @@ def stock_description(symbol: str, company: str, exchange: str) -> tuple[str, st
     ALLOWANCE.take(2);
     market = "NASDAQ" if exchange == "Nasdaq" else "NYSE";
     searched = json.loads(client.get(
-        DATASETS["market.search"],
+        DATASETS["wikipedia.market_search"],
         "/w/api.php",
         run_budget(),
         params={"action": "query", "list": "search", "srsearch": f'insource:"{market}|{symbol}"', "srlimit": 5, "format": "json"}
@@ -281,7 +281,7 @@ def stock_description(symbol: str, company: str, exchange: str) -> tuple[str, st
     answer = ("", "");
     if title {
         summary = json.loads(client.get(
-            DATASETS["market.summary"],
+            DATASETS["wikipedia.market_summary"],
             "/api/rest_v1/page/summary/" + url_quote(title.replace(" ", "_"), safe=""),
             run_budget()
         ).body);

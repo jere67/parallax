@@ -91,11 +91,11 @@ obj CompanyRecord {
 }
 
 def submissions(cik: str, budget: RunBudget, client: SourceClient | None = None) -> dict[str, any] {
-    return json.loads((client or sec_data_client()).get(DATASETS["market.submissions"], f"/submissions/CIK{padded_cik(cik)}.json", budget, check=_check_keys("filings", "name")).body);
+    return json.loads((client or sec_data_client()).get(DATASETS["sec.market_submissions"], f"/submissions/CIK{padded_cik(cik)}.json", budget, check=_check_keys("filings", "name")).body);
 }
 
 def company_facts(cik: str, budget: RunBudget, client: SourceClient | None = None) -> dict[str, any] {
-    return json.loads((client or sec_data_client()).get(DATASETS["market.companyfacts"], f"/api/xbrl/companyfacts/CIK{padded_cik(cik)}.json", budget, check=_check_keys("facts")).body);
+    return json.loads((client or sec_data_client()).get(DATASETS["sec.market_companyfacts"], f"/api/xbrl/companyfacts/CIK{padded_cik(cik)}.json", budget, check=_check_keys("facts")).body);
 }
 
 """A company's profile from its submissions."""

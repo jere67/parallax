@@ -208,16 +208,15 @@ glob DATASETS: dict[str, Dataset] = {
         Dataset(name="wikipedia.history", source="wikipedia", max_age_hours=8 * DAY, cache_ttl_hours=7 * DAY),
         # The stock market pages (market/). The sweeps keep only what they reduce, so their
         # datasets are never held in the raw cache; the rest are fetched when a page asks.
-        Dataset(name="market.tickers", source="sec_archives", max_age_hours=8 * DAY, cache_ttl_hours=DAY),
-        Dataset(name="market.snapshots", source="alpaca_data", max_age_hours=4 * DAY),
-        Dataset(name="market.bars", source="alpaca_data", max_age_hours=4 * DAY),
-        Dataset(name="market.history", source="alpaca_data", max_age_hours=4 * DAY, cache_ttl_hours=6 * HOUR),
-        Dataset(name="market.intraday", source="alpaca_data", max_age_hours=4 * DAY, cache_ttl_hours=HOUR / 12),
-        Dataset(name="market.news", source="alpaca_data", max_age_hours=7 * DAY, cache_ttl_hours=HOUR),
-        Dataset(name="market.submissions", source="sec_data", max_age_hours=2 * DAY),
-        Dataset(name="market.companyfacts", source="sec_data", max_age_hours=150 * DAY),
-        Dataset(name="market.profile", source="finnhub", max_age_hours=30 * DAY),
-        Dataset(name="market.search", source="wikipedia", max_age_hours=30 * DAY, cache_ttl_hours=30 * DAY),
-        Dataset(name="market.summary", source="wikipedia", max_age_hours=30 * DAY, cache_ttl_hours=30 * DAY)
+        Dataset(name="sec.market_tickers", source="sec_archives", max_age_hours=8 * DAY, cache_ttl_hours=DAY),
+        Dataset(name="alpaca.market_snapshots", source="alpaca_data", max_age_hours=4 * DAY),
+        Dataset(name="alpaca.market_history", source="alpaca_data", max_age_hours=4 * DAY, cache_ttl_hours=6 * HOUR),
+        Dataset(name="alpaca.market_intraday", source="alpaca_data", max_age_hours=4 * DAY, cache_ttl_hours=HOUR / 12),
+        Dataset(name="alpaca.market_news", source="alpaca_data", max_age_hours=7 * DAY, cache_ttl_hours=HOUR),
+        Dataset(name="sec.market_submissions", source="sec_data", max_age_hours=2 * DAY),
+        Dataset(name="sec.market_companyfacts", source="sec_data", max_age_hours=150 * DAY),
+        Dataset(name="finnhub.market_profile", source="finnhub", max_age_hours=30 * DAY),
+        Dataset(name="wikipedia.market_search", source="wikipedia", max_age_hours=30 * DAY, cache_ttl_hours=30 * DAY),
+        Dataset(name="wikipedia.market_summary", source="wikipedia", max_age_hours=30 * DAY, cache_ttl_hours=30 * DAY)
     ]
 };
