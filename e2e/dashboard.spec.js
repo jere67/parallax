@@ -79,6 +79,100 @@ test("run: the latest run's shortlist leads to a decision's full trail", async (
   await fitsWidth(page);
 });
 
+test("news: the feed filters by address, and a story opens beside it or over it", async ({ page }) => {
+  await page.goto("/news");
+  await expect(page.getByRole("heading", { level: 1, name: "News" })).toBeVisible();
+  const rows = page.locator("a.news-row");
+  await expect(rows.first()).toBeVisible();
+  await fitsWidth(page);
+  const wide = page.viewportSize().width >= 1024;
+
+  // A wide screen opens the newest story by itself, and a narrower one waits to be asked.
+  const story = page.getByRole("region", { name: "Story" });
+  if (wide) {
+    await expect(story.getByRole("heading", { level: 2 })).toHaveText((await rows.first().locator(".news-head").innerText()).split("\n")[0]);
+  } else {
+    await expect(story).toBeHidden();
+  }
+
+  // The instrument filter narrows the feed, shows in the address, and survives a reload.
+  await page.getByLabel("Instrument").selectOption("NVDA");
+  await expect(page).toHaveURL(/ticker=NVDA/);
+  await expect(rows.first().locator(".news-ticker")).toHaveText("NVDA");
+  await page.reload();
+  await expect(page.getByLabel("Instrument")).toHaveValue("NVDA");
+  await expect(rows.first().locator(".news-ticker")).toHaveText("NVDA");
+
+  // Opening a line shows its note, its sources, and the way to the decision behind it.
+  const headline = (await rows.nth(1).locator(".news-head").innerText()).split("\n")[0];
+  await rows.nth(1).click();
+  await expect(page).toHaveURL(/\/news\/\d{4}-\d{2}-\d{2}\/NVDA\/\w+\/\d+\?ticker=NVDA/);
+  await expect(story.getByRole("heading", { level: 2 })).toHaveText(headline);
+  await expect(story.getByText("Sources", { exact: true })).toBeVisible();
+  await expect(story.getByRole("link", { name: "See the decision trail" })).toBeVisible();
+  await fitsWidth(page);
+
+  // Closing keeps the filter, and leaves a wide screen's feed at full width.
+  await page.getByRole("button", { name: wide ? "Close the story" : "All research" }).click();
+  await expect(page).toHaveURL(/\/news\?ticker=NVDA$/);
+  await expect(story).toBeHidden();
+  await expect(rows.first()).toBeVisible();
+});
+
+test("news: search narrows the feed and says when nothing matches", async ({ page }) => {
+  await page.goto("/news");
+  const rows = page.locator("a.news-row");
+  await expect(rows.first()).toBeVisible();
+  const box = page.getByRole("searchbox", { name: "Search the research" });
+  await box.fill("10-Q revenue");
+  await expect(page).toHaveURL(/q=10-Q/);
+  await expect(rows.first().locator(".news-head")).toContainText("10-Q");
+  await box.fill("no note says this");
+  await expect(page.getByText("No research matches")).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect(page).toHaveURL(/\/news$/);
+  await expect(box).toHaveValue("");
+  await expect(rows.first()).toBeVisible();
+});
+
+test("news: a story's address opens it directly, and a gone note says so", async ({ page, request }) => {
+  const feed = await request.post("/function/get_news_feed", { data: { desk: "macro", limit: 1 } });
+  const macro = (await feed.json()).data.result.items[0];
+  await page.goto(`/news/${macro.id}`);
+  const story = page.getByRole("region", { name: "Story" });
+  await expect(story.getByRole("heading", { level: 2 })).toHaveText(macro.headline);
+  await expect(story.getByRole("link", { name: "See the morning's run" })).toBeVisible();
+  await page.goto("/news/2001-01-02/AAPL/news/0");
+  await expect(story.getByText("This note could not be found.")).toBeVisible();
+  await page.goto("/news/not-an-address");
+  await expect(story.getByText("This note could not be found.")).toBeVisible();
+});
+
+test("news: a note from the news desk opens, though its address says news twice", async ({ page, request }) => {
+  const feed = await request.post("/function/get_news_feed", { data: { desk: "news", limit: 1 } });
+  const note = (await feed.json()).data.result.items[0];
+  await page.goto(`/news/${note.id}`);
+  const story = page.getByRole("region", { name: "Story" });
+  await expect(story.getByRole("heading", { level: 2 })).toHaveText(note.headline);
+  await expect(story.getByText("Sources", { exact: true })).toBeVisible();
+});
+
+test("news: going back from a story returns to the same place in the feed", async ({ page }) => {
+  test.skip(page.viewportSize().width >= 1024, "on a wide screen the feed never leaves");
+  await page.goto("/news");
+  const rows = page.locator("a.news-row");
+  await expect(rows.nth(20)).toBeAttached();
+  await rows.nth(20).scrollIntoViewIfNeeded();
+  const scrolled = await page.evaluate(() => window.scrollY);
+  expect(scrolled).toBeGreaterThan(0);
+  await rows.nth(20).click();
+  const story = page.getByRole("region", { name: "Story" });
+  await expect(story.getByRole("heading", { level: 2 })).toBeVisible();
+  await page.getByRole("button", { name: "All research" }).click();
+  await expect(story).toBeHidden();
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrolled);
+});
+
 test("an unknown address says the page was not found", async ({ page }) => {
   await page.goto("/no-such-page");
   await expect(page.getByText("Page not found")).toBeVisible();
@@ -324,6 +418,7 @@ test("mobile: the bottom tabs reach each page, and targets are a thumb's size", 
   }
   await expect(tabs).toBeVisible();
   for (const [name, path, heading] of [
+    ["News", "/news", "News"],
     ["Runs", "/runs", "Shortlist"],
     ["Policy", "/policy", "In plain English"],
     ["Reports", "/reports", "Sign in for stock reports"],
