@@ -62,7 +62,7 @@ obj ListedTicker {
 """Every exchange-listed ticker in SEC's file, by the symbol Alpaca writes."""
 def listed_tickers(budget: RunBudget, client: SourceClient | None = None) -> dict[str, ListedTicker] {
     fetched = (client or sec_archives_client()).get(
-        DATASETS["market.tickers"],
+        DATASETS["sec.market_tickers"],
         "/files/company_tickers_exchange.json",
         budget,
         check=_check_tickers

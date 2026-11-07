@@ -78,7 +78,7 @@ def snapshots(symbols: list[str], budget: RunBudget, client: SourceClient | None
     wanted = sorted(set(symbols));
     for i in range(0, len(wanted), SNAPSHOT_SYMBOLS) {
         fetched = data.get(
-            DATASETS["market.snapshots"],
+            DATASETS["alpaca.market_snapshots"],
             "/v2/stocks/snapshots",
             budget,
             params={"symbols": ",".join(wanted[i:i + SNAPSHOT_SYMBOLS]), "feed": "delayed_sip"},
