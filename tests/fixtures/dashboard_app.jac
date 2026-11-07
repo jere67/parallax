@@ -1,9 +1,9 @@
 """The dashboard's endpoints over a team graph seeded the way the scheduled job writes it, for
 dashboard_tests.jac."""
 import from action.fixtures { Call, finished_run }
-import from dashboard.api { get_decision_trail, get_performance, get_portfolio, get_run, list_runs }
+import from dashboard.api { get_decision_trail, get_performance, get_portfolio, get_run, get_specialists, list_runs }
 import from models.graph { DailyMark, Marked, Portfolio, PortfolioMode, TradeAction }
-import from models.views { PerformanceView, PortfolioView, RunSummary, RunView, TrailView }
+import from models.views { PerformanceView, PortfolioView, RunSummary, RunView, TrailView, SpecialistSummaryView, SpecialistVoteView }
 import from run.public { public }
 
 """Write a public team portfolio with one run, one decision, and one mark."""

@@ -5,9 +5,9 @@ import from run.health { health }
 import from run.jobs { morning_job, trading_job }
 import from run.manual { manual_run_job, start_morning_run }
 import from dashboard.demo { demo_job }
-import from dashboard.api { get_decision_trail, get_performance, get_portfolio, get_run, list_runs, refresh_job }
+import from dashboard.api { get_decision_trail, get_performance, get_portfolio, get_run, get_specialists, list_runs, refresh_job }
 import from dashboard.display { chart_points, money, percent, ratio }
-import from models.views { PerformanceView, PortfolioView, RunSummary, RunView, TrailView }
+import from models.views { PerformanceView, PortfolioView, RunSummary, RunView, TrailView, SpecialistSummaryView, SpecialistVoteView }
 
 import "./dashboard/theme.css";
 import from .dashboard.App { App }

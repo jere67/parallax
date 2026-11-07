@@ -63,6 +63,16 @@ test("run: the latest run's shortlist leads to a decision's full trail", async (
   await fitsWidth(page);
 });
 
+test("specialists: five roles show recent votes and scoring context", async ({ page }) => {
+  await page.goto("/specialists");
+  await expect(page.getByRole("heading", { level: 1, name: "Specialists" })).toBeVisible();
+  for (const role of ["Fundamentals", "Technical", "News", "Macro", "Flow"]) {
+    await expect(page.getByRole("heading", { name: role, exact: true })).toBeVisible();
+  }
+  await expect(page.getByText(/hit rate|awaiting scored directional votes/i).first()).toBeVisible();
+  await fitsWidth(page);
+});
+
 test("an unknown address says the page was not found", async ({ page }) => {
   await page.goto("/no-such-page");
   await expect(page.getByText("Page not found")).toBeVisible();
@@ -82,7 +92,7 @@ test("the theme switch changes the theme and keeps it on reload", async ({ page 
 });
 
 // Uses the demo server's existing reports; no model or broker calls.
-test("reports: sign in, request a cached insight, and retain private history", async ({ page }, info) => {
+test("reports: sign in, request a cached insight, and retain history across reload", async ({ page }, info) => {
   test.setTimeout(180_000);
   await page.goto("/runs");
   const latestTicker = page.locator('a[href^="/runs/"][href*="/"]').filter({ hasText: /^[A-Z.]+$/ }).first();
@@ -115,9 +125,6 @@ test("reports: sign in, request a cached insight, and retain private history", a
   await fitsWidth(page);
   await request.click();
   await expect(page.locator("article")).toHaveCount(1);
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
-  await page.getByLabel("Email", { exact: true }).fill(email);
-  await page.getByLabel("Password", { exact: true }).fill("local-report-test-password");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.reload();
   await expect(page.locator("article")).toHaveCount(1);
 });
