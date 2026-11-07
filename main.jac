@@ -8,8 +8,9 @@ import from run.jobs { morning_job, trading_job }
 import from run.manual { manual_run_job, start_morning_run }
 import from dashboard.demo { demo_job }
 import from dashboard.api { get_decision_trail, get_performance, get_portfolio, get_run, list_runs, refresh_job }
+import from dashboard.news { get_news_feed, get_news_story, news_refresh_job }
 import from dashboard.display { chart_points, money, percent, ratio }
-import from models.views { PerformanceView, PortfolioView, RunSummary, RunView, TrailView }
+import from models.views { NewsFeed, NewsStory, PerformanceView, PortfolioView, RunSummary, RunView, TrailView }
 import from models.policy_views { ChatActionReply, ChatState, PolicyCatalog, PolicyDoc, PolicySaveReply, PolicyWorkspace, ReplayView }
 
 import "./dashboard/theme.css";
