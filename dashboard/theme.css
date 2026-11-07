@@ -232,3 +232,128 @@ body {
         height: 24px;
     }
 }
+
+/* A line of the news feed. On a phone: the ticker, its view and desk, and the time on one line,
+ * with the headline under them. From a tablet up: the columns of a table. */
+.news-row {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    grid-template-areas:
+        "ticker view desk time"
+        "head head head head";
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 6px;
+}
+
+.news-time { grid-area: time; }
+.news-ticker { grid-area: ticker; }
+.news-head { grid-area: head; }
+.news-view { grid-area: view; }
+.news-desk { grid-area: desk; }
+
+/* The feed's box rounds its corners without becoming the scroller, so day headings still stick. */
+.news-pane {
+    overflow: clip;
+}
+
+/* The search box has its own clear button, in the page's colors. */
+.news-search::-webkit-search-cancel-button {
+    display: none;
+}
+
+/* The column headings only make sense when the line is laid out in columns. */
+.news-row-head {
+    display: none;
+    height: 35px;
+}
+
+/* A sheet moves the focus to its heading for screen readers, which no one needs to see. */
+.news-story-head:focus-visible {
+    outline: none;
+}
+
+/* The selected line wears a brass rule along its edge. */
+.news-row-selected {
+    box-shadow: inset 2px 0 0 var(--accent);
+}
+
+@media (min-width: 768px) {
+    .news-row {
+        grid-template-columns: 60px 52px minmax(0, 1fr) 76px 80px;
+        grid-template-areas: "time ticker head view desk";
+        align-items: start;
+        column-gap: 12px;
+    }
+
+    .news-time,
+    .news-ticker {
+        line-height: 18px;
+    }
+
+    .news-row-head {
+        display: grid;
+        align-items: center;
+    }
+}
+
+/* A day's heading stays in view under the top bar as the feed scrolls by. */
+.news-day {
+    position: sticky;
+    top: calc(3rem + env(safe-area-inset-top));
+    z-index: 1;
+}
+
+/* A story over the feed: below the top bar, above the tab bar, and scrolling on its own. */
+.news-sheet {
+    position: fixed;
+    inset: calc(3rem + env(safe-area-inset-top)) 0 calc(3.5rem + env(safe-area-inset-bottom));
+    z-index: 15;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--bg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .news-sheet {
+        animation: news-sheet-in 200ms ease-out;
+    }
+}
+
+@keyframes news-sheet-in {
+    from {
+        opacity: 0;
+        translate: 16px 0;
+    }
+}
+
+@media (min-width: 768px) {
+    .news-sheet {
+        bottom: 0;
+    }
+}
+
+/* On a wide screen the feed and the story scroll side by side, each inside its box, under the
+ * page's heading and filters. */
+@media (min-width: 1024px) {
+    .news-split {
+        height: max(480px, calc(100dvh - 21.5rem));
+    }
+
+    .news-pane {
+        height: 100%;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+    }
+
+    .news-row-head {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }
+
+    .news-day {
+        top: 35px;
+    }
+}
