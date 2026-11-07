@@ -1,20 +1,24 @@
 ---
 title: Reading the dashboard
-description: What the Portfolio, Runs, and Decision trail pages show, and how to follow one decision from research to order.
+description: What the Portfolio, News, Runs, and Decision trail pages show, and how to follow one decision from research to order.
 related:
   - { text: Dashboard internals, link: /system/dashboard }
   - { text: get_decision_trail, link: /api/get-decision-trail }
 ---
 
-The dashboard is public and read-only.
-It has three pages, and every ticker on them links to the decision trail that explains it.
+The team's portfolio, research, and runs are public and read-only, and every ticker on those pages links to the decision trail that explains it.
+Reports need an account, and a policy of your own does too.
 
 | Path | Page |
 | --- | --- |
 | `/` | Portfolio |
+| `/news` | News, the research feed |
+| `/news/:day/:ticker/:desk/:n` | News, with one note open |
 | `/runs` | Runs, showing the newest run |
 | `/runs/:day` | Runs, showing the run on a trading date |
 | `/runs/:day/:ticker` | Decision trail for one ticker on one day |
+| `/policy` | [Policies](/guide/policies) |
+| `/reports` | Reports on any ticker |
 
 The header shows when the portfolio was last marked, a **Paper** badge, the portfolio's mode (insight or auto), and the theme switch.
 The footer repeats the disclaimer: the project trades simulated money, and nothing on it is investment advice.
@@ -64,6 +68,40 @@ The open positions table lists each holding with its quantity, entry price, last
 Open a row to read the thesis the position was opened on, with a link to its decision trail.
 
 The Activity panel has two tabs: recent **Orders** with their fills, and **Closed trades** with realized profit and loss.
+
+## News
+
+The News page answers: what did the research desks find?
+It lists every note from every morning run, newest first, one line per note.
+
+| Column | Shows |
+| --- | --- |
+| Time | When the note was written, in New York time |
+| Ticker | The stock, or **Market** for the macro desk's brief |
+| Headline | The note's first clause, or the Orchestrator's question for a follow-up |
+| View | The desk's stance and confidence |
+| Desk | Market, fundamentals, news, or macro, and how many sources it read |
+
+Headlines are cut from what the desk wrote, with no model rewriting them.
+The note's first sentence or clause becomes the headline, and the story continues from there.
+
+### Filtering
+
+The bar above the feed filters by desk, ticker, view, and date, and searches the words of each note and its sources.
+**Holdings** keeps only the tickers the team holds now.
+Filters live in the page's address, so a filtered feed can be bookmarked or shared.
+
+### Reading a story
+
+Pick a line to read its note, with its sources, the risks the desk named, and any data it could not get.
+Each source shows its publication date and the claims the desk took from it.
+Sources that are API addresses needing the project's keys are named but not linked.
+
+A callout shows the panel's decision on that ticker that morning and links to its [decision trail](#decision-trail).
+A note a signed-in reader asked for is marked **Requested**, and has no decision behind it.
+
+On a wide screen the story sits beside the feed, and the newest one opens by itself.
+On a phone it opens over the feed, and going back returns to the same place.
 
 ## Runs
 
