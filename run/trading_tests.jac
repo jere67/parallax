@@ -12,7 +12,9 @@ import from analysis.history { History, bar }
 import from research.alpaca { Bar, MarketDay }
 import from models.agents { Specialist, Stance, Vote }
 import from models.graph { Coverage, Covers, Portfolio, PortfolioMode, RunStatus, TradeAction, VoteRecord, Voted }
+import from models.policy { Policy, PolicyScope }
 import from models.research { Stamp }
+import from policy.store { save_policy, team_policy }
 import from run.guard { NEW_YORK }
 import from run.trading { TradingDeps, team_trading_tick, trading_tick }
 import from tests.fakes.broker_server { FakeBroker, FakeOrder, Scripted }
@@ -272,6 +274,27 @@ test "the forward test waits for the next session once the cancel window has beg
         assert tick_at(fake, portfolio, deps, "08:00", "2026-10-22")[0].startswith("start: forward test started on 2026-10-22");
     } finally {
         os.environ.pop(FORWARD_TEST_ENV, None);
+        fake.stop();
+    }
+}
+
+test "orders are sized and gated under the policy version the run decided with" {
+    fake = FakeBroker();
+    try {
+        deps = deps_for(fake);
+        portfolio = team();
+        fake.set_price("AAA", 100.0);
+        fake.set_price("BBB", 50.0);
+        run = finished_run(portfolio, DAY, [Call(ticker="AAA", action=TradeAction.BUY, conviction=0.5), Call(ticker="BBB", action=TradeAction.BUY, conviction=0.5, sector="Energy", close=50.0, atr=1.0)]);
+        (_, base) = team_policy();
+        one_a_day = save_policy(PolicyScope.TEAM, Policy(new_positions_per_day=1), base);
+        assert one_a_day.saved;
+        run.policy_version = one_a_day.version;
+        # A policy saved after the run decided changes the next run, not this one's orders.
+        assert save_policy(PolicyScope.TEAM, Policy(new_positions_per_day=5), one_a_day.version).saved;
+        lines = tick_at(fake, portfolio, deps, "09:45");
+        assert lines[0].startswith("execute: 2 checks, 1 approved");
+    } finally {
         fake.stop();
     }
 }
