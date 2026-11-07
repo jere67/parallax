@@ -392,3 +392,5 @@ glob specialist_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role=
 glob arbiter_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role="arbiter");
 glob orchestrator_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role="orchestrator");
 glob retry_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role="retry");
+# Someone is waiting on this one, so it gives up on a slow model sooner than the run does.
+glob policy_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role="policy_chat", request_timeout_s=60.0, max_429_retries=1);
