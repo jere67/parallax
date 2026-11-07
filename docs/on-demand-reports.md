@@ -41,8 +41,11 @@ The worker uses a process-local future, so deploy one application replica for th
 
 ## Reports page
 
-Open `/reports` or use **Reports** in the dashboard navigation.
-Create an email/password account or sign in, choose a ticker, and request its report.
+Open `/app/reports` or use **Reports** in the dashboard navigation.
+The page needs an account, so a visitor who is not signed in goes to `/login` first and comes back after logging in.
+Choose a ticker and request its report.
+A member's new report runs on that member's own keys.
+Without keys, the page shows a message that points to Settings, and the member can still read cached reports.
 The page refreshes every five seconds and shows queued, running, ready, and failed requests in your own history.
 Ready cards include the thesis, risks, exit condition, specialist votes, and source links.
 Signing out hides the history; signing back in restores it.

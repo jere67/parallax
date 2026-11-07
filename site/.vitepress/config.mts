@@ -31,6 +31,7 @@ const guide: DefaultTheme.SidebarItem[] = [
     text: 'Operating',
     items: [
       { text: 'The forward test', link: '/guide/forward-test' },
+      { text: 'Your agent', link: '/guide/your-agent' },
       { text: 'Starting a run by hand', link: '/guide/manual-run' },
       { text: 'Policies and the assistant', link: '/guide/policies' },
       { text: 'Installing on a phone', link: '/guide/mobile' },
@@ -125,10 +126,17 @@ const api: DefaultTheme.SidebarItem[] = [
         ]
       },
       {
+        text: 'Account',
+        collapsed: false,
+        items: [
+          { text: 'Account endpoints', link: '/api/accounts' },
+          { text: 'user/login', link: '/api/login', badge: 'POST' }
+        ]
+      },
+      {
         text: 'Admin',
         collapsed: false,
         items: [
-          { text: 'user/login', link: '/api/login', badge: 'POST' },
           { text: 'start_morning_run', link: '/api/start-morning-run', badge: 'POST' }
         ]
       }
@@ -163,10 +171,10 @@ const design: DefaultTheme.SidebarItem[] = [
 ]
 
 export default defineConfig({
-  title: 'Trading Agent',
-  titleTemplate: ':title · Trading Agent docs',
+  title: 'Parallax',
+  titleTemplate: ':title · Parallax docs',
   description:
-    'Documentation for the Trading Agent: a Jac multi-agent system that researches S&P 500 stocks and trades them on Alpaca paper accounts.',
+    'Documentation for Parallax: a Jac multi-agent system that gives each user an agent that researches S&P 500 stocks and trades them on that user's Alpaca paper account.',
   lang: 'en-US',
   // GitHub Pages serves the site under the repository name; DOCS_BASE overrides it.
   base: process.env.DOCS_BASE ?? '/parallax/',
