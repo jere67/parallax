@@ -21,7 +21,9 @@ jobs:
   check:
     name: Check, test, build, boot
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Tests and the build alone take about 25 minutes on a hosted runner, so 30 left the browser
+    # checks a few minutes and cut them off as the suite grew.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
