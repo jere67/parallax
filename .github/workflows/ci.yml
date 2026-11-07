@@ -102,7 +102,7 @@ jobs:
           curl -sf http://localhost:8000/healthz
           curl -sf -X POST http://localhost:8000/function/health \
             -H 'Content-Type: application/json' -d '{}' | grep -q '"status": "ok"'
-          curl -sf http://localhost:8000/ | grep -q '<title>Trading Agent</title>'
+          curl -sf http://localhost:8000/ | grep -q '<title>Parallax</title>'
           echo "Server booted and answered."
 
       - uses: actions/setup-node@v7
