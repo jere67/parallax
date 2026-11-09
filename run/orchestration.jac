@@ -8,7 +8,8 @@ finishes whatever is left in fixed order and marks the run fallback.
 """
 import from jaclang.byllm.types { IterationAction, IterationContext }
 import from agents.orchestrator { Committee }
-import from run.guard { RunOutcome, RunSession, daily_run, team_portfolio, trading_date_now }
+import from policy.store { team_policy }
+import from run.guard { RunLimits, RunOutcome, RunSession, daily_run, team_portfolio, trading_date_now }
 
 # Requests the loop keeps back for its own closing summary.
 glob SUMMARY_RESERVE: int = 2;
@@ -30,9 +31,10 @@ def orchestrate(s: RunSession) -> str {
     return committee.run(s.run_day, ", ".join(s.tickers()));
 }
 
-"""The team's morning run for `run_day` (today in New York by default)."""
+"""The team's morning run for `run_day` (today in New York by default), under the team policy
+in force."""
 def morning_run(run_day: str = "") -> RunOutcome {
-    return daily_run(team_portfolio(), run_day or trading_date_now(), orchestrate);
+    return daily_run(team_portfolio(), run_day or trading_date_now(), orchestrate, RunLimits(), team_policy());
 }
 
 """The daily pipeline as a walker (TDD §3, code sketch). It is not an endpoint: main.jac does

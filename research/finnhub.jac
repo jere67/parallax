@@ -210,6 +210,32 @@ def eps_surprises(symbol: str, budget: RunBudget, client: SourceClient | None = 
     return sorted(surprises, key=lambda (s: EpsSurprise) { s.period; }, reverse=True);
 }
 
+"""What Finnhub lists for a company, kept to the figures and facts market/ needs. A market cap
+is in millions of `currency`, which is the home market's for a foreign listing."""
+obj CompanyProfile {
+    has symbol: str,
+        currency: str,
+        market_cap: float | None,
+        ipo: str,
+        website: str;
+}
+
+"""`symbol`'s profile, or None when Finnhub does not cover it."""
+def company_profile(symbol: str, budget: RunBudget, client: SourceClient | None = None) -> CompanyProfile | None {
+    fetched = _get(client, "finnhub.market_profile", "/stock/profile2", budget, {"symbol": symbol}, symbol, _check_object);
+    row = json.loads(fetched.body);
+    if not row {
+        return None;
+    }
+    return CompanyProfile(
+        symbol=symbol,
+        currency=str(row.get("currency") or ""),
+        market_cap=_number(row.get("marketCapitalization")),
+        ipo=str(row.get("ipo") or ""),
+        website=str(row.get("weburl") or "")
+    );
+}
+
 """The KEY_METRICS for `symbol`, or None when Finnhub has none of them."""
 def key_metrics(symbol: str, budget: RunBudget, client: SourceClient | None = None) -> KeyMetrics | None {
     fetched = _get(client, "finnhub.metrics", "/stock/metric", budget, {"symbol": symbol, "metric": "all"}, symbol, _check_metrics);
@@ -278,6 +304,10 @@ def _parse(body: str) -> object {
 
 def _check_list(body: str) -> str {
     return "" if isinstance(_parse(body), list) else f"expected a list: {body[:200]}";
+}
+
+def _check_object(body: str) -> str {
+    return "" if isinstance(_parse(body), dict) else f"expected an object: {body[:200]}";
 }
 
 def _check_calendar(body: str) -> str {

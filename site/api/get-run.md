@@ -1,14 +1,15 @@
 ---
 title: get_run
 description: One morning run - its status, summary, market backdrop, action log, and one row per covered ticker from screen to order.
-api: { method: POST, path: /function/get_run, auth: none }
+api: { method: POST, path: /function/get_run, auth: Bearer token }
 related:
   - { text: list_runs, link: /api/list-runs }
   - { text: get_decision_trail, link: /api/get-decision-trail }
   - { text: Reading the dashboard, link: /guide/dashboard#runs }
 ---
 
-Returns one run with a row per covered ticker.
+Returns one run of the caller's own agent with a row per covered ticker.
+It needs a bearer token.
 Each row carries the ticker's whole path in brief: why it was covered, the consensus, the decision, the risk gate's outcome, and the order.
 The newest run is rebuilt every minute; other dates are built on first request and cached for 120 seconds.
 

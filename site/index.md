@@ -1,15 +1,15 @@
 ---
 layout: home
-title: Trading Agent docs
+title: Parallax docs
 titleTemplate: false
-description: How the Trading Agent screens the S&P 500, researches a shortlist, decides through a consensus of specialist agents, and trades on Alpaca paper accounts.
+description: How Parallax screens the S&P 500, researches a shortlist, decides through a consensus of specialist agents, and trades on Alpaca paper accounts.
 ---
 
 <section class="hero">
 <div>
 <p class="hero-overline">EECS 449 · Fall 2026</p>
 <h1 class="hero-title display">A trading desk of agents, <em>with every decision on file.</em></h1>
-<p class="hero-lede">The Trading Agent screens the S&amp;P 500 every trading day, researches a shortlist from free data sources, decides through a stochastic consensus of five specialist agents, and trades on an Alpaca paper account. Every report, vote, risk check, and order is recorded and shown on a public dashboard.</p>
+<p class="hero-lede">Parallax gives each user an agent that screens the S&amp;P 500 every trading day, researches a shortlist from free data sources, decides through a stochastic consensus of five specialist agents, and, if its owner turns it on, trades on that user's Alpaca paper account. Every report, vote, risk check, and order is recorded and shown to the user whose agent made it.</p>
 <div class="hero-actions">
 <a class="btn btn-primary" href="./guide/quickstart">Run it locally <Icon name="arrow-right" /></a>
 <a class="btn" href="./system/architecture">How it works</a>
@@ -24,10 +24,10 @@ set -a && source .env && set +a
 jac install
 TRADING_AGENT_DEMO=1 TRADING_AGENT_DISABLE_ORDERS=1 \
   jac run --dev main.jac
-# the dashboard: http://localhost:8000
+# the landing page: http://localhost:8000 (the dashboard needs an account)
 ```
 
-<p class="code-caption">Demo mode fills the dashboard with a few weeks of made-up sessions and sends no orders.</p>
+<p class="code-caption">Demo mode shows every account the same few weeks of made-up sessions and sends no orders.</p>
 </div>
 </section>
 
@@ -72,10 +72,11 @@ TRADING_AGENT_DEMO=1 TRADING_AGENT_DISABLE_ORDERS=1 \
 
 <Cards :cols="3">
 <Card title="Run it locally" icon="terminal" link="/guide/quickstart">Install Jac, export the keys, and serve the app with demo data in a few minutes.</Card>
+<Card title="Set up your agent" icon="user" link="/guide/your-agent">Sign up, connect your keys, start a run, and turn on paper trading.</Card>
 <Card title="Read the dashboard" icon="chart" link="/guide/dashboard">What the Portfolio, Runs, and Decision trail pages show, figure by figure.</Card>
 <Card title="Follow a decision" icon="network" link="/system/architecture">From the universe screen to a filled order: every layer and what it writes.</Card>
 <Card title="Check the risk controls" icon="shield" link="/system/risk-gate">The ten deterministic rules every order passes, in the order they run.</Card>
-<Card title="Call the API" icon="book" link="/api/overview">The public endpoints the dashboard reads, with request and response examples.</Card>
+<Card title="Call the API" icon="book" link="/api/overview">The endpoints the dashboard reads, which all need an account, with request and response examples.</Card>
 <Card title="Read the design" icon="file" link="/design/tdd">The technical design, requirements, spikes, and the exit runs of each phase.</Card>
 </Cards>
 </section>

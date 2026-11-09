@@ -1,13 +1,15 @@
 ---
 title: get_portfolio
-description: The team portfolio now - equity, returns, drawdown, exposure, open positions, closed trades, and recent orders.
-api: { method: POST, path: /function/get_portfolio, auth: none }
+description: The caller's own portfolio now - equity, returns, drawdown, exposure, open positions, closed trades, and recent orders.
+api: { method: POST, path: /function/get_portfolio, auth: Bearer token }
 related:
   - { text: Data types, link: /api/types#portfolioview }
   - { text: Reading the dashboard, link: /guide/dashboard#portfolio }
 ---
 
-Returns the team portfolio as of its last mark.
+Returns the caller's own agent portfolio as of its last mark.
+It needs a bearer token; an anonymous call answers `401`.
+The admin gets the team portfolio, and on a server in demo mode every account gets the demo portfolio.
 The dashboard's header and Portfolio page are built from this one call.
 The view is rebuilt every minute and cached for up to 120 seconds.
 
@@ -25,14 +27,14 @@ Money is in dollars, returns are fractions, and a missing figure is `null`, neve
 
 ### Before the forward test
 
-When no team portfolio exists yet, the response is a minimal view: `name` is `"team"`, `mode` is `"insight"`, and `started` is `false`.
+When the caller has no portfolio yet, the response is a minimal view: `name` is `"agent"`, `mode` is `"insight"`, and `started` is `false`.
 Every figure is `null` and every list is empty.
 
 ### Fields
 
 <Param name="name" type="string" required>
 
-The portfolio's name, always `"team"`.
+The portfolio's name: `"agent"` for a user's own agent, `"team"` for the admin's.
 
 </Param>
 <Param name="mode" type="string" required>

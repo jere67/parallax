@@ -37,7 +37,7 @@ import from models.agents { Domain, Evidence, MacroReport, ResearchReport, RiskR
 import from models.graph { OrderSide, TradeAction }
 import from models.research { RegimeInputs }
 import from research.alpaca { alpaca_headers }
-import from run.analysis { Holding, TickerAnalysis, analyze }
+import from run.analysis { DecisionRule, Holding, TickerAnalysis, analyze }
 
 glob RUN_ENV: str = "TRADING_AGENT_RUN_SPIKE";
 glob BARS_URL: str = "https://data.alpaca.markets/v2/stocks/bars";
@@ -299,7 +299,7 @@ def rerun_picks(run: StoredRun, held: set[str], keep: int) -> tuple[list[Pick], 
         research = {t: research_of(run.tickers[t]) for t in batch};
         holdings = {t: Holding(ticker=t) for t in batch if t in held};
         before = LIMITER.sent;
-        for a in analyze(run.day, research, run.macro, holdings, sessions, CURRENT) {
+        for a in analyze(run.day, research, run.macro, holdings, sessions, DecisionRule(config=CURRENT)) {
             c = a.consensus;
             analyses.append(a);
             picks.append(Pick(day=run.day, ticker=a.ticker, action=a.action(), conviction=a.conviction(), score=c.score if c is not None else None, agreement=c.agreement if c is not None else None, ci_low=c.ci_low if c is not None else None, note=a.forced_hold_reason));

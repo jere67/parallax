@@ -22,7 +22,7 @@ This design therefore uses multiple agents for research and for independent spec
 4. **Free model inference.** Every agent runs on a free model through OpenRouter, so the system has no per-token cost.
 5. **Stochastic consensus.** Each trade decision aggregates repeated, independent samples from specialists in fundamentals, technicals, news, macro, and insider and institutional flow, so disagreement is measured rather than hidden.
 6. **Two action modes.** Auto mode places paper orders; insight mode publishes the recommendation for a human to act on.
-7. **Two user surfaces.** A public dashboard of the team-run portfolio, and on-demand insight reports for any S&P 500 ticker.
+7. **One agent per user.** Anyone can sign up, connect their own keys, and run their own agent, policy, and paper account, private to them, plus on-demand insight reports for any S&P 500 ticker (Section 9).
 8. **Full transparency.** Every report, vote, decision, risk check, and order is logged and viewable.
 
 ### Non-goals
@@ -118,7 +118,7 @@ Where those docs are silent, it cites the runtime source at the same tag and the
 | `edge` | Typed relationships declared with endpoints, such as `edge Covers: Run --> Coverage {}` and a `Decision` to its `Order` ([OSP reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/language/osp.md)) |
 | `obj` | Typed agent inputs and outputs, validated by byLLM and copied into nodes for storage |
 | `enum X: str` | Values an agent returns, such as `Stance`; byLLM turns a `: str` enum into a string schema ([byLLM reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/byllm.md)), while a plain enum becomes an integer schema and rejects `"BUY"` ([source](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/byllm/impl/schema.impl.jac#L232)) |
-| `def ... by <role_llm>()` | Each agent role, called through that role's own model instance; `sem` strings carry the role instructions |
+| `def ... by <role_llm>()` | Each agent role, called through that role's own model instance; docstrings and types always reach the model, and `sem` strings only when the program holds its compiled `sem` map, which a built `.jab` does not ([#172](https://github.com/jere67/parallax/issues/172)) |
 | `by <role_llm>(tools=[...])` | The Orchestrator's ReAct loop over sub-agent tools, bounded by `max_react_iterations` and an `on_iteration` hook that can return `ABORT_WITH_SUMMARY` |
 | `obj LimitedModel(Model)` | One subclass that gates every provider request through the shared rate limiter, backs off on 429s, and falls back to a second model |
 | `walker` | The daily pipeline and any endpoint that traverses the graph |
@@ -344,7 +344,8 @@ Each rule names its evidence: the bundled docs, the runtime source at the `v0.37
 3. **Budget for retries.** A failed parse is retried up to `max_output_retries` times with corrective feedback, for 1 + `max_output_retries` attempts in all ([byLLM reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/byllm.md)); timeouts, connection errors, and 5xx responses are retried up to twice more ([source](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/byllm/llm.impl/basellm.impl.jac#L1460-L1478)); every retry is a request.
    The project sets `max_output_retries = 1`; after that, the call site catches `OutputConversionError` (imported from `jaclang.byllm.lib`) and falls back as in Section 4.
 4. **String enums for model outputs.** A plain `enum` becomes an integer schema, so the model's `"BUY"` fails validation; `enum Stance: str` with a score map in code avoids that (sources in the table above).
-   Ranges such as confidence in [0, 1] are not part of the schema, so they go in `sem` text and in a `postinit` check, which byLLM treats as a parse failure and retries ([source](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/byllm/impl/mtir.impl.jac#L306-L316); spike).
+   Ranges such as confidence in [0, 1] are not part of the schema, so a `postinit` check enforces them, which byLLM treats as a parse failure and retries ([source](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/byllm/impl/mtir.impl.jac#L306-L316); spike).
+   `sem` text can state a range too, but a built `.jab` loads no `sem` text, so a server started that way sends the model only docstrings and types, and the check is the only guard ([#172](https://github.com/jere67/parallax/issues/172)).
 5. **Launch `flow` through a helper.** The call inside `flow` runs on the worker thread, so a loop or comprehension variable can change before it is read; a helper whose parameter holds the value fixes it ([concurrency reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/language/concurrency.md)).
    The `jac guide jac-concurrency` example still shows the racy form, so follow the reference.
    Only scalars, freshly built values, and `imm` values may cross into `flow`; an object held in a variable or parameter is rejected as not sendable (E1308), by `jac check` and by `jac run` alike.
@@ -371,6 +372,7 @@ trading-agent/
   models/                  # node, edge, obj, and enum definitions; no server-only imports
   agents/                  # role model instances, orchestrator, research sub-agents, specialists, arbiter
   research/                # collectors (one module per source, with caching and rate limits), screener
+  market/                  # whole-market data for the screener and stock pages, apart from the research pipeline
   analysis/                # consensus engine, indicators
   action/                  # portfolio constructor, risk gate, executor
   run/                     # DailyRun walker, Run Guard, scheduled jobs
@@ -667,7 +669,51 @@ Conviction is |C| × A.
 The buy thresholds started at C ≥ 0.35 and A ≥ 0.6, and no ticker reached them in the first three live runs (November 2 to 4, 2026), so they are now 0.2 and 0.5 ([decision backtest](spikes/2026-11-04-decision-backtest.md)); all thresholds are retuned as the forward test adds history.
 In code, a held position's exit condition triggers when its time stop has passed; price exits are the stop orders the Action layer places (Section 8), and an event exit is the Arbiter's text for the next run's research to test.
 The thresholds, the ambiguity band, and the 60% minimum share of valid samples live in `ConsensusConfig` (`analysis/consensus.jac`), versioned with `CONSENSUS_VERSION`, which each run records.
+These thresholds are the default policy's, and each account can change its own within hard limits (see Policies below).
 The Action layer turns conviction into position size (Section 8).
+
+### Policies
+
+A policy says when to buy, sell, trim, and hold, and sets the limits a run sizes and gates with.
+It has two parts: bounded numbers (the decision rule's thresholds, sizing, and the risk gate's limits) and typed rules, each up to five conditions on a fixed set of metrics with one effect.
+Rules are data, never code or free text, so the same policy always gives the same decision (`models/policy.jac`, `analysis/policy.jac`).
+With nothing saved, the default policy is this section's decision rule and Section 8's limits, so a team that never opens the Policy page trades exactly as before.
+
+| Rule effect | What it does | Applies to |
+| --- | --- | --- |
+| `avoid_buy` | No BUY or ADD while its conditions all hold | Buys |
+| `buy_only_if` | A BUY or ADD only while its conditions all hold | Buys |
+| `keep` | HOLD a position the thresholds or its time stop would sell or trim | Held stocks |
+| `trim` | Sell part of a held position | Held stocks |
+| `sell` | Exit a held position | Held stocks |
+
+Code settles a ticker in a fixed order: the thresholds draw the first action, entry rules can block a buy, keep rules can hold a position, and exit rules act last, so risk can always come off.
+A ticker the panel could not decide stays a forced HOLD that only an exit rule can change.
+A rule whose metric is unknown for a stock, with no condition already false, is skipped and noted rather than guessed.
+The Arbiter then reviews the result under its usual one-sided authority, so a rule can never talk the panel into an unreviewed buy.
+
+Every number has a hard limit no policy can loosen, checked by code at each save and again when a run reads the policy: a position of at most 15% of equity, a sector of at most 40%, gross exposure of at most 95%, a drawdown halt of at most 20%, and so on (`KNOBS`, `analysis/policy.jac`).
+A stored policy that no longer passes its limits gives way to the defaults.
+
+Each account has one policy, and it decides that account's own agent from its next morning run (Section 9).
+The admin's is the team agent's.
+A policy is never edited in place: a save adds a `PolicyVersion` numbered one past the newest, naming the version it was edited from, and a stale save is refused.
+A run records the version it used, and its orders are sized and gated with that version even if the policy changes before they are placed.
+
+A replay (`policy/replay.jac`) applies any policy to what the account's own latest run stored, so an editor can show what a draft would have done as it changes, with no orders and no model request.
+"Held" means the agent held the stock that morning.
+The Arbiter reviewed only the action the run's policy proposed, so a replay honors its downgrade of a buy and marks a buy it never saw as unreviewed.
+Runs before November 5, 2026 did not store the price indicators, so rules on those metrics are skipped for them.
+
+**The policy assistant** (`agents/policy_assistant.jac`, `policy/chat.jac`) answers questions about a policy and turns plain English into proposed edits.
+The model never changes anything.
+Its edits are typed, an edit naming a setting or metric that does not exist fails the parse and is retried once, and code applies the rest to a copy and checks them against the same limits as the form.
+Its prompt's docstring says how to write each kind of edit, and effects and operators are enums so the response schema lists their values, because `sem` text does not reach the model from a built `.jab` (Section 3, rule 4).
+On November 6, 2026, `tests/spikes/policy_chat_spike.jac` passed all six of its requests against the real free models: four edits, one explanation, and one refused price prediction.
+The user then sees what would change and what it would have done in the latest run, and only their confirmation saves it, through the same path as the form.
+It calls the model on the user's own OpenRouter key, and the admin's on the server's.
+A request holds a database transaction, so a model call never runs inside one: the message is stored, a pool thread asks the model only once that has committed, and the client collects the answer by polling.
+A transaction that fails, as a serialization conflict can, therefore leaves no model call behind and loses no finished answer, and the client sends a conflicted request again.
 
 ### Arbiter
 
@@ -760,39 +806,75 @@ Every run publishes a card for each covered ticker in both modes; in auto mode i
 
 | Portfolio | Mode | Notes |
 | --- | --- | --- |
-| Team portfolio | Auto | The public track record |
+| A user's agent | Research until its owner turns on paper trading, then auto | Section 9 |
+| Team agent | Auto | The admin's, on the server's keys |
 | On-demand reports | Insight only | Never places orders |
-| Connected user accounts (stretch) | Mirror or insight | See Section 16 |
 
 ## 9. Product surfaces
 
-Users reach the agent through two core surfaces: anyone can watch the team portfolio, and signed-in users can request reports on any S&P 500 ticker.
-Mirroring trades into users' own Alpaca paper accounts is a stretch goal.
-Both core surfaces reuse the same pipeline, so the only added model requests come from new on-demand reports.
+The product is named Parallax.
+The front page says what it does, and everything past it takes an account: each user signs up, connects their own keys, and gets their own agent, policy, reports, and paper account, which nobody else can see.
 
-| Surface | Who | Login | What they get | Milestone |
-| --- | --- | --- | --- | --- |
-| Public team portfolio | Anyone | None | Live positions, performance against SPY, daily decisions with full reasoning, specialist statistics | MVP (Pitch Week) |
-| On-demand insight reports | Signed-in users | Email and password, or Google SSO (`[scale.sso.google]`; [HTTP reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/jac-scale-http.md)) | A full analysis of any S&P 500 ticker, cached per day; three new reports per user per day (proposed) | Launch Week |
-| Connected paper account | Signed-in users who opt in | Plus Alpaca OAuth | The team portfolio mirrored into their own paper account | Stretch goal |
+| Surface | Who | What they get |
+| --- | --- | --- |
+| Front page | Anyone | What the product does, with a worked example, and no user's data |
+| Your agent | Signed-in users | Their own morning runs, decisions, positions, and performance against SPY, with the full trail behind each decision |
+| Your policy | Signed-in users | The rules behind every decision, in plain English, with a replay of their latest run under any draft and an assistant that proposes changes (Section 7) |
+| On-demand insight reports | Signed-in users with keys | A full analysis of any S&P 500 ticker, cached per day, on the requester's keys; three new reports per user per day |
 
-### Connecting an Alpaca paper account (stretch goal)
+### Accounts
 
-1. The user clicks Connect on the dashboard.
-2. The app redirects to Alpaca's authorize URL with `env=paper` and `scope=trading`, plus a random `state` value.
-3. The user approves the paper account on Alpaca's consent screen.
-4. Alpaca redirects back with a one-time code; the backend verifies `state` and exchanges the code for an access token server-side.
-5. The token is encrypted at rest on the user's own root, which only that user's authenticated endpoints can reach, and is never sent to the browser.
-6. The user chooses Mirror or Insight only, and can disconnect at any time, which deletes the token.
+Sign-up is open and takes an email and a password.
+There is no Google, passkey, or single sign-on, and no forgot-password link, because none of them is set up; a signed-in user can change their password, and the admin can reset one by hand.
 
-Alpaca's OAuth grant can cover a live account, a paper account, or both, and the code is exchanged for a token from the backend ([Alpaca OAuth docs](https://docs.alpaca.markets/us/docs/using-oauth2-and-trading-api)).
-The app always requests `env=paper`, and the executor refuses any token whose account is not a paper account.
-A user with several paper accounts authorizes each one separately.
+Privacy is enforced by the server.
+Every data endpoint is `def:priv`, so an anonymous call gets a 401, and only the front page, health, and static files are public.
+A guard in the client sends a reader with no token to log in and back, but it is only a courtesy: the endpoints are the control.
+
+### Agents
+
+Each user has one agent, on one Alpaca paper account, on their own keys.
+
+| Key | Needed | What it does |
+| --- | --- | --- |
+| Alpaca paper key and secret | Required | Market data and the account the agent trades. A live account is refused. |
+| OpenRouter | Required | The free models. A full run uses about 460 requests, so it needs OpenRouter's one-time $10 credit, which raises the free limit from 50 requests a day to 1,000. |
+| Finnhub | Optional | Fundamentals, earnings dates, and analyst views. Without it they are data gaps the specialists abstain on (Section 7). |
+
+**Keys.** Each key is checked with its provider before it is stored (`accounts/providers.jac`).
+It is sealed with AES-256-GCM under a key derived with HKDF from the server's `PARALLAX_KEYS_SECRET`, bound to its owner and name so a sealed value cannot be moved to another account (`accounts/vault.jac`).
+It never comes back to the browser; the page shows its last characters.
+A secret that changes leaves stored keys unreadable, and the owner is asked to connect them again.
+A server without the secret refuses to store any.
+
+**Whose work is whose.** An agent's graph lives on its owner's root, so the graph's own permissions keep it private.
+An `AgentAccount` holds the sealed keys on `root.shared` with no grant, which only its owner and the super root can read.
+A static job runs on the super root, and to work on an agent it becomes the owner (`as_agent` in `run/agents.jac`, through `set_user_root`), so what it writes is the owner's.
+A job's firing must end on the super root: an edit to an existing node commits only if the context ends on its owner or the system root.
+A job never writes a node its owner's requests can write, because a conflict at commit would run the whole job again, which is why a portfolio is made when the owner connects their keys.
+
+**One user's keys on one user's work.** A `ContextVar` holds the keys for the work in hand (`research/credentials.jac`), and every collector and model call reads it.
+Inside a scope, a user key has no fallback to the server's environment, so a member's run can never spend the team's keys.
+Rate limits follow the key: each has its own limiter, because two users' free tiers are unrelated.
+Error text is redacted of the keys in scope before it is stored or logged.
+
+**Schedule.** A morning run takes about half an hour and a job's writes commit when it ends, so three static slot jobs each take one agent per firing, oldest account first.
+An agent is due on a weekday from 7:30 to 9:15 a.m. New York time, so a later agent can still finish before the orders go out at 9:45, or when its owner starts today's run in Settings.
+`PARALLAX_MAX_AGENTS`, 10 by default, caps the agents a server keeps, since each run holds a thread and thousands of model requests a server cannot pool.
+Which agent is running lives in the process, so this assumes one server, as the deployment does; after a restart, a run that had not committed starts again, since nothing it did was saved.
+
+**Orders.** A new agent researches and decides, and places nothing.
+Its owner turns on paper trading in Settings with a confirmation, which takes effect at the agent's next trading tick.
+The broker refuses any host but Alpaca's paper host, and any account whose number is not a paper account's (Section 8).
+
+**The team agent.** The admin account inherits the existing agent, its history, and its policy, on the portfolio on `root.shared`, and keeps the server's environment keys and its own jobs, so a server carries on unchanged after an upgrade.
+Everyone else starts empty.
+With `TRADING_AGENT_DEMO` set, every account reads the demo history, and runs and trading are refused.
 
 ### Launch hook
 
-The marketing hook is transparency: "Watch an AI investment committee think."
-Every trade links to the votes, the dissent, and the sources behind it, which is the feature the landing page and demo video lead with.
+The hook is transparency: every trade links to the votes, the dissent, and the sources behind it, which is what the front page and demo video lead with.
+The front page (`dashboard/Landing.jac`) shows an example vote whose decision follows a buy bar the reader can drag, labeled as made up, and it calls no endpoint.
 
 ### Disclaimers
 
@@ -800,20 +882,56 @@ Every page states that the product is an educational student project using simul
 
 ## 10. Dashboard
 
-The dashboard is a jac-client React-style app served by the same `jac run` process, with six pages built around one idea: every number links down to the evidence behind it.
+The dashboard is a jac-client React-style app served by the same `jac run` process, with its pages built around one idea: every number links down to the evidence behind it.
 It is built last, but a read-only Portfolio page and Decision page must exist for Pitch Week.
-The backing endpoints are `def:pub` functions that read `root.shared` explicitly (Section 11), and `main.jac` imports every one of them (Section 3; [endpoints guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-endpoints.md)).
+The backing endpoints are `def:priv` functions that read the caller's own agent (Section 9), and `main.jac` imports every one of them (Section 3; [endpoints guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-endpoints.md)).
 
 | Page | Access | Shows | Backing endpoints |
 | --- | --- | --- | --- |
-| Portfolio | Public | Equity curve against SPY, Sharpe, max drawdown, open positions with entry, P&L, stop, and thesis | `get_portfolio`, `get_performance` |
-| Today | Public | The run's shortlist, each ticker's action and conviction, run status (normal or fallback), run summary, and the past runs | `get_run`, `list_runs` |
-| Decision detail | Public | The full trail for one ticker: research reports and sources → every specialist sample → consensus score, agreement, interval → Arbiter → risk gate → order and fill | `get_decision_trail` |
-| Specialists | Public | Hit rate, calibration curve, and recent votes per specialist | `get_specialist_stats` |
-| Reports | Signed in | Request a ticker report, view past reports, remaining daily quota | `request_report`, `list_reports` |
+| Portfolio | Signed in | Equity curve against SPY, Sharpe, max drawdown, open positions with entry, P&L, stop, and thesis | `get_portfolio`, `get_performance` |
+| News | Signed in | Every research note of the reader's own agent, and the reports they asked for, as a filterable feed of headlines beside the note itself: its view, confidence, sources, risks, data gaps, and a link to the decision it fed | `get_news_feed`, `get_news_story` |
+| Today | Signed in | The run's shortlist, each ticker's action and conviction, run status (normal or fallback), run summary, and the past runs | `get_run`, `list_runs` |
+| Decision detail | Signed in | The full trail for one ticker: research reports and sources → every specialist sample → consensus score, agreement, interval → Arbiter → risk gate → order and fill | `get_decision_trail` |
+| Specialists | Signed in | Hit rate, calibration curve, and recent votes per specialist | `get_specialist_stats` |
+| Screener | Signed in | Every U.S.-listed stock, filtered and sorted by any of about 90 fields, with the screen held in the address | `screen_stocks` |
+| Stock | Signed in | One stock's price chart with peers to compare, key figures, company, financials, technicals, analyst view, seasonality, headlines, and filings | `get_stock`, `get_stock_history`, `get_stock_about` |
+| Reports | Signed in | Request a ticker report, view past reports, remaining daily quota, and what the reader's policy makes of each report | `request_report`, `list_reports` |
+| Policy | Signed in | The policy in plain English, the latest run replayed under it, its rules and numbers, its version history, and the policy assistant | `get_policy_catalog`, `get_team_policy`, `preview_policy`, `get_policy_workspace`, `save_policy_version`, `restore_policy_version`, `get_policy_chat`, `send_policy_message`, `apply_policy_proposal`, `discard_policy_proposal` |
+| Settings | Signed in | Connect and remove keys, today's run, paper trading, change password, log out | `get_agent_settings`, `save_agent_keys`, `remove_agent_keys`, `start_my_run`, `set_paper_trading` |
 | Admin | Team only | Run logs, collector health, model calls and latency per agent, request-cap headroom | Admin-only `/admin/llm/telemetry/*` endpoints ([byLLM reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/byllm.md)); `/admin/logs` needs `[scale.monitoring] loki_enabled = true`, so local development reads server logs instead |
 
 A Live committee page (real-time run progress through polling or a [streaming endpoint](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-streaming.md)) and an Account page for connected Alpaca accounts are stretch goals.
+
+### Mobile
+
+The dashboard is an installable progressive web app.
+Under 768px the top bar's links give way to a bottom tab bar, safe-area insets keep it clear of a phone's notch and home indicator, and form controls are at least 44px tall with 16px text, since iOS zooms a page when a smaller field takes focus.
+On a phone the policy assistant is a bottom sheet behind a floating button, and the same component is a sidebar on a wide screen.
+A table on a wide screen is a list of cards on a phone, so the shortlist, positions, and orders never scroll sideways: the page renders both, and CSS shows the one that fits.
+A long list of orders or closed trades shows its ten newest cards and adds ten on each press, so it does not run the page on for screens.
+
+`assets/manifest.json` and `assets/sw.js` are served from the root, so the service worker's scope is the whole app; Jac's built-in `[client.pwa]` registers its worker under `/static/`, which would limit its scope to that path.
+The worker keeps the app's shell for a phone with no signal and serves hashed bundles from its cache, and it never caches an API call or a POST, so a figure on screen is never older than the page says.
+A banner says when the browser is offline.
+The Playwright device matrix (Section 14) checks all of this on Chromium and WebKit phones.
+
+### Market pages
+
+The Screener and Stock pages cover the whole U.S. market, about 5,600 stocks: what SEC lists and Alpaca can trade, without warrants, units, rights, preferreds, notes, or funds.
+They are separate from the universe screen (Section 5), and nothing in them reaches an agent.
+Like the rest of the app they need an account, and a stock's page shows what the reader's own agent last did about it.
+
+- **Filled by background sweeps.** A job fires every minute and starts two passes on their own threads, each behind a lock, so a slow pass is skipped rather than stacked and the scheduler's other jobs never wait.
+  The main pass reads quotes, earnings dates, a year of bars, and company filings, resuming where it stopped; the analyst pass reads six stocks' Finnhub records a minute on a three-day cycle.
+  SEC and Finnhub sweeps stand aside from 7:15 to 9:45 ET on weekdays for the morning run (Section 4).
+- **Stored in files, not the graph.** Each domain is a JSON file under `.jac/market/`, replaced atomically, since about 5,600 rows a minute would be far too slow as nodes (Section 11).
+- **Pages read memory.** `screen_stocks` and `get_stock` answer from rows rebuilt only when a pass changes something, so a query takes no source call.
+  Price history, headlines, and descriptions are read on demand under a shared allowance of 40 calls a minute, past which the endpoint answers `busy` and the page retries.
+- **Numbers from filings, not vendors.** P/E is market cap over trailing net income, which holds for ADRs and share classes alike, and a loss has none.
+  Filers reporting in IFRS have prices and technicals but no SEC figures, and a figure with no source is a dash.
+- **Doubt shows as a dash.** XBRL carries filers' scale errors and stray tags, and one of them would otherwise top every sort, so a share count, EPS, dividend, or ratio outside a believable range is unknown rather than shown.
+  Today's move is measured from the split-adjusted close when the snapshot's own is far from it, since a reverse split that morning would otherwise read as a thirty-fold gain.
+- **Left out for want of a free source.** Community posts, options, bonds, ETF holdings, company logos, employee counts, and share float.
 
 ### Design notes
 
@@ -837,6 +955,8 @@ A Live committee page (real-time run progress through polling or a [streaming en
   The portfolio is flagged `demo`, every page says so, and the scheduled jobs never run, trade, reconcile, or score it.
   The variable is never set on a deployed server.
 - **No raw data redistribution.** Pages show derived analysis, short quotes of our own agents' text, and links to original sources.
+  The market pages are the exception for prices: they show Alpaca's quotes and bars as they come, which needs checking against Alpaca's terms before any public launch.
+  Their company figures are SEC's public filings, and from Finnhub they show only derived scores and percentages and public facts such as a website.
 - **Pages never trigger model calls.** Public pages read state the pipeline already stored, so they load instantly and cannot spend the request budget.
 
 ## 11. Data model and storage
@@ -862,9 +982,12 @@ root.shared (written by the scheduled job; READ granted on each node)
                  ├─ ConsensusResult
                  ├─ Decision ──[checked_by]──> RiskCheck ──[placed]──> Order ──[filled_by]──> Fill
                  └─ InsightCard
+  └─ PolicyVersion(team)*
 user root (the caller's own root; JWT required)
   ├─ UserProfile
-  └─ ReportRequest* ──[uses]──> Coverage (shared daily cache)
+  ├─ ReportRequest* ──[uses]──> Coverage (shared daily cache)
+  ├─ PolicyVersion(personal)*
+  └─ ChatTurn*
 ```
 
 A grant covers one node, not its subtree ([multi-user guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-multi-user.md)), so public nodes are created through one helper that attaches the node and calls `grant(node, level=AccessLevel.READ)`.
@@ -879,14 +1002,16 @@ Moving a module that declares node types quarantines their stored rows until a `
 
 | Node | Key fields | Retention |
 | --- | --- | --- |
-| `Run` | date, status (normal, fallback, skipped), model versions, token and cost totals, summary | Permanent |
-| `Coverage` | ticker, screen score, reason included (screen, held, wildcard, user request) | Permanent |
+| `Run` | date, status (normal, fallback, skipped), model versions, policy version, token and cost totals, summary | Permanent |
+| `Coverage` | ticker, screen score, reason included (screen, held, wildcard, user request), the figures sizing and policy rules read | Permanent |
 | `ResearchReport` | domain, view, confidence, summary, evidence list with URLs and timestamps, data gaps | Permanent |
 | `Vote` | specialist, sample index, stance, confidence, horizon, rationale, cited evidence, scored outcome | Permanent (needed for weights) |
 | `ConsensusResult` | C, A, 90% interval, per-specialist scores, weights used, draft action | Permanent |
-| `Decision` | final action, conviction, thesis, risks, exit condition, time stop, Arbiter override reason | Permanent |
+| `Decision` | final action, conviction, thesis, risks, exit condition, time stop, Arbiter override reason, policy version and how its rules changed the action | Permanent |
 | `RiskCheck` | each rule evaluated, result, resize amount | Permanent |
 | `Order` / `Fill` | Alpaca order ID, client order ID, side, quantity, limit, status, fill price and time | Permanent |
+| `PolicyVersion` | scope (team or personal), version number, the policy, who saved it and how, the saver's note, what changed | Permanent |
+| `ChatTurn` | scope, role, text, and for a proposal the policy it would give, what it would change, its status | Permanent |
 | `AlpacaConnection` | stretch goal only: encrypted token, account ID, mode | Until disconnect |
 | Raw cache entries | source, symbol, date, payload file key, fetch time | 90 days, except filings and bars |
 
@@ -984,6 +1109,7 @@ A global cap of 15 new reports a day bounds reports at about 330 requests, so co
 - **Count requests ourselves, and check against OpenRouter.** The limiter increments a per-UTC-day counter, which each run adds to a `RequestCount` node in the graph so it survives a restart, and preflight also reads `free_model_daily_requests` (`used`, `limit`, `remaining`) from `GET /api/v1/key` ([limits](https://openrouter.ai/docs/api_reference/limits)), using whichever shows fewer requests left; the per-minute limit is not reported there.
 - **Check before running.** Preflight switches to reduced mode (K = 1, shortlist of 10) if fewer than 500 requests remain for the UTC day.
 - **Protect the morning run.** On-demand reports become cache-only when fewer than 150 requests remain.
+  The policy assistant is refused below 650 until the day's run has finished and below 150 after, is paused while a run is under way, allows each user 20 messages a day (`POLICY_CHAT_PER_USER_DAY`), and spends at most four requests on one message; a failed message gives its place in the day's limit back.
 - **Back off on 429.** byLLM does not retry rate-limit errors, so `LimitedModel` retries with exponential backoff, as OpenRouter [advises](https://openrouter.ai/docs/api_reference/limits); OpenRouter's own free-model 429s carry `X-RateLimit-Reset`, and `Retry-After` arrives only when every provider sent a hint, so reading those headers is a planned refinement.
 - **Keep the balance positive.** OpenRouter can return 402 errors even on free models when an account's balance is negative ([limits](https://openrouter.ai/docs/api_reference/limits)).
 
@@ -1054,7 +1180,9 @@ The largest risks are untrusted text reaching agents, leaked credentials, and a 
 | Default credentials | The token-signing secret comes from `JAC_SERVE_AUTH_SECRET` (the mirror of `[serve.auth] secret`), and a cluster refuses the shipped placeholder, so `jac scale deploy` mints one ([auth guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-auth.md); [release notes](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/community/release_notes/jaclang.md)). The admin password comes from `ADMIN_PASSWORD` through `[scale.admin] default_password`; it applies only when the admin account is first created, and the built-in default is admin/changeme ([source](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/scale/config/plugin_config.jac#L1182); [source](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/server/identity/impl/user_manager.impl.jac#L452-L458)). Before the first deploy the team also changes `[scale.monitoring] prometheus_admin_password` and turns off the public API docs with `[serve] docs_enabled = false` ([deploy guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-deploy.md)) |
 | Unauthorized run triggers | The daily run is a static scheduled job with no public endpoint; manual reruns go through an endpoint that checks for an admin account, never through the scheduler's dynamic `/jobs` API, which any signed-in user can call ([scheduler reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/jac-scale-scheduler.md)). The endpoint (`start_morning_run`, run/manual.jac) only records the request in the server's app token store; a static job takes it within a minute and runs the day as the 7:30 job does ([app tokens](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-multi-user.md)) |
 | Abuse of on-demand reports | Per-user and global daily caps; sign-in required; NGINX rate limiting at the Kubernetes ingress (`[scale.kubernetes] ingress_limit_rps`; [Kubernetes reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/jac-scale-kubernetes.md)) |
-| Stolen Alpaca OAuth tokens (stretch) | If account connections are built: encrypted at rest, kept on the user's own root, never sent to the browser, deleted on disconnect |
+| Stolen user API keys | Sealed with AES-256-GCM under the server's secret, bound to their owner and name, never sent to the browser, deleted on disconnect, and redacted from errors and logs (Section 9) |
+| One user reading another's data | Every data endpoint is `def:priv`, an agent lives on its owner's root, and a test walks every served endpoint as an anonymous caller |
+| A live account connected by mistake | The key is refused on entry, and the broker refuses any non-paper host or account on every call (Section 8) |
 
 ### Compliance
 
@@ -1156,7 +1284,6 @@ Prediction markets need their own evaluation metric, the Brier score of the agen
 | --- | --- | --- |
 | Social and Attention sub-agent | Retail sentiment and attention from Reddit, StockTwits, Bluesky, Wikipedia pageviews, and Google Trends | Reddit requires approval before any API access ([Responsible Builder Policy](https://support.reddithelp.com/hc/en-us/articles/42728983564564)); the Google Trends API is an application-gated alpha ([Google](https://developers.google.com/search/apis/trends)); [Wikipedia pageviews](https://doc.wikimedia.org/generated-data-platform/aqs/analytics-api/) need no key; Bluesky post search may need an authenticated session; StockTwits' official API access and terms are unverified |
 | Alpha Vantage educational allowance | Extra fundamentals, earnings, and news-sentiment data | The free tier is 25 requests a day; verified educational or open-source projects can get unlimited requests ([Alpha Vantage](https://www.alphavantage.co/support/)) |
-| Connected Alpaca paper accounts | Mirror the team portfolio into users' own paper accounts through Alpaca OAuth (Section 9) | Alpaca's OAuth flow supports paper-only grants with `env=paper` |
 | Critic role | A non-voting agent that argues the opposing case for the Arbiter | About 20 more requests a run |
 | Performance-based specialist weights | Weights that follow each specialist's hit rate on 10-day excess return | Needs about 30 scored votes per specialist |
 | Second free model for sampling | Alternate specialist samples across two free models to decorrelate errors | Depends on OpenRouter's free list at the time |

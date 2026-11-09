@@ -31,7 +31,10 @@ const guide: DefaultTheme.SidebarItem[] = [
     text: 'Operating',
     items: [
       { text: 'The forward test', link: '/guide/forward-test' },
+      { text: 'Your agent', link: '/guide/your-agent' },
       { text: 'Starting a run by hand', link: '/guide/manual-run' },
+      { text: 'Policies and the assistant', link: '/guide/policies' },
+      { text: 'Installing on a phone', link: '/guide/mobile' },
       { text: 'Reading the dashboard', link: '/guide/dashboard' }
     ]
   },
@@ -83,7 +86,8 @@ const system: DefaultTheme.SidebarItem[] = [
     text: 'Platform',
     items: [
       { text: 'Data model', link: '/system/data-model' },
-      { text: 'Dashboard internals', link: '/system/dashboard' }
+      { text: 'Dashboard internals', link: '/system/dashboard' },
+      { text: 'Market data', link: '/system/market-data' }
     ]
   }
 ]
@@ -94,7 +98,8 @@ const api: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'Overview', link: '/api/overview' },
       { text: 'Authentication', link: '/api/authentication' },
-      { text: 'Data types', link: '/api/types' }
+      { text: 'Data types', link: '/api/types' },
+      { text: 'Policy endpoints', link: '/api/policy' }
     ]
   },
   {
@@ -116,14 +121,33 @@ const api: DefaultTheme.SidebarItem[] = [
           { text: 'get_performance', link: '/api/get-performance', badge: 'POST' },
           { text: 'list_runs', link: '/api/list-runs', badge: 'POST' },
           { text: 'get_run', link: '/api/get-run', badge: 'POST' },
-          { text: 'get_decision_trail', link: '/api/get-decision-trail', badge: 'POST' }
+          { text: 'get_decision_trail', link: '/api/get-decision-trail', badge: 'POST' },
+          { text: 'get_news_feed', link: '/api/get-news-feed', badge: 'POST' },
+          { text: 'get_news_story', link: '/api/get-news-story', badge: 'POST' }
+        ]
+      },
+      {
+        text: 'Account',
+        collapsed: false,
+        items: [
+          { text: 'Account endpoints', link: '/api/accounts' },
+          { text: 'user/login', link: '/api/login', badge: 'POST' }
+        ]
+      },
+      {
+        text: 'Market',
+        collapsed: false,
+        items: [
+          { text: 'screen_stocks', link: '/api/screen-stocks', badge: 'POST' },
+          { text: 'get_stock', link: '/api/get-stock', badge: 'POST' },
+          { text: 'get_stock_history', link: '/api/get-stock-history', badge: 'POST' },
+          { text: 'get_stock_about', link: '/api/get-stock-about', badge: 'POST' }
         ]
       },
       {
         text: 'Admin',
         collapsed: false,
         items: [
-          { text: 'user/login', link: '/api/login', badge: 'POST' },
           { text: 'start_morning_run', link: '/api/start-morning-run', badge: 'POST' }
         ]
       }
@@ -158,10 +182,10 @@ const design: DefaultTheme.SidebarItem[] = [
 ]
 
 export default defineConfig({
-  title: 'Trading Agent',
-  titleTemplate: ':title · Trading Agent docs',
+  title: 'Parallax',
+  titleTemplate: ':title · Parallax docs',
   description:
-    'Documentation for the Trading Agent: a Jac multi-agent system that researches S&P 500 stocks and trades them on Alpaca paper accounts.',
+    "Documentation for Parallax: a Jac multi-agent system that gives each user an agent that researches S&P 500 stocks and trades them on that user's Alpaca paper account.",
   lang: 'en-US',
   // GitHub Pages serves the site under the repository name; DOCS_BASE overrides it.
   base: process.env.DOCS_BASE ?? '/parallax/',

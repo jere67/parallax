@@ -13,10 +13,11 @@ import agents.specialists as specialists_module;
 import from agents.research { ResearchResult }
 import from agents.arbiter { Ruling }
 import from agents.specialists { VoteResult }
-import from analysis.consensus { ConsensusConfig }
 import from models.agents { Domain, Evidence, MacroReport, ResearchReport, RiskRegime, Specialist, Stance, Vote }
+import from analysis.policy { Facts, consensus_config }
 import from models.graph { Concluded, Coverage, CoverageReason, Decided, Portfolio, PortfolioMode, TradeAction, Voted }
-import from run.analysis { Holding, TickerAnalysis, analyze, record_analysis, trading_day_after }
+import from models.policy { Condition, Op, Policy, PolicyRule, RuleEffect }
+import from run.analysis { DecisionRule, Holding, TickerAnalysis, analyze, record_analysis, trading_day_after }
 
 glob RUN_DAY: str = "2026-10-16";
 glob SESSIONS: list[str] = ["2026-10-15", "2026-10-16", "2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30"];
@@ -49,14 +50,14 @@ def review_json(verdict: str = "CONFIRM") -> str {
 
 """Run `analyze` with every specialist sample answered by `vote` and every Arbiter call by
 `review`. Returns the results and the two mocks."""
-def run_with(research_by_ticker: dict[str, dict[Domain, ResearchResult]], vote: object, review: object, holdings: dict[str, Holding] | None = None, calls: int = 60) -> tuple[list[TickerAnalysis], MockLLM, MockLLM] {
+def run_with(research_by_ticker: dict[str, dict[Domain, ResearchResult]], vote: object, review: object, holdings: dict[str, Holding] | None = None, calls: int = 60, rule: DecisionRule | None = None) -> tuple[list[TickerAnalysis], MockLLM, MockLLM] {
     panel = MockLLM(model_name="mock-specialist", config={"outputs": [vote] * calls});
     judge = MockLLM(model_name="mock-arbiter", config={"outputs": [review] * 5});
     saved = (specialists_module.specialist_llm, arbiter_module.arbiter_llm);
     setattr(specialists_module, "specialist_llm", panel);
     setattr(arbiter_module, "arbiter_llm", judge);
     try {
-        return (analyze(RUN_DAY, research_by_ticker, macro(), holdings or {}, SESSIONS, ConsensusConfig(), ONE_WORKER), panel, judge);
+        return (analyze(RUN_DAY, research_by_ticker, macro(), holdings or {}, SESSIONS, rule or DecisionRule(), ONE_WORKER), panel, judge);
     } finally {
         setattr(specialists_module, "specialist_llm", saved[0]);
         setattr(arbiter_module, "arbiter_llm", saved[1]);
@@ -156,4 +157,60 @@ test "stored analysis retains dropped sample errors, Arbiter errors and Flow gap
     assert made.arbiter_error == error;
     records = [cov ->:Voted:->];
     assert len(records) == 1 and records[0].body.cited_gaps == [gap];
+}
+
+"""The decision rule for `policy` at version 3, with `facts` for its rules."""
+def under(policy: Policy, facts: dict[str, Facts] | None = None) -> DecisionRule {
+    return DecisionRule(config=consensus_config(policy), policy=policy, version=3, facts=facts or {});
+}
+
+test "a policy rule settles a ticker before the Arbiter, and the decision records why" {
+    energy_out = Policy(rules=[PolicyRule(id="R1", effect=RuleEffect.AVOID_BUY, conditions=[Condition(metric="sector", op=Op.IN, words=["Energy"])], label="No energy")]);
+    facts = {"XOM": Facts(numbers={}, words={"sector": "Energy"}), "AAPL": Facts(numbers={}, words={"sector": "Information Technology"})};
+    (found, _, judge) = run_with({"XOM": research("XOM"), "AAPL": research("AAPL")}, MockRawResponse(content=vote_json("STRONG_BUY", 0.9)), MockRawResponse(content=review_json()), rule=under(energy_out, facts));
+    per = {a.ticker: a for a in found};
+    a = per["XOM"];
+    assert (a.draft, a.planned, a.action()) == (TradeAction.BUY, TradeAction.NO_ACTION, TradeAction.NO_ACTION);
+    assert (per["AAPL"].draft, per["AAPL"].action()) == (TradeAction.BUY, TradeAction.BUY);
+    # The Arbiter reviews what the policy chose, so it was shown one no-action draft.
+    assert len(judge.seen_prompts) == 2;
+    assert len([p for p in judge.seen_prompts if "NO_ACTION" in p or "NO ACTION" in p]) >= 1;
+    covered = Coverage(ticker="XOM", sector="Energy", reason=CoverageReason.SCREEN);
+    root ++> covered;
+    made = record_analysis(covered, a);
+    assert made.action == TradeAction.NO_ACTION and made.policy_version == 3;
+    assert len(made.policy_notes) == 1 and "\"No energy\"" in made.policy_notes[0] and "sector Energy" in made.policy_notes[0];
+    # The consensus keeps the thresholds' action, so the trail can show what the rule changed.
+    assert [covered ->:Concluded:->][0].draft_action == TradeAction.BUY;
+}
+
+test "the policy's thresholds decide, and a stricter bar stops a buy" {
+    strict = Policy(buy_score=0.95);
+    (found, _, _) = run_with({"AAPL": research("AAPL")}, MockRawResponse(content=vote_json("STRONG_BUY", 0.9)), MockRawResponse(content=review_json()), rule=under(strict));
+    assert (found[0].draft, found[0].action()) == (TradeAction.NO_ACTION, TradeAction.NO_ACTION);
+    assert found[0].policy_notes() == [];
+}
+
+test "a ticker forced to hold still takes the policy's exit rules" {
+    stop = Policy(rules=[PolicyRule(id="R1", effect=RuleEffect.SELL, conditions=[Condition(metric="return_since_entry", op=Op.LT, number=-0.08)])]);
+    held = {"AAPL": Holding(ticker="AAPL", avg_entry_price=100.0, opened_day="2026-10-01"), "MSFT": Holding(ticker="MSFT", avg_entry_price=100.0, opened_day="2026-10-01")};
+    facts = {"AAPL": Facts(numbers={"return_since_entry": -0.2}, words={}), "MSFT": Facts(numbers={"return_since_entry": 0.05}, words={})};
+    (found, panel, _) = run_with({"AAPL": research("AAPL", failed=(Domain.NEWS,)), "MSFT": research("MSFT", failed=(Domain.NEWS,))}, MockRawResponse(content=vote_json("BUY", 0.9)), MockRawResponse(content=review_json()), holdings=held, rule=under(stop, facts));
+    per = {a.ticker: a for a in found};
+    assert panel.seen_prompts == [];
+    assert per["AAPL"].action() == TradeAction.SELL and per["MSFT"].action() == TradeAction.HOLD;
+    cov = Coverage(ticker="AAPL", sector="Information Technology", reason=CoverageReason.HELD);
+    root ++> cov;
+    made = record_analysis(cov, per["AAPL"]);
+    assert made.action == TradeAction.SELL and made.forced_hold_reason == "";
+    assert "exit rule" in made.thesis and "-20%" in made.policy_notes[0];
+    other = Coverage(ticker="MSFT", sector="Information Technology", reason=CoverageReason.HELD);
+    root ++> other;
+    assert record_analysis(other, per["MSFT"]).forced_hold_reason == "insufficient data: no complete news research";
+}
+
+test "a policy can turn time stops off" {
+    held = {"AAPL": Holding(ticker="AAPL", time_stop="2026-10-16")};
+    (found, _, _) = run_with({"AAPL": research("AAPL")}, MockRawResponse(content=vote_json("HOLD", 0.5)), MockRawResponse(content=review_json()), holdings=held, rule=under(Policy(time_stop=False)));
+    assert not found[0].exit_triggered and found[0].action() != TradeAction.SELL;
 }

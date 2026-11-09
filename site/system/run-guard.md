@@ -117,7 +117,7 @@ If no summary was written, the Run Guard writes one, such as "15 tickers decided
 
 Model calls run on a shared pool of 32 worker threads, and workers never touch the graph.
 When the session ends, `record_run` writes everything from the run's own thread: the macro record, one `Coverage` per ticker with its research, votes, consensus, and decision, and the insight cards.
-Each node is granted public read access as it is written, so the dashboard can show it.
+Each node is granted read access as it is written, so the dashboard can show it to the account whose agent wrote it.
 It also records the model versions used, the requests spent by role, and the tokens, and adds the requests to the day's count.
 
 ::: info Where it differs from the TDD

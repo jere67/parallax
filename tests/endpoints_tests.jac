@@ -62,6 +62,41 @@ test "every declared endpoint is served" {
     assert not missing, f"Not served: {missing}. Import each one by name in main.jac (TDD §3, rule 7).";
 }
 
+test "only health answers an anonymous caller; everything else takes an account" {
+    client = start_client();
+    try {
+        served = client.get("/functions").json()["data"]["functions"];
+        walkers = client.get("/walkers").json()["data"]["walkers"];
+        open_ones = [
+            name
+            for name in served
+            if client.post(f"/function/{name}", json={}).status_code not in [401, 403, 422]
+        ];
+        open_walkers = [
+            name
+            for name in walkers
+            if client.post(f"/walker/{name}", json={}).status_code not in [401, 403, 422]
+        ];
+    } finally {
+        client.close();
+    }
+    assert open_ones == ["health"], open_ones;
+    assert open_walkers == [], open_walkers;
+    # A required argument is checked before the token, so a 422 above proves nothing about a public
+    # endpoint. The source says which are public: health, and the pure formatting the pages share,
+    # which reads no data. The pages' own wrappers (dashboard/ui) are client code.
+    public = {
+        found.group(1)
+        for path in PROJECT_ROOT.rglob("*.jac")
+        if not SKIP_DIRS & set(path.relative_to(PROJECT_ROOT).parts)
+            and "ui" not in path.relative_to(PROJECT_ROOT).parts
+            and not BROWSER_GLOBAL.search(path.read_text())
+        for found in re.finditer(r"def:pub\s+(\w+)([^{;]*)", path.read_text())
+        if "JsxElement" not in found.group(2)
+    };
+    assert public - {"health", "money", "percent", "ratio", "chart_points"} == set(), public;
+}
+
 test "health answers ok with a UTC timestamp" {
     client = start_client();
     try {

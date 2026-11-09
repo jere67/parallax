@@ -1,9 +1,10 @@
-"""The Portfolio page (TDD §10): the team portfolio at its last mark, its equity curve against
+"""The Portfolio page (TDD §10): the agent's portfolio at its last mark, its equity curve against
 both baselines, the open positions with their stops and theses, and the recent orders and
 closed trades. Every ticker links to the decision trail behind it."""
 import from "@jac/runtime" { Link }
 import from "lucide-react" { ChevronRight }
-import from dashboard.api { get_performance, get_portfolio }
+import from dashboard.ui.rpc { get_performance, get_portfolio }
+import from dashboard.ui.AgentSetup { AgentSetup }
 import from dashboard.ui.EquityChart { EquityChart }
 import from dashboard.ui.format {
     MISSING,
@@ -22,6 +23,13 @@ import from dashboard.ui.format {
     tone
 }
 import from dashboard.ui.parts {
+    CARD,
+    CARD_LIST,
+    CARD_STEP,
+    WIDE_ONLY,
+    CardFigure,
+    CardFigures,
+    MoreCards,
     FROZEN_CELL,
     FROZEN_HEAD,
     ROW,
@@ -53,7 +61,7 @@ import from models.views {
 glob CELL: str = "min-w-0 bg-panel px-4 py-3.5";
 glob SECTOR_CAP: float = 0.30;
 glob STAT_ROWS: list[str] = ["Total return", "Sharpe", "Max drawdown", "Volatility"];
-glob SHORT_LABELS: dict[str, str] = {"team": "Team", "equal_weight": "Equal wt", "spy": "SPY"};
+glob SHORT_LABELS: dict[str, str] = {"team": "Agent", "equal_weight": "Equal wt", "spy": "SPY"};
 
 def series_of(perf: PerformanceData | None, key: str) -> SeriesData | None {
     if perf is None {
@@ -69,7 +77,7 @@ def series_of(perf: PerformanceData | None, key: str) -> SeriesData | None {
 
 """A decision trail's address, or "" when the decision's run is unknown."""
 def trail_link(day: str, ticker: str) -> str {
-    return "/runs/" + day + "/" + ticker if day else "";
+    return "/app/runs/" + day + "/" + ticker if day else "";
 }
 
 def TickerCell(ticker: str, day: str, sub: str = "") -> JsxElement {
@@ -130,7 +138,7 @@ def Figures(view: PortfolioData, perf: PerformanceData | None) -> JsxElement {
                 value={signed_pct(lead)}
                 tone={tone(lead)}
                 sub={"SPY " + signed_pct(spy.total_return if spy is not None else None)}
-                hint="Team total return minus SPY buy-and-hold over the same sessions"
+                hint="Your total return minus SPY buy-and-hold over the same sessions"
             />
         </div>
         <div className={CELL}>
@@ -183,7 +191,7 @@ def stat_tone(s: SeriesData, row: str) -> str {
 def StatsTable(perf: PerformanceData, view: PortfolioData) -> JsxElement {
     <Panel title="Performance" pad={False}>
         <div className="scroll-x">
-            <table className="w-full">
+            <table className="w-full max-md:[&_td]:px-2 max-md:[&_th]:px-2">
                 <thead>
                     <tr>
                         <th className={TH}></th>
@@ -253,6 +261,68 @@ def SectorExposure(positions: list[PositionData]) -> JsxElement {
     </Panel>
 }
 
+"""A position's thesis and the link to the decision trail behind it."""
+def ThesisText(p: PositionData) -> JsxElement {
+    <div>
+        <Overline>Thesis</Overline>
+        <p className="mt-1 text-[13px] leading-relaxed text-text">
+            {p.thesis or "No thesis was recorded for this position."}
+        </p>
+    </div>
+}
+
+"""One open position on a phone: the figures that matter on a glance, and a button that opens
+the thesis and the rest."""
+def PositionCard(p: PositionData, opened: bool, toggle: Callable[[], None]) -> JsxElement {
+    <li data-testid="position-card" className={CARD}>
+        <div className="flex items-start justify-between gap-3">
+            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/>
+            <div className="shrink-0 text-right">
+                <div className="num text-[13px]">{money(p.market_value, 0)}</div>
+                <div className={"num text-[12px] " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</div>
+            </div>
+        </div>
+        <CardFigures>
+            <CardFigure label="Weight">{pct(p.weight, 1)}</CardFigure>
+            <CardFigure label="Unrealized" tone={tone(p.pnl)}>{signed_money(p.pnl)}</CardFigure>
+            <CardFigure label="To stop">{pct(p.stop_distance, 1)}</CardFigure>
+        </CardFigures>
+        <button
+            type="button"
+            onClick={lambda { toggle(); }}
+            className="press -mx-1 mt-1 inline-flex min-h-11 items-center gap-1 px-1 text-[12px] font-medium text-accent"
+            aria-expanded={opened}
+        >
+            <ChevronRight
+                size={14}
+                className={"transition-[rotate] duration-150 ease-out motion-reduce:transition-none " + ("rotate-90" if opened else "")}
+            />
+            {"Thesis and details"}
+        </button>
+        {if opened {
+            <div className="mt-1 flex flex-col gap-3">
+                <ThesisText p={p}/>
+                <CardFigures>
+                    <CardFigure label="Qty">{qty(p.qty)}</CardFigure>
+                    <CardFigure label="Avg cost">{money(p.avg_entry_price)}</CardFigure>
+                    <CardFigure label="Last">{money(p.last_price)}</CardFigure>
+                    <CardFigure label="Stop">{money(p.stop_price)}</CardFigure>
+                    <CardFigure label="Time stop">{day_short(p.time_stop)}</CardFigure>
+                    <CardFigure label="Opened">{day_short(day_et(p.opened_at))}</CardFigure>
+                </CardFigures>
+                {if p.decision_day {
+                    <Link
+                        to={trail_link(p.decision_day, p.ticker)}
+                        className="inline-flex min-h-11 items-center text-[12px] font-medium text-accent"
+                    >
+                        {"Open the " + day_short(p.decision_day) + " decision trail"}
+                    </Link>
+                }}
+            </div>
+        }}
+    </li>
+}
+
 def PositionsTable(positions: list[PositionData]) -> JsxElement {
     has opened: str = "";
 
@@ -264,78 +334,82 @@ def PositionsTable(positions: list[PositionData]) -> JsxElement {
         {if len(positions) == 0 {
             <p className="px-4 py-6 text-[13px] text-muted">No open positions.</p>
         } else {
-            <div className="scroll-x">
-                <table className="w-full min-w-[960px]">
-                    <thead>
-                        <tr>
-                            <th className={TH + FROZEN_HEAD}>Ticker</th>
-                            <th className={TH_NUM}>Qty</th>
-                            <th className={TH_NUM}>Avg cost</th>
-                            <th className={TH_NUM}>Last</th>
-                            <th className={TH_NUM}>Value</th>
-                            <th className={TH_NUM}>Weight</th>
-                            <th className={TH_NUM}>Unrealized</th>
-                            <th className={TH_NUM}>Return</th>
-                            <th className={TH_NUM}>Stop</th>
-                            <th className={TH_NUM}>To stop</th>
-                            <th className={TH_NUM}>Time stop</th>
-                            <th className={TH_NUM}>Opened</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {for p in positions {
-                            <tr key={p.ticker} className={ROW + " group cursor-pointer"} onClick={lambda { toggle(p.ticker); }}>
-                                <td className={TD + FROZEN_CELL}>
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            className="press -ml-1 grid size-6 shrink-0 place-items-center rounded-[4px] text-faint hover:bg-panel-2 hover:text-text"
-                                            aria-expanded={opened == p.ticker}
-                                            aria-label={"Thesis for " + p.ticker}
-                                        >
-                                            <ChevronRight
-                                                size={14}
-                                                className={"transition-[rotate] duration-150 ease-out motion-reduce:transition-none " + ("rotate-90" if opened == p.ticker else "")}
-                                            />
-                                        </button>
-                                        <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/>
-                                    </div>
-                                </td>
-                                <td className={TD_NUM}>{qty(p.qty)}</td>
-                                <td className={TD_NUM}>{money(p.avg_entry_price)}</td>
-                                <td className={TD_NUM}>{money(p.last_price)}</td>
-                                <td className={TD_NUM}>{money(p.market_value, 0)}</td>
-                                <td className={TD_NUM}>{pct(p.weight, 1)}</td>
-                                <td className={TD_NUM + " " + tone(p.pnl)}>{signed_money(p.pnl)}</td>
-                                <td className={TD_NUM + " " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</td>
-                                <td className={TD_NUM}>{money(p.stop_price)}</td>
-                                <td className={TD_NUM + " text-muted"}>{pct(p.stop_distance, 1)}</td>
-                                <td className={TD_NUM + " text-muted"}>{day_short(p.time_stop)}</td>
-                                <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.opened_at))}</td>
+            <div>
+                <ul className={CARD_LIST}>
+                    {for p in positions {
+                        <PositionCard key={p.ticker} p={p} opened={opened == p.ticker} toggle={lambda { toggle(p.ticker); }}/>
+                    }}
+                </ul>
+                <div className={"scroll-x " + WIDE_ONLY}>
+                    <table className="w-full min-w-[960px]">
+                        <thead>
+                            <tr>
+                                <th className={TH + FROZEN_HEAD}>Ticker</th>
+                                <th className={TH_NUM}>Qty</th>
+                                <th className={TH_NUM}>Avg cost</th>
+                                <th className={TH_NUM}>Last</th>
+                                <th className={TH_NUM}>Value</th>
+                                <th className={TH_NUM}>Weight</th>
+                                <th className={TH_NUM}>Unrealized</th>
+                                <th className={TH_NUM}>Return</th>
+                                <th className={TH_NUM}>Stop</th>
+                                <th className={TH_NUM}>To stop</th>
+                                <th className={TH_NUM}>Time stop</th>
+                                <th className={TH_NUM}>Opened</th>
                             </tr>
-                            if opened == p.ticker {
-                                <tr key={p.ticker + "-thesis"} className="bg-panel-2/50">
-                                    <td colSpan={12} className="border-b border-line/60 py-3.5 pl-12 pr-4">
-                                        <div className="sticky left-12 max-w-[min(640px,calc(100vw-5rem))]">
-                                            <Overline>Thesis</Overline>
-                                            <p className="mt-1 text-[13px] leading-relaxed text-text">
-                                                {p.thesis or "No thesis was recorded for this position."}
-                                            </p>
-                                        </div>
-                                        {if p.decision_day {
-                                            <Link
-                                                to={trail_link(p.decision_day, p.ticker)}
-                                                className="sticky left-12 mt-2 inline-block text-[12px] font-medium text-accent hover:underline"
+                        </thead>
+                        <tbody>
+                            {for p in positions {
+                                <tr key={p.ticker} className={ROW + " group cursor-pointer"} onClick={lambda { toggle(p.ticker); }}>
+                                    <td className={TD + FROZEN_CELL}>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                className="press -ml-1 grid size-6 shrink-0 place-items-center rounded-[4px] text-faint hover:bg-panel-2 hover:text-text"
+                                                aria-expanded={opened == p.ticker}
+                                                aria-label={"Thesis for " + p.ticker}
                                             >
-                                                {"Open the " + day_short(p.decision_day) + " decision trail"}
-                                            </Link>
-                                        }}
+                                                <ChevronRight
+                                                    size={14}
+                                                    className={"transition-[rotate] duration-150 ease-out motion-reduce:transition-none " + ("rotate-90" if opened == p.ticker else "")}
+                                                />
+                                            </button>
+                                            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/>
+                                        </div>
                                     </td>
+                                    <td className={TD_NUM}>{qty(p.qty)}</td>
+                                    <td className={TD_NUM}>{money(p.avg_entry_price)}</td>
+                                    <td className={TD_NUM}>{money(p.last_price)}</td>
+                                    <td className={TD_NUM}>{money(p.market_value, 0)}</td>
+                                    <td className={TD_NUM}>{pct(p.weight, 1)}</td>
+                                    <td className={TD_NUM + " " + tone(p.pnl)}>{signed_money(p.pnl)}</td>
+                                    <td className={TD_NUM + " " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</td>
+                                    <td className={TD_NUM}>{money(p.stop_price)}</td>
+                                    <td className={TD_NUM + " text-muted"}>{pct(p.stop_distance, 1)}</td>
+                                    <td className={TD_NUM + " text-muted"}>{day_short(p.time_stop)}</td>
+                                    <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.opened_at))}</td>
                                 </tr>
-                            }
-                        }}
-                    </tbody>
-                </table>
+                                if opened == p.ticker {
+                                    <tr key={p.ticker + "-thesis"} className="bg-panel-2/50">
+                                        <td colSpan={12} className="border-b border-line/60 py-3.5 pl-12 pr-4">
+                                            <div className="sticky left-12 max-w-[min(640px,calc(100vw-5rem))]">
+                                                <ThesisText p={p}/>
+                                            </div>
+                                            {if p.decision_day {
+                                                <Link
+                                                    to={trail_link(p.decision_day, p.ticker)}
+                                                    className="sticky left-12 mt-2 inline-block text-[12px] font-medium text-accent hover:underline"
+                                                >
+                                                    {"Open the " + day_short(p.decision_day) + " decision trail"}
+                                                </Link>
+                                            }}
+                                        </td>
+                                    </tr>
+                                }
+                            }}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         }}
     </Panel>
@@ -345,77 +419,138 @@ def side_tone(side: str) -> str {
     return "text-up" if side == "buy" else "text-down";
 }
 
+"""One order on a phone."""
+def OrderCard(o: OrderData) -> JsxElement {
+    <li data-testid="order-card" className={CARD} title={o.reject_reason}>
+        <div className="flex items-start justify-between gap-3">
+            <TickerCell ticker={o.ticker} day={o.run_day}/>
+            <StatusBadge status={o.status}/>
+        </div>
+        <p className="mt-1 text-[12px] text-muted">
+            <span className={"font-semibold uppercase " + side_tone(o.side)}>{o.side}</span>
+            {" " + title(o.purpose) + ("" if o.purpose == o.order_type else " · " + title(o.order_type)) + " · " + o.time_in_force.upper()}
+        </p>
+        <CardFigures>
+            <CardFigure label="Price">{money(o.limit_price if o.limit_price is not None else o.stop_price)}</CardFigure>
+            <CardFigure label="Filled">{qty(o.filled_qty) + " / " + qty(o.qty)}</CardFigure>
+            <CardFigure label="Avg fill">{money(o.filled_avg_price)}</CardFigure>
+        </CardFigures>
+        <p className="num mt-2 text-[11px] text-faint">{stamp_et(o.submitted_at)}</p>
+    </li>
+}
+
 def OrdersTable(orders: list[OrderData]) -> JsxElement {
+    has shown: int = CARD_STEP;
+
     if len(orders) == 0 {
         return <p className="px-4 py-6 text-[13px] text-muted">No orders yet.</p>;
     }
-    <div className="max-h-[480px] overflow-auto overscroll-contain">
-        <table className="w-full min-w-[900px]">
-            <thead>
-                <tr>
-                    <th className={TH + FROZEN_HEAD}>Ticker</th>
-                    <th className={TH}>Submitted</th>
-                    <th className={TH}>Side</th>
-                    <th className={TH}>Purpose</th>
-                    <th className={TH}>Type</th>
-                    <th className={TH_NUM}>Price</th>
-                    <th className={TH_NUM}>Filled</th>
-                    <th className={TH_NUM}>Avg fill</th>
-                    <th className={TH}>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {for o in orders {
-                    <tr key={o.client_order_id} className={ROW + " group"}>
-                        <td className={TD + FROZEN_CELL}><TickerCell ticker={o.ticker} day={o.run_day}/></td>
-                        <td className={TD + " num text-muted"}>{stamp_et(o.submitted_at)}</td>
-                        <td className={TD + " font-semibold uppercase " + side_tone(o.side)}>{o.side}</td>
-                        <td className={TD + " text-muted"}>{title(o.purpose)}</td>
-                        <td className={TD + " text-muted"}>{title(o.order_type) + " · " + o.time_in_force.upper()}</td>
-                        <td className={TD_NUM}>{money(o.limit_price if o.limit_price is not None else o.stop_price)}</td>
-                        <td className={TD_NUM}>{qty(o.filled_qty) + " / " + qty(o.qty)}</td>
-                        <td className={TD_NUM}>{money(o.filled_avg_price)}</td>
-                        <td className={TD} title={o.reject_reason}><StatusBadge status={o.status}/></td>
+    left = len(orders) - shown;
+    <div>
+        <ul className={CARD_LIST}>
+            {for o in orders[:shown] {
+                <OrderCard key={o.client_order_id} o={o}/>
+            }}
+        </ul>
+        <MoreCards left={left} label={"Show " + count(min(left, CARD_STEP), "more order")} more={lambda { shown = shown + CARD_STEP; }}/>
+        <div className={"max-h-[480px] overflow-auto overscroll-contain " + WIDE_ONLY}>
+            <table className="w-full min-w-[900px]">
+                <thead>
+                    <tr>
+                        <th className={TH + FROZEN_HEAD}>Ticker</th>
+                        <th className={TH}>Submitted</th>
+                        <th className={TH}>Side</th>
+                        <th className={TH}>Purpose</th>
+                        <th className={TH}>Type</th>
+                        <th className={TH_NUM}>Price</th>
+                        <th className={TH_NUM}>Filled</th>
+                        <th className={TH_NUM}>Avg fill</th>
+                        <th className={TH}>Status</th>
                     </tr>
-                }}
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    {for o in orders {
+                        <tr key={o.client_order_id} className={ROW + " group"}>
+                            <td className={TD + FROZEN_CELL}><TickerCell ticker={o.ticker} day={o.run_day}/></td>
+                            <td className={TD + " num text-muted"}>{stamp_et(o.submitted_at)}</td>
+                            <td className={TD + " font-semibold uppercase " + side_tone(o.side)}>{o.side}</td>
+                            <td className={TD + " text-muted"}>{title(o.purpose)}</td>
+                            <td className={TD + " text-muted"}>{title(o.order_type) + " · " + o.time_in_force.upper()}</td>
+                            <td className={TD_NUM}>{money(o.limit_price if o.limit_price is not None else o.stop_price)}</td>
+                            <td className={TD_NUM}>{qty(o.filled_qty) + " / " + qty(o.qty)}</td>
+                            <td className={TD_NUM}>{money(o.filled_avg_price)}</td>
+                            <td className={TD} title={o.reject_reason}><StatusBadge status={o.status}/></td>
+                        </tr>
+                    }}
+                </tbody>
+            </table>
+        </div>
     </div>
 }
 
+"""One closed trade on a phone."""
+def ClosedCard(p: PositionData) -> JsxElement {
+    <li data-testid="closed-card" className={CARD}>
+        <div className="flex items-start justify-between gap-3">
+            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/>
+            <div className="shrink-0 text-right">
+                <div className={"num text-[13px] " + tone(p.pnl)}>{signed_money(p.pnl)}</div>
+                <div className={"num text-[12px] " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</div>
+            </div>
+        </div>
+        <CardFigures>
+            <CardFigure label="Shares sold">{qty(p.entry_qty)}</CardFigure>
+            <CardFigure label="Avg cost">{money(p.avg_entry_price)}</CardFigure>
+            <CardFigure label="Exit">{money(p.exit_price)}</CardFigure>
+        </CardFigures>
+        <p className="num mt-2 text-[11px] text-faint">{day_short(day_et(p.opened_at)) + " to " + day_short(day_et(p.closed_at))}</p>
+    </li>
+}
+
 def ClosedTable(closed: list[PositionData]) -> JsxElement {
+    has shown: int = CARD_STEP;
+
     if len(closed) == 0 {
         return <p className="px-4 py-6 text-[13px] text-muted">No closed trades yet.</p>;
     }
-    <div className="max-h-[480px] overflow-auto overscroll-contain">
-        <table className="w-full min-w-[820px]">
-            <thead>
-                <tr>
-                    <th className={TH + FROZEN_HEAD}>Ticker</th>
-                    <th className={TH_NUM}>Opened</th>
-                    <th className={TH_NUM}>Closed</th>
-                    <th className={TH_NUM}>Shares sold</th>
-                    <th className={TH_NUM}>Avg cost</th>
-                    <th className={TH_NUM}>Exit</th>
-                    <th className={TH_NUM}>Realized</th>
-                    <th className={TH_NUM}>Return</th>
-                </tr>
-            </thead>
-            <tbody>
-                {for p in closed {
-                    <tr key={p.ticker + p.opened_at} className={ROW + " group"}>
-                        <td className={TD + FROZEN_CELL}><TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/></td>
-                        <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.opened_at))}</td>
-                        <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.closed_at))}</td>
-                        <td className={TD_NUM}>{qty(p.entry_qty)}</td>
-                        <td className={TD_NUM}>{money(p.avg_entry_price)}</td>
-                        <td className={TD_NUM}>{money(p.exit_price)}</td>
-                        <td className={TD_NUM + " " + tone(p.pnl)}>{signed_money(p.pnl)}</td>
-                        <td className={TD_NUM + " " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</td>
+    left = len(closed) - shown;
+    <div>
+        <ul className={CARD_LIST}>
+            {for p in closed[:shown] {
+                <ClosedCard key={p.ticker + p.opened_at} p={p}/>
+            }}
+        </ul>
+        <MoreCards left={left} label={"Show " + count(min(left, CARD_STEP), "more closed trade")} more={lambda { shown = shown + CARD_STEP; }}/>
+        <div className={"max-h-[480px] overflow-auto overscroll-contain " + WIDE_ONLY}>
+            <table className="w-full min-w-[820px]">
+                <thead>
+                    <tr>
+                        <th className={TH + FROZEN_HEAD}>Ticker</th>
+                        <th className={TH_NUM}>Opened</th>
+                        <th className={TH_NUM}>Closed</th>
+                        <th className={TH_NUM}>Shares sold</th>
+                        <th className={TH_NUM}>Avg cost</th>
+                        <th className={TH_NUM}>Exit</th>
+                        <th className={TH_NUM}>Realized</th>
+                        <th className={TH_NUM}>Return</th>
                     </tr>
-                }}
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    {for p in closed {
+                        <tr key={p.ticker + p.opened_at} className={ROW + " group"}>
+                            <td className={TD + FROZEN_CELL}><TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/></td>
+                            <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.opened_at))}</td>
+                            <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.closed_at))}</td>
+                            <td className={TD_NUM}>{qty(p.entry_qty)}</td>
+                            <td className={TD_NUM}>{money(p.avg_entry_price)}</td>
+                            <td className={TD_NUM}>{money(p.exit_price)}</td>
+                            <td className={TD_NUM + " " + tone(p.pnl)}>{signed_money(p.pnl)}</td>
+                            <td className={TD_NUM + " " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</td>
+                        </tr>
+                    }}
+                </tbody>
+            </table>
+        </div>
     </div>
 }
 
@@ -452,15 +587,13 @@ def:pub PortfolioPage -> JsxElement {
         return <Loading label="Loading the portfolio"/>;
     }
     if not view.started {
-        return <Empty title="The forward test has not started">
-            The team portfolio has no closing mark yet. Once the first trading day closes, its equity, positions, and orders appear here.
-        </Empty>;
+        return <AgentSetup/>;
     }
 
     <div className="rise flex flex-col gap-6">
         <header className="flex flex-col gap-2">
             <Overline className="num">{"Paper account · " + day_long(view.last_day) + " close"}</Overline>
-            <h1 className="display text-[36px] leading-10 text-text">Team portfolio</h1>
+            <h1 className="display text-[36px] leading-10 text-text">Your portfolio</h1>
             <p className="max-w-[600px] text-[13px] leading-5 text-muted">
                 Five specialists research each stock, the Arbiter decides, and the risk gate sizes every order.
                 The account is marked at each close against SPY and an equal-weight basket of the same shortlist.

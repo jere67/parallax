@@ -1,7 +1,9 @@
-# Trading Agent
+# Parallax
 
 A Jac multi-agent system that screens the S&P 500 every trading day, researches a shortlist from free data sources, decides through a stochastic consensus of specialist agents, and trades on Alpaca paper accounts.
-Every report, vote, decision, risk check, and order is logged and shown on a public dashboard.
+Every user has their own agent, running on their own API keys.
+Every report, vote, decision, risk check, and order is logged and shown to the user whose agent made it, on a dashboard that needs an account.
+The Jac project is still named `trading-agent` internally.
 
 EECS 449, Fall 2026.
 An educational project using simulated money; nothing here is investment advice.
@@ -36,11 +38,27 @@ jac run                    # serves the app with hot reload at http://localhost:
 ```
 
 `GET /healthz` and `POST /function/health` answer once the server is up, and `/docs` lists every endpoint.
+The landing page at `/` is public.
+Everything else needs an account: sign up at `/signup`, then connect your own keys in Settings (`/app/settings`).
+
+Two more environment variables matter on any server that lets users connect keys:
+
+- `PARALLAX_KEYS_SECRET` seals each user's stored keys.
+  It must be at least 32 characters, and a server without it refuses to store keys.
+  Generate one with `openssl rand -base64 48`.
+  Changing it makes every stored key unreadable, so users must connect their keys again.
+- `PARALLAX_MAX_AGENTS` caps how many agents the server keeps.
+  It defaults to 10.
+
+The `admin` account keeps using the server's `.env` keys and its existing jobs.
+Every other account starts empty and uses the keys it enters in Settings, never `.env`.
 
 ## Trading switches
 
-The server trades only the team's Alpaca paper account, and only when the team portfolio is in auto mode.
-Two environment variables control it:
+A new user's agent only researches.
+It places paper orders only after its owner turns on paper trading in Settings and confirms it.
+The admin's team agent trades the team's Alpaca paper account, and only when the team portfolio is in auto mode.
+Two environment variables control the team agent:
 
 - `TRADING_AGENT_FORWARD_TEST_START=YYYY-MM-DD` starts the forward test on that trading date, at the first trading tick before that day's run executes and before 3:50 p.m. New York time.
   A server started later than that starts it on the next trading day.
@@ -50,9 +68,37 @@ Two environment variables control it:
 - `TRADING_AGENT_DISABLE_ORDERS=1` stops every order.
   The executor still sizes and gates each morning's decisions and records the checks, but sends nothing.
 
+## Policies
+
+The Policy page (`/app/policy`) says when to buy, sell, trim, and hold, as numbers with hard limits and as typed rules over a fixed set of metrics.
+Each account has one policy, shown as "Your policy".
+It drives that user's real agent from its next morning run.
+A user can try any draft against what their own latest run decided, which costs no model request and places no order.
+A run records the version it used, and every save is kept, so any version can be restored.
+
+The policy assistant answers questions about a policy and turns plain English into a proposed change, which saves nothing until its owner applies it.
+It uses the free model chain on the user's own OpenRouter key; without one it asks the user to connect it, and the rest of the page works as usual.
+`POLICY_CHAT_PER_USER_DAY` sets each user's daily messages (20 by default), and the morning run's share of the day's requests is always held back.
+
+To check the assistant against the real free models (about 20 requests at most):
+
+```bash
+set -a && source .env && set +a
+TRADING_AGENT_RUN_SPIKE=1 jac run --no-takeover tests/spikes/policy_chat_spike.jac
+```
+
+## Phones
+
+The app is named Parallax and opens at `/app`.
+It can be installed on a phone: from Chrome's install prompt on Android, or on iPhone with Share, then Add to Home Screen.
+It needs HTTPS to install anywhere but `localhost`, which is a browser rule.
+
 ## Starting the morning run by hand
 
-The morning run starts by itself only between 7:30 and 7:45 a.m. New York time, so a server that was down then has no run that day.
+A user's agent runs by itself on a weekday between 7:30 and 9:15 a.m. New York time, up to three at a time and the oldest account first, or when its owner presses "Start today's run" in Settings.
+A run takes about half an hour.
+
+The admin's team agent starts by itself only between 7:30 and 7:45 a.m. New York time, so a server that was down then has no team run that day.
 The admin account (`admin`, with the `ADMIN_PASSWORD` it was created with) can start it later:
 
 ```bash
@@ -64,11 +110,12 @@ curl -s localhost:8000/function/start_morning_run -H "Authorization: Bearer $TOK
 
 The run starts within a minute and takes about 20 minutes.
 In auto mode, the next trading tick executes its orders, as long as that happens before 3:50 p.m.; after that, the run only publishes its decisions.
-Anyone else, signed in or not, is refused, and so is a weekend or a day that already has a run, including one that failed.
+Anyone else, signed in or not, is refused by this endpoint, and so is a weekend or a day that already has a run, including one that failed.
 
 ## Demo data
 
-Before the forward test stores real runs, the dashboard can be built and checked against made-up history:
+Before the forward test stores real runs, the dashboard can be built and checked against made-up history.
+In demo mode every account sees the same demo history, and runs and trading are refused:
 
 ```bash
 TRADING_AGENT_DEMO=1 TRADING_AGENT_DISABLE_ORDERS=1 jac run --dev main.jac
@@ -77,6 +124,7 @@ TRADING_AGENT_DEMO=1 TRADING_AGENT_DISABLE_ORDERS=1 jac run --dev main.jac
 Within a minute, a scheduled job fills an empty team portfolio with a few weeks of simulated sessions, and every page shows a "Demo data" banner.
 The prices, research, and votes are invented; the consensus, sizing, risk gate, baselines, and scoring that turn them into orders are the project's own.
 The scheduled jobs never run, trade, reconcile, or score a demo portfolio, and the job writes nothing once the team portfolio has any run.
+The screener and stock pages show an invented market of about 70 names, which is never written to disk and calls no source.
 Never set `TRADING_AGENT_DEMO` on a deployed server.
 
 ## Checks
@@ -87,11 +135,17 @@ jac test      # every test, colocated and in tests/
 jac build     # the production bundle, dist/trading-agent.jab
 ```
 
+A server keeps its saved data under module names set by how it was started, so run one deployment the same way each time.
+`jac run main.jac` names them after the folder's path, and `jac run dist/trading-agent.jab` names them after the bundle, so one cannot read what the other saved.
+Moving a source deployment to another folder, or switching it to the bundle, leaves its history behind in the database, unread.
+A rebuilt bundle, or new code pulled into the same folder, keeps reading it.
+
 `jac check .` prints "may be undefined" warnings for JSX tags and "never used" warnings for component state setters.
 These are false positives from checking client modules in isolation in Jac 0.37.12; the same warnings appear in a fresh `jac create` scaffold.
 
 The dashboard's end-to-end check loads every page in a real browser on each device in the matrix (TDD §10): desktop Chrome, a 360-pixel phone, Android Chrome, and iOS Safari.
-It needs a server with the demo data running (above), and Node.js:
+It needs a server with the demo data running (above), started against the fake providers in `e2e/fake-providers.js` (OpenRouter, Alpaca, and Finnhub) with `OPENROUTER_API_BASE`, `ALPACA_BASE_URL`, and `FINNHUB_BASE_URL` all set to `http://127.0.0.1:8399`, `PARALLAX_KEYS_SECRET` set, and `PARALLAX_MAX_AGENTS=1000`, since each run connects new agents to the same database and the default limit is 10.
+It also needs Node.js:
 
 ```bash
 cd e2e
@@ -108,11 +162,13 @@ Module paths that declare node types are frozen once data is stored, because mov
 ```
 main.jac        server entry; imports every endpoint by name
 models/         node, edge, obj, and enum definitions; no server-only imports
+accounts/       per-user agents: sealed keys, provider checks, the settings endpoints
 agents/         role model instances, Orchestrator, research sub-agents, specialists, Arbiter
 research/       data collectors and the S&P 500 screener
 analysis/       indicators, the consensus engine, and vote scoring
 action/         broker client, sizing, risk gate, executor, reconciliation, insight cards, baselines
 run/            daily run walker, Run Guard, trading day, scheduled jobs, health
+market/         whole-market data for the screener and stock pages
 dashboard/      client pages and components
 assets/         static files served at /static/assets/
 tests/          integration and smoke tests, fixtures, fakes

@@ -26,6 +26,7 @@ import logging;
 import os;
 import from datetime { date }
 import httpx;
+import from research.credentials { OPENROUTER_KEY, user_key }
 import from agents.models { CHAIN, FALLBACK_MODEL, OPENROUTER_API_BASE, OPENROUTER_API_BASE_ENV, PRIMARY_MODEL, ROUTER_MODEL }
 
 glob LOG: logging.Logger = logging.getLogger("trading_agent.models");
@@ -51,7 +52,7 @@ obj ListedModel {
 no model is called at all (and tests stay off the network). The list is public, so this sends
 no key and spends no request from the free allowance."""
 def listed_models -> list[ListedModel] | None {
-    if not os.environ.get("OPENROUTER_API_KEY", "") {
+    if not user_key(OPENROUTER_KEY) {
         return None;
     }
     base = os.environ.get(OPENROUTER_API_BASE_ENV, OPENROUTER_API_BASE).rstrip("/");

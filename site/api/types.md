@@ -161,6 +161,67 @@ Returned by [`get_run`](/api/get-run).
 | `order_qty`, `filled_qty` | integer | |
 | `filled_avg_price` | number or null | |
 
+## News
+
+### NewsFeed
+
+Returned by [`get_news_feed`](/api/get-news-feed).
+
+| Field | Type | |
+| --- | --- | --- |
+| `items` | [`NewsItem[]`](#newsitem) | This page of the feed |
+| `total` | integer | Notes matching the filters, across all pages |
+| `next_offset` | integer \| null | The next page's offset, or `null` on the last page |
+| `desks` | object | Matching notes per desk, ignoring the desk filter |
+| `tickers` | string[] | Every ticker in the feed |
+| `days` | string[] | Every day in the feed, newest first |
+| `held` | integer | Tickers in the feed the team holds now |
+
+### NewsItem
+
+| Field | Type | |
+| --- | --- | --- |
+| `id` | string | The note's address, `{day}/{ticker or "market"}/{desk}/{n}`, plus `/requested` for a reader's report |
+| `day` | string | The run's trading date |
+| `desk` | string | `market`, `fundamentals`, `news`, or `macro` |
+| `as_of` | string | When the note was written, in UTC |
+| `headline` | string | Cut from the note's summary, or a follow-up's question |
+| `view` | string | The desk's stance, or the macro desk's regime |
+| `lean` | string | `up`, `flat`, or `down` |
+| `confidence` | number | From 0 to 1 |
+| `ticker` | string | Empty for a macro brief |
+| `sector` | string | |
+| `sources` | integer | Sources the note cited |
+| `followup` | boolean | `true` when it answers the Orchestrator's question |
+| `requested` | boolean | `true` when a signed-in reader asked for it |
+
+### NewsStory
+
+Returned by [`get_news_story`](/api/get-news-story).
+
+| Field | Type | |
+| --- | --- | --- |
+| `item` | [`NewsItem`](#newsitem) | The note's feed line |
+| `body` | string | The summary after its headline |
+| `sources` | [`NewsSource[]`](#newssource) | Newest first |
+| `risks` | string[] | What the desk said could prove it wrong |
+| `data_gaps` | string[] | What the desk could not get |
+| `model` | string | The model that wrote it |
+| `followup_question` | string | The Orchestrator's question, for a follow-up |
+| `last_close` | number \| null | The ticker's close that morning |
+| `action` | string | The panel's decision on the ticker that morning |
+| `trail` | boolean | `true` when a decision trail exists for it |
+
+### NewsSource
+
+| Field | Type | |
+| --- | --- | --- |
+| `label` | string | The provider's name |
+| `url` | string | |
+| `claims` | string[] | What the desk took from it |
+| `day` | string | When it was published, when known |
+| `link` | boolean | `false` for an API address that needs the project's keys |
+
 ## Decision trail
 
 ### TrailView
@@ -265,6 +326,70 @@ Returned by [`get_decision_trail`](/api/get-decision-trail).
 | `passed` | boolean | required |
 | `detail` | string | |
 | `qty_before`, `qty_after` | integer | |
+
+## Market types
+
+Returned by the [market endpoints](/system/market-data).
+A row is a plain dictionary because a page asks only for the fields it shows.
+
+### ScreenerView
+
+Returned by [`screen_stocks`](/api/screen-stocks).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `rows` | array | One page of rows: field name to number, text, or `null` |
+| `total` | number | How many stocks passed, across all pages |
+| `ready` | boolean | `false` until the first sweep has listed the stocks |
+| `demo` | boolean | `true` on a server with the invented market |
+| `as_of` | string | When the quotes were last read, in UTC |
+| `quote_day` | string | The newest session among the quotes |
+| `sectors` | array | The sector names to filter by |
+| `exchanges` | array | The exchanges to filter by |
+| `coverage` | object | How many stocks have prices, stats, figures, and analyst records |
+
+### StockView
+
+Returned by [`get_stock`](/api/get-stock).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `found` | boolean | `false` for a symbol the screener does not cover |
+| `symbol`, `name` | string | The ticker and company |
+| `market_phase` | string | `open`, `pre-market`, `after-hours`, or `closed` |
+| `values` | object | The stock's full screener row |
+| `profile` | object | Headquarters, incorporation, fiscal year, industry, website, IPO date, and EDGAR link |
+| `peers` | array | Comparable stocks: same industry nearest in size, then same sector |
+| `annual`, `quarterly` | array | Reported periods, each with `end`, `label`, and `values` |
+| `filings` | array | Recent filings, each with `form`, `filed`, `report_date`, and `url` |
+| `signals` | array | Each indicator's `name`, `value`, and `vote`: 1 buy, -1 sell, 0 neutral, or `null` |
+| `rating_trend` | array | The analyst consensus by month, from -1 to 1 |
+| `surprises` | array | How far each quarter beat or missed the consensus, in percent |
+| `committee` | object | Whether the reader's own agent holds it, and its last decision with a link to the trail |
+
+### HistoryView
+
+Returned by [`get_stock_history`](/api/get-stock-history).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `symbol` | string | The ticker |
+| `daily` | array | Bars back to 2016, with `time` as a `YYYY-MM-DD` session |
+| `intraday` | array | Five sessions of bars, with `time` in Unix seconds |
+| `seasons` | array | Each `year`'s `months`, January to December, and its `total` |
+| `busy` | boolean | The allowance was spent, so ask again shortly |
+
+### StockAboutView
+
+Returned by [`get_stock_about`](/api/get-stock-about).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `symbol` | string | The ticker |
+| `news` | array | Recent headlines, each with `headline`, `source`, `url`, and `at` |
+| `description` | string | The opening of the company's Wikipedia article, or empty |
+| `description_url` | string | The article |
+| `busy` | boolean | The allowance was spent, so ask again shortly |
 
 ## Other types
 

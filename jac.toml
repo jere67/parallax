@@ -13,6 +13,8 @@ httpx = ">=0.28,<1"
 # a plain `jac install` skips [dev-dependencies] and `jac install --dev` fails to build
 # watchdog on macOS with Python 3.14.
 hypothesis = ">=6.100,<7"
+# Seals each user's API keys at rest (accounts/vault.jac).
+cryptography = ">=44,<47"
 
 [dependencies.npm]
 react = "^19.2.0"
@@ -47,6 +49,13 @@ watchdog = ">=3.0.0"
 [placement]
 default = "server"
 
+[placement.pins]
+# Nothing here imports Python directly, so inference would pull it toward the client along the
+# endpoints' references. These read the graph and hold the hard limits, so they stay server.
+"policy.*" = "server"
+"run.manual.*" = "server"
+
+
 [byllm.model]
 default_model = "openrouter/nvidia/nemotron-3.5-super-vl:free"
 
@@ -66,10 +75,17 @@ enabled = true
 default_password = "${ADMIN_PASSWORD:-changeme}"
 
 [client.app_meta_data]
-title = "Trading Agent"
+title = "Parallax"
 description = "An AI investment committee that researches S&P 500 stocks and trades on paper. An educational project; not investment advice."
 icon = "/static/assets/favicon.svg"
-theme_color = "#0b0d10"
+theme_color = "#0c0b09"
+viewport = "width=device-width, initial-scale=1, viewport-fit=cover"
+manifest = "/manifest.json"
+apple_touch_icon = "/apple-touch-icon.png"
+meta_apple_mobile_web_app_capable = "yes"
+meta_mobile_web_app_capable = "yes"
+meta_apple_mobile_web_app_status_bar_style = "black-translucent"
+meta_apple_mobile_web_app_title = "Parallax"
 
 [test]
 directory = "."

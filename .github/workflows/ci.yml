@@ -21,7 +21,8 @@ jobs:
   check:
     name: Check, test, build, boot
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # A run takes about 30 minutes, and longer when several stacked PRs run at once.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
@@ -78,12 +79,21 @@ jobs:
         run: jac build
 
       # The demo history gives the end-to-end check pages with data. This server is this job's
-      # alone; TRADING_AGENT_DEMO is never set on a deployed one.
+      # alone; TRADING_AGENT_DEMO is never set on a deployed one. The fake providers let the
+      # policy assistant's whole path run with no key and no network.
       - name: Boot the production build
         env:
           TRADING_AGENT_DEMO: "1"
           TRADING_AGENT_DISABLE_ORDERS: "1"
+          ADMIN_PASSWORD: e2e-admin-password
+          OPENROUTER_API_KEY: e2e-fake
+          OPENROUTER_API_BASE: http://127.0.0.1:8399
+          ALPACA_BASE_URL: http://127.0.0.1:8399
+          FINNHUB_BASE_URL: http://127.0.0.1:8399
+          PARALLAX_KEYS_SECRET: e2e-keys-secret-that-is-long-enough-to-use
+          PARALLAX_MAX_AGENTS: "1000"
         run: |
+          node e2e/fake-providers.js > fake-providers.log 2>&1 &
           jac run dist/trading-agent.jab < /dev/null > server.log 2>&1 &
           for _ in $(seq 1 120); do
             curl -sf http://localhost:8000/healthz > /dev/null && break
@@ -92,7 +102,7 @@ jobs:
           curl -sf http://localhost:8000/healthz
           curl -sf -X POST http://localhost:8000/function/health \
             -H 'Content-Type: application/json' -d '{}' | grep -q '"status": "ok"'
-          curl -sf http://localhost:8000/ | grep -q '<title>Trading Agent</title>'
+          curl -sf http://localhost:8000/ | grep -q '<title>Parallax</title>'
           echo "Server booted and answered."
 
       - uses: actions/setup-node@v7
@@ -109,6 +119,8 @@ jobs:
 
       - name: Check every page on each device
         working-directory: e2e
+        env:
+          E2E_ADMIN_PASSWORD: e2e-admin-password
         run: |
           npm ci
           npx playwright install --with-deps chromium webkit

@@ -4,7 +4,9 @@ reconciliation), driven by one scheduled tick a minute.
 Each tick reads New York time and the day's market calendar, so an early close moves the
 afternoon steps with it, and does whatever step is due and not yet done:
 
-- from 9:45 a.m., once the morning run has finished: size, gate, and submit its orders;
+- from 9:45 a.m., once the morning run has finished: size, gate, and submit its orders, with
+  the sizing and risk limits of the team policy version the run decided under, so a policy
+  saved after the run changes the next run, not this one's orders;
 - until ten minutes before the close: record fills and keep every position's stop, every
   minute until 10:00 and every five minutes after;
 - ten minutes before the close (3:50 p.m., or 12:50 on an early close): cancel the run's
@@ -31,10 +33,13 @@ import from action.broker { Broker }
 import from action.executor { MarketView, close_day_orders, decisions_of, execute_run, keep_stops, market_view, open_positions, sync_orders }
 import from action.reconcile { marks_of, reconcile }
 import from analysis.history { History }
+import from analysis.policy { gate_config, sizing_config }
 import from analysis.scoring { score_votes }
 import from models.graph { DailyMark, Portfolio, PortfolioMode, Ran, Run, RunStatus }
 import from research.alpaca { MarketDay, market_calendar }
 import from research.collector { run_budget }
+import from policy.store { policy_version }
+import from research.credentials { redact }
 import from run.guard { NEW_YORK }
 
 glob EXECUTION_START: time = time(9, 45);
@@ -55,7 +60,8 @@ obj TradingDeps {
     has broker: Broker | None = None,
         view: Callable[[list[str]], MarketView] | None = None,
         calendar: Callable[[str], MarketDay | None] | None = None,
-        history: History | None = None;
+        history: History | None = None,
+        start_day: str | None = None;
 
     def broker_client -> Broker {
         if self.broker is None {
@@ -107,7 +113,8 @@ def trading_step(portfolio: Portfolio, run: Run | None, day: str, local: datetim
         broker = deps.broker_client();
         if run is not None and run.status not in (RunStatus.RUNNING, RunStatus.SKIPPED) and not run.executed_at {
             tickers = sorted(set(decisions_of(run)) | set(open_positions(portfolio)));
-            done = execute_run(portfolio, run, broker, now, deps.read_market(tickers));
+            policy = policy_version(run.policy_version);
+            done = execute_run(portfolio, run, broker, now, deps.read_market(tickers), sizing_config(policy), gate_config(policy));
             lines.append(f"execute: {done.line()}");
             lines.extend(f"fill: {c}" for c in sync_orders(portfolio, broker, now));
             lines.extend(f"stop: {c}" for c in keep_stops(portfolio, broker, now));
@@ -139,7 +146,7 @@ def evening_due(portfolio: Portfolio, run: Run) -> bool {
 """Start the forward test once the operator has set its date, on a session day before the
 cancel window and before the day's run has executed, so the team still trades that day."""
 def start_due(portfolio: Portfolio, run: Run | None, now: datetime, day: str, deps: TradingDeps) -> list[str] {
-    wanted = forward_test_day();
+    wanted = deps.start_day if deps.start_day is not None else forward_test_day();
     if not wanted or wanted > day or baselines_of(portfolio) or (run is not None and run.executed_at) {
         return [];
     }
@@ -212,16 +219,24 @@ def team_trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = T
         return ["skipped: the previous tick is still running"];
     }
     try {
+        return guarded_tick(portfolio, now, deps);
+    } finally {
+        _TICK_LOCK.release();
+    }
+}
+
+"""`trading_tick`, with a failure logged and recorded on the day's run, for the next tick to try
+again."""
+def guarded_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps) -> list[str] {
+    try {
         return trading_tick(portfolio, now, deps);
     } except Exception as e {
-        reason = f"{type(e).__name__}: {str(e)[:300]}";
-        LOG.exception("trading tick failed");
+        reason = redact(f"{type(e).__name__}: {str(e)[:300]}");
+        LOG.error("trading tick failed: %s", reason);
         run = run_for(portfolio, now.astimezone(NEW_YORK).date().isoformat());
         if run is not None {
             run.action_log = (run.action_log + [f"{now.astimezone(NEW_YORK).strftime('%H:%M')} error: {reason}"])[-MAX_LOG_LINES:];
         }
         return [f"error: {reason}"];
-    } finally {
-        _TICK_LOCK.release();
     }
 }
