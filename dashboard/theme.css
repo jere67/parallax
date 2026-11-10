@@ -5,8 +5,8 @@
  * and are drawn by a hairline, labels are muted and values bright, and color is kept for data.
  *
  * Colors are tokens on :root, so every component reads them through Tailwind utilities such
- * as bg-panel or text-muted and the charts read them with getComputedStyle. The theme follows
- * the system unless the reader picks one, which sets data-theme on <html>.
+ * as bg-panel or text-muted and the charts read them with getComputedStyle. Every reader starts
+ * in the dark theme, so nothing flashes before the app loads; picking light sets data-theme on <html>.
  */
 @import "tailwindcss";
 @import "@fontsource-variable/instrument-sans";
@@ -14,63 +14,8 @@
 @import "@fontsource/instrument-serif/400-italic.css";
 @import "@fontsource-variable/jetbrains-mono";
 
-/* Newsprint: the light theme. */
+/* Ink: the dark theme, and where every reader starts. */
 :root {
-    color-scheme: light;
-    --bg: #f4f1e8;
-    --panel: #fbf9f4;
-    --panel-2: #eee9dd;
-    --hover: #f1ede3;
-    --line: #e0d9c9;
-    --line-strong: #c9c0ac;
-    --text: #1c1a15;
-    --muted: #5d584c;
-    --faint: #6a6456;
-    --accent: #80601a;
-    --accent-soft: rgb(128 96 26 / 0.12);
-    --up: #16735a;
-    --up-soft: rgb(22 115 90 / 0.11);
-    --down: #b3372f;
-    --down-soft: rgb(179 55 47 / 0.1);
-    --warn: #9c500d;
-    --warn-soft: rgb(168 86 15 / 0.11);
-    --series-team: #80601a;
-    --series-ew: #8a8473;
-    --series-spy: #4b6a91;
-    --overlay: #fffdf8;
-    --shadow-overlay: 0 0 0 1px oklch(0 0 0 / 0.06), 0 4px 8px -2px oklch(0 0 0 / 0.08), 0 12px 24px -4px oklch(0 0 0 / 0.08);
-}
-
-/* Ink: the dark theme, under the system preference and under the reader's choice alike. */
-@media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-        color-scheme: dark;
-        --bg: #0c0b09;
-        --panel: #0c0b09;
-        --panel-2: #161411;
-        --hover: #1a1814;
-        --line: #2a2721;
-        --line-strong: #3a362e;
-        --text: #ece6d8;
-        --muted: #a39d8e;
-        --faint: #857f70;
-        --accent: #d4ad62;
-        --accent-soft: rgb(212 173 98 / 0.13);
-        --up: #4cb796;
-        --up-soft: rgb(76 183 150 / 0.12);
-        --down: #e5655c;
-        --down-soft: rgb(229 101 92 / 0.12);
-        --warn: #e8893a;
-        --warn-soft: rgb(232 137 58 / 0.12);
-        --series-team: #d4ad62;
-        --series-ew: #8f897a;
-        --series-spy: #7f9cc0;
-        --overlay: #13120f;
-        --shadow-overlay: 0 0 0 1px oklch(1 0 0 / 0.08), 0 12px 32px oklch(0 0 0 / 0.6);
-    }
-}
-
-:root[data-theme="dark"] {
     color-scheme: dark;
     --bg: #0c0b09;
     --panel: #0c0b09;
@@ -92,8 +37,43 @@
     --series-team: #d4ad62;
     --series-ew: #8f897a;
     --series-spy: #7f9cc0;
+    --compare-1: #a97f25;
+    --compare-2: #4287e6;
+    --compare-3: #e0603e;
+    --compare-4: #8571e6;
     --overlay: #13120f;
     --shadow-overlay: 0 0 0 1px oklch(1 0 0 / 0.08), 0 12px 32px oklch(0 0 0 / 0.6);
+}
+
+/* Newsprint: the light theme, under the reader's choice. */
+:root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f4f1e8;
+    --panel: #fbf9f4;
+    --panel-2: #eee9dd;
+    --hover: #f1ede3;
+    --line: #e0d9c9;
+    --line-strong: #c9c0ac;
+    --text: #1c1a15;
+    --muted: #5d584c;
+    --faint: #6a6456;
+    --accent: #80601a;
+    --accent-soft: rgb(128 96 26 / 0.12);
+    --up: #16735a;
+    --up-soft: rgb(22 115 90 / 0.11);
+    --down: #b3372f;
+    --down-soft: rgb(179 55 47 / 0.1);
+    --warn: #9c500d;
+    --warn-soft: rgb(168 86 15 / 0.11);
+    --series-team: #80601a;
+    --series-ew: #8a8473;
+    --series-spy: #4b6a91;
+    --compare-1: #94660a;
+    --compare-2: #3b7ad0;
+    --compare-3: #e66a4e;
+    --compare-4: #6250d6;
+    --overlay: #fffdf8;
+    --shadow-overlay: 0 0 0 1px oklch(0 0 0 / 0.06), 0 4px 8px -2px oklch(0 0 0 / 0.08), 0 12px 24px -4px oklch(0 0 0 / 0.1);
 }
 
 @theme inline {
@@ -213,3 +193,202 @@ body {
 .rise > :nth-child(2) { animation-delay: 100ms; }
 .rise > :nth-child(3) { animation-delay: 200ms; }
 .rise > :nth-child(n + 4) { animation-delay: 300ms; }
+
+/* A policy's slider: the brass thumb is drawn at 20px and fills a 44px track row on a phone, so
+ * a thumb can always find it. */
+.policy-slider {
+    height: 44px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.policy-slider:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+@media (min-width: 768px) {
+    .policy-slider {
+        height: 24px;
+    }
+}
+
+/* A line of the news feed. On a phone: the ticker, its view and desk, and the time on one line,
+ * with the headline under them. From a tablet up: the columns of a table. */
+.news-row {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    grid-template-areas:
+        "ticker view desk time"
+        "head head head head";
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 6px;
+}
+
+.news-time { grid-area: time; }
+.news-ticker { grid-area: ticker; }
+.news-head { grid-area: head; }
+.news-view { grid-area: view; }
+.news-desk { grid-area: desk; }
+
+/* The feed's box rounds its corners without becoming the scroller, so day headings still stick. */
+.news-pane {
+    overflow: clip;
+}
+
+/* The search box has its own clear button, in the page's colors. */
+.news-search::-webkit-search-cancel-button {
+    display: none;
+}
+
+/* The column headings only make sense when the line is laid out in columns. */
+.news-row-head {
+    display: none;
+    height: 35px;
+}
+
+/* A sheet moves the focus to its heading for screen readers, which no one needs to see. */
+.news-story-head:focus-visible {
+    outline: none;
+}
+
+/* The selected line wears a brass rule along its edge. */
+.news-row-selected {
+    box-shadow: inset 2px 0 0 var(--accent);
+}
+
+@media (min-width: 768px) {
+    .news-row {
+        grid-template-columns: 60px 52px minmax(0, 1fr) 76px 80px;
+        grid-template-areas: "time ticker head view desk";
+        align-items: start;
+        column-gap: 12px;
+    }
+
+    .news-time,
+    .news-ticker {
+        line-height: 18px;
+    }
+
+    .news-row-head {
+        display: grid;
+        align-items: center;
+    }
+}
+
+/* A day's heading stays in view under the top bar as the feed scrolls by. */
+.news-day {
+    position: sticky;
+    top: calc(3rem + env(safe-area-inset-top));
+    z-index: 1;
+}
+
+/* A story over the feed: below the top bar, above the tab bar, and scrolling on its own. */
+.news-sheet {
+    position: fixed;
+    inset: calc(3rem + env(safe-area-inset-top)) 0 calc(3.5rem + env(safe-area-inset-bottom));
+    z-index: 15;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--bg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .news-sheet {
+        animation: news-sheet-in 200ms ease-out;
+    }
+}
+
+@keyframes news-sheet-in {
+    from {
+        opacity: 0;
+        translate: 16px 0;
+    }
+}
+
+@media (min-width: 768px) {
+    .news-sheet {
+        bottom: 0;
+    }
+}
+
+/* On a wide screen the feed and the story scroll side by side, each inside its box, under the
+ * page's heading and filters. */
+@media (min-width: 1024px) {
+    .news-split {
+        height: max(480px, calc(100dvh - 21.5rem));
+    }
+
+    .news-pane {
+        height: 100%;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+    }
+
+    .news-row-head {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }
+
+    .news-day {
+        top: 35px;
+    }
+}
+
+/* The front page's vote: each specialist's votes spread out from the middle of the scale, then
+ * the score settles. This one moment is all the page does on its own. */
+@keyframes vote-settle {
+    from {
+        left: 50%;
+        opacity: 0;
+    }
+}
+
+@keyframes vote-arrive {
+    from {
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .vote-dot {
+        animation: vote-settle 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    .vote-needle {
+        animation: vote-settle 900ms cubic-bezier(0.22, 1, 0.36, 1) 1000ms both;
+    }
+
+    .vote-bar {
+        animation: vote-arrive 400ms ease-out 1600ms both;
+    }
+}
+
+/* The sign-in page's arcs drift slowly, each at its own pace. */
+.auth-arcs {
+    opacity: 0.32;
+    mask-image: linear-gradient(to bottom, black 40%, transparent);
+}
+
+@keyframes arc-drift {
+    from {
+        translate: -24px 0;
+    }
+    to {
+        translate: 24px 6px;
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .auth-arc {
+        animation: arc-drift 16s ease-in-out infinite alternate;
+    }
+
+    .auth-arc-1 { animation-duration: 21s; animation-delay: -4s; }
+    .auth-arc-2 { animation-duration: 27s; animation-delay: -9s; }
+    .auth-arc-3 { animation-duration: 19s; animation-delay: -13s; }
+    .auth-arc-4 { animation-duration: 24s; animation-delay: -2s; }
+}

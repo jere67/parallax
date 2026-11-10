@@ -3,22 +3,28 @@
 Claims commit before a worker is launched. The next tick stores the result in a short
 transaction; restarting a server leaves a visible failed request after the lease expires.
 """
+import os;
 import time;
 import uuid;
 import from concurrent.futures { Future, ThreadPoolExecutor }
 import from datetime { timedelta }
+import from accounts.store { all_accounts, credentials_of, has_required_keys }
+import from accounts.vault { VaultError }
 import from agents.models { FREE_REQUESTS_PER_DAY, LIMITER, REQUEST_BUDGET, RequestBudget, models_disabled, provider_requests_left }
 import from agents.orchestrator { Committee }
 import from jaclang.byllm.types { IterationAction, IterationContext }
-import from analysis.consensus { ConsensusConfig }
+import from analysis.policy { consensus_config }
 import from models.graph { Coverage, Covers, CoverageReason, InsightCard, Portfolio, PortfolioMode, Published, Ran, Run, RunStatus }
+import from models.policy { Policy }
 import from models.reports { ReportCatalog, ReportJob }
 import from models.users { ReportStatus }
-import from research.alpaca { market_calendar }
-import from research.collector { parse_utc, run_budget, utc_now }
+import from research.alpaca { MarketDay, market_calendar }
+import from research.collector { RunBudget, parse_utc, run_budget, utc_now }
+import from research.credentials { ALPACA_KEY, Credentials, enter_credentials, leave_credentials }
 import from research.wikipedia { constituents }
 import from run.guard { NEW_YORK, RunLimits, RunSession, record_run, stored_requests, team_portfolio }
 import from run.research { collect_pass }
+import from run.agents { is_running }
 import from run.public { public }
 import from reports.api { RESERVE, catalog, job_for }
 
@@ -27,18 +33,24 @@ glob POOL: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1, thread_name_pr
 glob FUTURES: dict[str, Future[RunSession]] = {};
 glob REPORT_LIMIT: int = 80;
 
-"""Same committee, without submit_decisions or any execution tool."""
-def generate(ticker: str, day: str, allowance: int) -> RunSession {
+"""Same committee, without submit_decisions or any execution tool, on the requester's `keys` (the
+server's own when None). A report is shared with everyone who asks for that stock that day, so it
+decides under the default policy, and each reader's page says what their own makes of it."""
+def generate(ticker: str, day: str, allowance: int, policy: Policy = Policy(), version: int = 0, keys: Credentials | None = None) -> RunSession {
     budget = RequestBudget(remaining=allowance, deadline=time.monotonic() + 600.0);
     token = REQUEST_BUDGET.set(budget);
-    try { return analyze_report(ticker, day, allowance); }
-    finally { REQUEST_BUDGET.reset(token); }
+    scope = enter_credentials(keys) if keys is not None else None;
+    try { return analyze_report(ticker, day, allowance, policy, version); }
+    finally {
+        if scope is not None { leave_credentials(scope); }
+        REQUEST_BUDGET.reset(token);
+    }
 }
 
-def analyze_report(ticker: str, day: str, allowance: int) -> RunSession {
+def analyze_report(ticker: str, day: str, allowance: int, policy: Policy = Policy(), version: int = 0) -> RunSession {
     collection = collect_pass(day, [], requested_ticker=ticker);
-    s = RunSession(run_day=day, collection=collection, holdings={}, config=ConsensusConfig(),
-        limits=RunLimits(deadline_s=600.0, react_iterations=6), run_requests=allowance);
+    s = RunSession(run_day=day, collection=collection, holdings={}, config=consensus_config(policy),
+        limits=RunLimits(deadline_s=600.0, react_iterations=6), run_requests=allowance, policy=policy, policy_version=version);
     s.write_macro();
     def stop(_ctx: IterationContext) -> IterationAction {
         return IterationAction.ABORT_WITH_SUMMARY if s.overdue() or s.requests_left() < 2 else IterationAction.CONTINUE;
@@ -58,8 +70,37 @@ def analyze_report(ticker: str, day: str, allowance: int) -> RunSession {
     return s;
 }
 
-def start(job_id: str, ticker: str, day: str, allowance: int) {
-    FUTURES[job_id] = POOL.submit(generate, ticker, day, allowance);
+def start(job_id: str, ticker: str, day: str, allowance: int, keys: Credentials | None) {
+    FUTURES[job_id] = POOL.submit(generate, ticker, day, allowance, Policy(), 0, keys);
+}
+
+"""The keys job `j` runs on: its requester's, or the server's own (None) when the admin's agent
+asked. Raises VaultError or KeyError when the requester's can no longer be opened."""
+def job_keys(j: ReportJob) -> Credentials | None {
+    if not j.requested_by {
+        return None;
+    }
+    for account in all_accounts() {
+        if account.owner_root == j.requested_by and has_required_keys(account) {
+            return credentials_of(account);
+        }
+    }
+    raise KeyError("the requester's keys are not connected");
+}
+
+"""Read the market calendar with the server's key, or the first connected agent's on a server with
+none of its own, since the calendar is the same for everyone."""
+def read_sessions(start_day: str, end_day: str, budget: RunBudget) -> list[MarketDay] {
+    if not os.environ.get(ALPACA_KEY, "") {
+        for account in all_accounts() {
+            if has_required_keys(account) {
+                scope = enter_credentials(credentials_of(account));
+                try { return market_calendar(start_day, end_day, budget); }
+                finally { leave_credentials(scope); }
+            }
+        }
+    }
+    return market_calendar(start_day, end_day, budget);
 }
 
 def save_result(j: ReportJob, s: RunSession) {
@@ -117,7 +158,7 @@ def refresh_catalog(team: Portfolio) -> ReportCatalog {
         budget = run_budget();
         members = constituents(budget);
         today = now.astimezone(NEW_YORK).date();
-        sessions = market_calendar((today - timedelta(days=10)).isoformat(), today.isoformat(), budget);
+        sessions = read_sessions((today - timedelta(days=10)).isoformat(), today.isoformat(), budget);
         if not sessions { return c; }
         c.symbols = sorted(m.symbol for m in members);
         c.trading_date = max(d.day for d in sessions);
@@ -130,7 +171,9 @@ def refresh_catalog(team: Portfolio) -> ReportCatalog {
         report_used = sum(j.model_requests if j.status == ReportStatus.READY else REPORT_LIMIT for j in jobs);
         c.model_requests_left = max(0, min(FREE_REQUESTS_PER_DAY - stored_requests(team, now.date().isoformat()) - report_used, FREE_REQUESTS_PER_DAY - used, provider_left if provider_left is not None else 0));
         active_morning = any(r.status == RunStatus.RUNNING for r in [team ->:Ran:->[?:Run]]);
-        c.generation_enabled = not models_disabled() and not active_morning and c.model_requests_left >= RESERVE + REPORT_LIMIT;
+        # Only what the server's own key pays for depends on its allowance.
+        if active_morning { c.model_requests_left = 0; }
+        c.generation_enabled = not models_disabled();
     } except Exception {
         # Fail closed; users retain access to cached results and see cache-only mode.
         c.generation_enabled = False;
@@ -172,11 +215,20 @@ def reports_job {
             continue;
         }
         if not c.generation_enabled { return; }
+        if not j.requested_by and c.model_requests_left < RESERVE + REPORT_LIMIT { continue; }
+        if is_running(j.requested_by) { continue; }
+        try {
+            keys = job_keys(j);
+        } except (KeyError, VaultError) {
+            j.status = ReportStatus.FAILED;
+            j.error = "The keys this report needs are no longer connected. No trade was placed.";
+            continue;
+        }
         j.status = ReportStatus.RUNNING;
         j.started_at = now.isoformat();
         j.worker = WORKER;
         key = jid(j); ticker = j.ticker; day = j.trading_date;
-        on_commit(lambda { start(key, ticker, day, REPORT_LIMIT); });
+        on_commit(lambda { start(key, ticker, day, REPORT_LIMIT, keys); });
         return;
     }
 }

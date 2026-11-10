@@ -202,7 +202,7 @@ test "a series measures return, drawdown, and Sharpe from the starting balance" 
         DailyMark(day="2026-10-23", equity=102000.0, cash=0.0, positions_value=0.0, peak_equity=0.0, marked_at="")
     ];
     s = series("team", marks, 100000.0);
-    assert s.label == "Team portfolio" and [p.day for p in s.points] == ["2026-10-21", "2026-10-22", "2026-10-23"];
+    assert s.label == "Your agent" and [p.day for p in s.points] == ["2026-10-21", "2026-10-22", "2026-10-23"];
     assert abs(s.total_return - 0.02) < 1e-12 and abs(s.max_drawdown - 0.01) < 1e-12;
     assert s.sharpe is not None and s.sharpe > 0 and s.volatility > 0;
     one = series("spy", marks[:1], 100000.0);

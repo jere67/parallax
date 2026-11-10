@@ -4,11 +4,14 @@ hook, the iteration cap, and a failing model. Uses the whole-run stubs in
 run/stubs.jac, so no test touches the network."""
 import uuid;
 import agents.orchestrator as orchestrator_module;
+import run.orchestration as orchestration_module;
 import from jaclang.byllm.lib { MockError, MockLLM, MockToolCall }
 import from analysis.consensus { ConsensusConfig }
 import from models.graph { Portfolio, PortfolioMode, RunStatus, TradeAction }
-import from run.guard { RunLimits, RunSession, daily_run }
-import from run.orchestration { orchestrate }
+import from models.policy { Policy, PolicyScope }
+import from policy.store { save_policy, team_policy }
+import from run.guard { RunLimits, RunOutcome, RunSession, daily_run }
+import from run.orchestration { morning_run, orchestrate }
 import from run.stubs { RUN_DAY, Stubs, collection }
 
 def session_with(stubs: Stubs, run_requests: int = 600, iterations: int = 12) -> RunSession {
@@ -134,4 +137,24 @@ test "an Orchestrator whose model fails hands the run to the fallback" {
     session = outcome.session;
     assert session is not None and session.submitted and len(session.analyses) == 2;
     assert any(a.startswith("orchestrator error: ConnectionError") for a in session.actions);
+}
+
+test "the morning run decides under the team policy in force" {
+    (start, base) = team_policy();
+    saved = save_policy(PolicyScope.TEAM, Policy(buy_score=start.buy_score + 0.05), base);
+    assert saved.saved;
+    seen: list[tuple[Policy, int]] = [];
+    def spy(portfolio: Portfolio, day: str, driver: object, limits: RunLimits, in_force: tuple[Policy, int]) -> RunOutcome {
+        seen.append(in_force);
+        return RunOutcome(run_day=day, status=RunStatus.SKIPPED);
+    }
+    real = orchestration_module.daily_run;
+    setattr(orchestration_module, "daily_run", spy);
+    try {
+        morning_run(RUN_DAY);
+    } finally {
+        setattr(orchestration_module, "daily_run", real);
+    }
+    assert seen[0][1] == saved.version and seen[0][0].buy_score == start.buy_score + 0.05;
+    assert save_policy(PolicyScope.TEAM, Policy(), saved.version).saved;
 }

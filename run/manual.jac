@@ -24,17 +24,14 @@ both run, and a day whose run failed is not run again.
 import logging;
 import from datetime { datetime, time, timedelta }
 import from jaclang.server.identity.app_tokens { token_create, token_revoke }
-import from jaclang.server.identity.user_manager { UserManager }
+import from accounts.store { caller_is_admin }
 import from models.graph { Portfolio }
 import from run.guard { NEW_YORK, find_team_portfolio }
 import from run.orchestration { morning_run }
 import from run.trading { run_for }
 
-glob ADMIN_ROLE: str = "admin";
 # The app token purpose that holds manual run requests.
 glob REQUEST_PURPOSE: str = "manual-morning-run";
-# Users read per page when looking for the caller among the admins.
-glob USER_PAGE: int = 100;
 
 glob LOG: logging.Logger = logging.getLogger("trading_agent.manual");
 
@@ -83,30 +80,12 @@ def take_request(day: str) -> bool {
     return token_revoke(REQUEST_PURPOSE, day) > 0;
 }
 
-"""True when the graph root `caller` (`jid(root)`) belongs to a user with the admin role."""
-def is_admin_root(users: UserManager, caller: str) -> bool {
-    offset = 0;
-    while True {
-        page = users.list_all_users(limit=USER_PAGE, offset=offset);
-        for u in page {
-            if u.get("role") == ADMIN_ROLE and str(u.get("root_id", "")) == caller {
-                return True;
-            }
-        }
-        if len(page) < USER_PAGE {
-            return False;
-        }
-        offset += USER_PAGE;
-    }
-    return False;
-}
-
 """Ask for today's morning run on the team portfolio. Admin only; the run starts within a
 minute, from `manual_run_job`."""
 def:priv start_morning_run -> ManualRun {
     local = datetime.now(NEW_YORK);
     day = local.date().isoformat();
-    refusal = manual_refusal(is_admin_root(UserManager(base_path="."), str(jid(root))), find_team_portfolio(), day, local);
+    refusal = manual_refusal(caller_is_admin(), find_team_portfolio(), day, local);
     if refusal {
         return ManualRun(started=False, run_day=day, message=refusal);
     }

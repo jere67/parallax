@@ -30,6 +30,7 @@ import from agents.models { FALLBACK_MODEL, PRIMARY_MODEL }
 import from agents.specialists { packet }
 import from analysis.consensus { CONSENSUS_VERSION, consensus, draft_action }
 import from analysis.history { bar }
+import from research.indicators { momentum, range_position, relative_strength, rsi, sma }
 import from dashboard.ui.format { count }
 import from analysis.scoring { BENCHMARK, excess_return, vote_window }
 import from models.agents { Domain, Evidence, MacroReport, ResearchReport, RiskRegime, Specialist, Stance, Vote }
@@ -75,10 +76,10 @@ import from models.graph {
 import from models.research { RegimeInputs }
 import from research.alpaca { Bar }
 import from run.analysis { DEFAULT_HORIZON_DAYS, trading_day_after }
+import from accounts.store { DEMO_ENV }
 import from run.guard { NEW_YORK, TEAM_PORTFOLIO }
 import from run.public { public }
 
-glob DEMO_ENV: str = "TRADING_AGENT_DEMO";
 glob LOG: logging.Logger = logging.getLogger("trading_agent.demo");
 glob _SEEDING: threading.Lock = threading.Lock();
 glob NOTHING_WRITTEN: str = "demo: the team portfolio already has history; nothing written";
@@ -357,7 +358,7 @@ obj DemoSim {
             prompt_tokens=requests * self.rng.randint(2600, 3400),
             completion_tokens=requests * self.rng.randint(380, 520)
         ));
-        regime = self.macro(run, day);
+        self.macro(run, day);
         others = [s.ticker for s in UNIVERSE if s.ticker not in held];
         self.rng.shuffle(others);
         picks = sorted(others[:SHORTLIST]);
@@ -371,7 +372,7 @@ obj DemoSim {
         }
         ordered = sorted(covered, key=lambda (c: Coverage) { -self.outlook(c.ticker, day); });
         for c in covered {
-            self.analyze(c, day, held.get(c.ticker), regime);
+            self.analyze(c, day, held.get(c.ticker));
             publish_card(c, day, PortfolioMode.AUTO.value, run.finished_at);
         }
         buys = len([c for c in covered if self.action_of(c) in (TradeAction.BUY, TradeAction.ADD)]);
@@ -419,6 +420,11 @@ obj DemoSim {
         s = self.stocks[ticker];
         last = self.before(day, 1)[0];
         earnings = self.rng.choice([1, 2, 6, 11, 17, 24, 33, 41, None]);
+        # The indicators a policy's rules read, from the bars before the run, as a live run
+        # computes them; the tape is too short for the 50- and 200-day figures.
+        past = [self.bars[ticker][d] for d in self.before(day, len(self.sessions))];
+        spy = [self.bars[BENCHMARK][d] for d in self.before(day, len(self.sessions))];
+        closes = [b.close for b in past];
         return public(run +>:Covers():+> Coverage(
             ticker=ticker,
             sector=s.sector,
@@ -429,12 +435,19 @@ obj DemoSim {
             atr_14=round(self.atr(ticker, day), 4),
             realized_vol_20=round(self.realized_vol(ticker, day), 4),
             volume_20=s.volume * self.rng.uniform(0.85, 1.15),
-            sessions_to_earnings=earnings
+            sessions_to_earnings=earnings,
+            rsi_14=rsi(closes),
+            momentum_20=momentum(closes, 20),
+            momentum_60=momentum(closes, 60),
+            sma_50=sma(closes, 50),
+            sma_200=sma(closes, 200),
+            range_52w_position=range_position([b.high for b in past], [b.low for b in past], closes[-1]),
+            rs_spy_20=relative_strength(past, spy, 20)
         ));
     }
 
     """Research, votes, consensus, and the Arbiter's decision for one coverage."""
-    def analyze(c: Coverage, day: str, position: Position | None, regime: RegimeInputs) {
+    def analyze(c: Coverage, day: str, position: Position | None) {
         t = c.ticker;
         s = self.stocks[t];
         signal = self.bias[t] + 0.3 * self.outlook(t, day) + self.rng.gauss(0.0, 0.25);
@@ -455,7 +468,7 @@ obj DemoSim {
                 ]
             ),
             Domain.NEWS: (
-                f"{self.rng.randint(4, 19)} articles over the past week. The tone was {'mostly positive' if signal > 0.15 else ('mixed' if signal > -0.15 else 'mostly negative')}, and no new legal or regulatory matter appeared. Earnings are {'due in ' + str(c.sessions_to_earnings) + ' sessions' if c.sessions_to_earnings is not None else 'not scheduled within the calendar'}.",
+                f"Coverage was {'mostly positive' if signal > 0.15 else ('mixed' if signal > -0.15 else 'mostly negative')} across {self.rng.randint(4, 19)} articles this week. No new legal or regulatory matter appeared. Earnings are {'due in ' + str(c.sessions_to_earnings) + ' sessions' if c.sessions_to_earnings is not None else 'not scheduled within the calendar'}.",
                 [
                     Evidence(claim="Headlines from the past seven days.", source_url=f"https://data.alpaca.markets/v1beta1/news?symbols={t}", published=last),
                     Evidence(claim="Company background and business segments.", source_url=f"https://en.wikipedia.org/wiki/{s.name}", published=last)

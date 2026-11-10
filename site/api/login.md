@@ -1,6 +1,6 @@
 ---
 title: user/login
-description: Sign in with a username and password and get a bearer token for private endpoints.
+description: Sign up and sign in with an email and password, and get a bearer token for private endpoints.
 api: { method: POST, path: /user/login, auth: none }
 related:
   - { text: Authentication, link: /api/authentication }
@@ -8,8 +8,19 @@ related:
 ---
 
 Signs a user in and returns a JWT.
-The token goes in the `Authorization` header of a private endpoint such as [`start_morning_run`](/api/start-morning-run).
+The token goes in the `Authorization` header of every private endpoint.
 This endpoint is built into the Jac server.
+
+Sign-up uses the server's built-in `POST /user/register` with the same shapes:
+
+```bash
+curl -s -X POST http://localhost:8000/user/register \
+  -H 'Content-Type: application/json' \
+  -d '{"identities":[{"type":"username","value":"you@example.com"}],"credential":{"type":"password","password":"a-password-of-8-or-more"}}'
+```
+
+The dashboard's `/signup` and `/login` pages call these two endpoints with the email as the username.
+A signed-in user changes their password with `PUT /user/password`, a bearer token, and a body of `current_password` and `new_password`.
 
 <div class="api-grid">
 <div class="api-main">
@@ -23,7 +34,7 @@ Who is signing in.
 <Fields title="Show identity fields" open>
 
 <Param name="type" type="string" required>`"username"` or `"email"`.</Param>
-<Param name="value" type="string" required>The username or email address. The admin account's username is `admin`.</Param>
+<Param name="value" type="string" required>The email address the account was created with, sent as a `username` identity. The admin account's username is `admin`.</Param>
 
 </Fields>
 
@@ -35,7 +46,7 @@ The password.
 <Fields title="Show credential fields" open>
 
 <Param name="type" type="string" required>`"password"`.</Param>
-<Param name="password" type="string" required>The admin's password is the `ADMIN_PASSWORD` the server read when it created the account.</Param>
+<Param name="password" type="string" required>The account's password. The admin's is the `ADMIN_PASSWORD` the server read when it created the account.</Param>
 
 </Fields>
 

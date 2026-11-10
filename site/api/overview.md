@@ -6,9 +6,11 @@ related:
   - { text: Data types, link: /api/types }
 ---
 
-The dashboard reads everything it shows through a small HTTP API, and anyone can call it.
+The dashboard reads everything it shows through a small HTTP API, and every data endpoint needs an account.
 Every endpoint is a Jac function exposed by the server: you send a `POST` with a JSON body of its parameters and read the result from the response's `data.result`.
-The read endpoints are public; only [`start_morning_run`](/api/start-morning-run) needs a token.
+Only `health` and `healthz` are public.
+Every other endpoint is private: it needs a bearer token and answers `401` to an anonymous caller, and it reads or changes only the caller's own agent.
+[`start_morning_run`](/api/start-morning-run) also needs the admin's token.
 
 ## Base URL
 
@@ -73,24 +75,39 @@ These docs leave them out of the examples; ignore them.
 ## Endpoints
 
 <Cards :cols="2">
-<Card title="get_portfolio" icon="chart" link="/api/get-portfolio">The team portfolio now: equity, returns, positions, orders.</Card>
+<Card title="get_portfolio" icon="chart" link="/api/get-portfolio">Your portfolio now: equity, returns, positions, orders.</Card>
 <Card title="get_performance" icon="chart" link="/api/get-performance">Daily equity of the portfolio and both baselines.</Card>
 <Card title="list_runs" icon="clock" link="/api/list-runs">Every morning run, newest first.</Card>
 <Card title="get_run" icon="clock" link="/api/get-run">One run, with a row per covered ticker.</Card>
+<Card title="get_news_feed" icon="clock" link="/api/get-news-feed">One page of research headlines, filtered.</Card>
+<Card title="get_news_story" icon="clock" link="/api/get-news-story">One research note in full.</Card>
 <Card title="get_decision_trail" icon="search" link="/api/get-decision-trail">Everything behind one decision.</Card>
-<Card title="start_morning_run" icon="terminal" link="/api/start-morning-run">Start today's run by hand. Admin only.</Card>
+<Card title="screen_stocks" icon="search" link="/api/screen-stocks">Filter and sort every U.S.-listed stock.</Card>
+<Card title="get_stock" icon="chart" link="/api/get-stock">One stock's figures, peers, and filings.</Card>
+<Card title="get_stock_history" icon="chart" link="/api/get-stock-history">A stock's bars back to 2016.</Card>
+<Card title="get_stock_about" icon="search" link="/api/get-stock-about">A stock's headlines and description.</Card>
+<Card title="Accounts" icon="user" link="/api/accounts">Connect keys, turn on paper trading, and start your own run.</Card>
+<Card title="start_morning_run" icon="terminal" link="/api/start-morning-run">Start the team agent's run by hand. Admin only.</Card>
 </Cards>
 
 | Endpoint | Method and path | Auth |
 | --- | --- | --- |
 | [`health`](/api/health) | `POST /function/health` | none |
 | [`healthz`](/api/healthz) | `GET /healthz` | none |
-| [`get_portfolio`](/api/get-portfolio) | `POST /function/get_portfolio` | none |
-| [`get_performance`](/api/get-performance) | `POST /function/get_performance` | none |
-| [`list_runs`](/api/list-runs) | `POST /function/list_runs` | none |
-| [`get_run`](/api/get-run) | `POST /function/get_run` | none |
-| [`get_decision_trail`](/api/get-decision-trail) | `POST /function/get_decision_trail` | none |
-| [`user/login`](/api/login) | `POST /user/login` | none |
+| [`get_portfolio`](/api/get-portfolio) | `POST /function/get_portfolio` | token |
+| [`get_performance`](/api/get-performance) | `POST /function/get_performance` | token |
+| [`list_runs`](/api/list-runs) | `POST /function/list_runs` | token |
+| [`get_run`](/api/get-run) | `POST /function/get_run` | token |
+| [`get_news_feed`](/api/get-news-feed) | `POST /function/get_news_feed` | token |
+| [`get_news_story`](/api/get-news-story) | `POST /function/get_news_story` | token |
+| [`get_decision_trail`](/api/get-decision-trail) | `POST /function/get_decision_trail` | token |
+| [`screen_stocks`](/api/screen-stocks) | `POST /function/screen_stocks` | token |
+| [`get_stock`](/api/get-stock) | `POST /function/get_stock` | token |
+| [`get_stock_history`](/api/get-stock-history) | `POST /function/get_stock_history` | token |
+| [`get_stock_about`](/api/get-stock-about) | `POST /function/get_stock_about` | token |
+| [Policy endpoints](/api/policy) | `POST /function/<name>` | token |
+| [Account endpoints](/api/accounts) | `POST /function/<name>` | token |
+| [`user/register`, `user/login`, `user/password`](/api/login) | `POST /user/register`, `POST /user/login`, `PUT /user/password` | none, none, token |
 | [`start_morning_run`](/api/start-morning-run) | `POST /function/start_morning_run` | admin token |
 
 `GET /functions` lists every function the server serves.
@@ -111,6 +128,6 @@ See [Dashboard internals](/system/dashboard#read-cache).
 
 ## Adding an endpoint
 
-An endpoint is a `def:pub` (public) or `def:priv` (signed-in) function, imported by name in `main.jac`.
+An endpoint is a `def:priv` (signed-in) function, or a `def:pub` (public) one for the health check only, imported by name in `main.jac`.
 A function that is not imported answers 404 or 405, and `tests/endpoints_tests.jac` fails for any marked function the server does not serve.
 Return a typed object from `models/views.jac`, so the API stays a contract.

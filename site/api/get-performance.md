@@ -1,13 +1,13 @@
 ---
 title: get_performance
-description: Daily equity of the team portfolio and both baselines, with total return, Sharpe ratio, maximum drawdown, and volatility.
-api: { method: POST, path: /function/get_performance, auth: none }
+description: Daily equity of the caller's portfolio and both baselines, with total return, Sharpe ratio, maximum drawdown, and volatility.
+api: { method: POST, path: /function/get_performance, auth: Bearer token }
 related:
   - { text: Insights and baselines, link: /system/insights-baselines }
   - { text: Data types, link: /api/types#performanceview }
 ---
 
-Returns three series of daily marks: the team portfolio, the equal-weight shortlist baseline, and SPY buy-and-hold.
+Returns three series of daily marks for the caller's own agent (the team portfolio for the admin), needing a bearer token: the agent's portfolio, the equal-weight shortlist baseline, and SPY buy-and-hold.
 The Portfolio page's chart and performance table are built from it.
 
 <div class="api-grid">
@@ -44,7 +44,7 @@ One entry per portfolio, in this order: `team`, `equal_weight`, `spy`.
 <Fields title="Show Series fields" open>
 
 <Param name="key" type="string" required>`team`, `equal_weight`, or `spy`.</Param>
-<Param name="label" type="string" required>`Team portfolio`, `Equal-weight shortlist`, or `SPY buy-and-hold`.</Param>
+<Param name="label" type="string" required>`Your agent`, `Equal-weight shortlist`, or `SPY buy-and-hold`.</Param>
 <Param name="points" type="MarkPoint[]" required>One per trading day: `day`, `equity`, and `drawdown` from the running peak.</Param>
 <Param name="total_return" type="number | null">Last equity against the starting balance.</Param>
 <Param name="sharpe" type="number | null">Mean daily return over its standard deviation, times the square root of 252, with no risk-free rate. `null` with fewer than two returns.</Param>
@@ -101,7 +101,7 @@ result = res.json()['data']['result']
       "series": [
         {
           "key": "team",
-          "label": "Team portfolio",
+          "label": "Your agent",
           "max_drawdown": 0.0038,
           "points": [
             {

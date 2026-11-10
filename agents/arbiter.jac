@@ -89,12 +89,12 @@ Rules:
 def review_case_retry(ticker: str, as_of: str, draft: str, statistics: str, arguments: str, research: str, time_stop: str) -> Review by retry_llm(temperature=0.2, max_output_retries=1);
 
 sem review_case.draft = "The draft action and what it means.";
-sem review_case.statistics = "The consensus score C in [-1, 1], the agreement A in [0, 1], C's 90% interval, and each specialist's mean score.";
+sem review_case.statistics = "The consensus score C in [-1, 1], the agreement A in [0, 1], C's 80% interval, and each specialist's mean score.";
 sem review_case.arguments = "The specialists' strongest rationales for and against, with their stance and confidence.";
 sem review_case.research = "Summaries and risks of the research reports on this stock and the market.";
 sem review_case.time_stop = "The trading date by which the position is reviewed if no exit fires.";
 sem review_case_retry.draft = "The draft action and what it means.";
-sem review_case_retry.statistics = "The consensus score C in [-1, 1], the agreement A in [0, 1], C's 90% interval, and each specialist's mean score.";
+sem review_case_retry.statistics = "The consensus score C in [-1, 1], the agreement A in [0, 1], C's 80% interval, and each specialist's mean score.";
 sem review_case_retry.arguments = "The specialists' strongest rationales for and against, with their stance and confidence.";
 sem review_case_retry.research = "Summaries and risks of the research reports on this stock and the market.";
 sem review_case_retry.time_stop = "The trading date by which the position is reviewed if no exit fires.";
@@ -194,7 +194,7 @@ def safe_ruling(docket: Docket, error: str) -> Ruling {
 
 def statistics_text(c: Consensus) -> str {
     lines = [
-        f"C = {c.score:+.3f}; A = {c.agreement:.2f}; 90% interval for C: [{c.ci_low:+.3f}, {c.ci_high:+.3f}]; valid samples: {c.samples_used}.",
+        f"C = {c.score:+.3f}; A = {c.agreement:.2f}; 80% interval for C: [{c.ci_low:+.3f}, {c.ci_high:+.3f}]; valid samples: {c.samples_used}.",
         "Specialist means: " + ", ".join(f"{name} {score:+.2f}" for (name, score) in c.specialist_scores.items()) + "."
     ];
     return "\n".join(lines);

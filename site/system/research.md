@@ -149,7 +149,7 @@ A follow-up reruns one domain's sub-agent with the question; the answer goes in 
 See [Agents and models](/system/agents) for the tools and [Run Guard](/system/run-guard) for the limits.
 
 The results are written to the graph only afterwards, on the caller's thread: a `MacroRecord` on the run, a `Coverage` per ticker with its fetch errors and the figures the gate needs (last close, ATR(14), 20-day volatility and volume, sessions to earnings), and a `ResearchRecord` per report.
-Each node is granted public read access, which is how the [dashboard](/guide/dashboard) shows them to anonymous readers.
+Each node is granted read access, and the [dashboard](/guide/dashboard) shows it to the account whose agent wrote it.
 
 ::: info Where the code differs from the TDD
 The TDD's schedule runs collection at 7:32 and research until about 8:10 as separate steps.

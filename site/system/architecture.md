@@ -7,7 +7,7 @@ related:
   - { text: Data model, link: /system/data-model }
 ---
 
-The Trading Agent is a centralized multi-agent system.
+Parallax is a centralized multi-agent system, run once per user.
 One language-model Orchestrator directs three layers of work (Research, Analysis, and Action) through tools.
 Deterministic Jac code enforces every rule the Orchestrator must not break: the Orchestrator decides what to investigate and when the evidence is good enough, and code decides what is allowed.
 
@@ -48,7 +48,7 @@ They come from [TDD §2](/design/tdd#design-principles).
 | Action | [Risk gate](/system/risk-gate) | Code | Rejects or resizes anything that breaks a limit. |
 | Action | [Executor](/system/execution) | Code | Places, monitors, and reconciles orders on the Alpaca paper account. |
 | Action | [Insight publisher](/system/insights-baselines) | Code | Publishes each decision as a plain-English card with its sources. |
-| Product | [API](/api/overview) and [dashboard](/guide/dashboard) | Endpoints and React client | Serve the public, read-only dashboard. |
+| Product | [API](/api/overview) and [dashboard](/guide/dashboard) | Endpoints and React client | Serve the signed-in dashboard, one agent per user. |
 | State | [Graph](/system/data-model) | Jac persistent graph on Postgres | Holds runs, reports, votes, decisions, risk checks, orders, and marks. |
 
 ## How a decision travels
@@ -71,7 +71,7 @@ Follow one stock through one day.
    Each vote is a stance, a confidence, a horizon, and the sources it relies on.
 
 4. **The consensus drafts an action.**
-   The [consensus engine](/system/consensus) bootstraps the 15 votes into a score with a 90% interval, and a fixed rule drafts BUY, ADD, HOLD, TRIM, SELL, or NO_ACTION.
+   The [consensus engine](/system/consensus) bootstraps the 15 votes into a score with an 80% interval, and a fixed rule drafts BUY, ADD, HOLD, TRIM, SELL, or NO_ACTION.
 
 5. **The Arbiter reviews it.**
    The [Arbiter](/system/agents#arbiter) may confirm the draft or downgrade it, never upgrade it.
@@ -95,12 +95,14 @@ Every step writes to the graph, and the [decision trail](/guide/dashboard#decisi
 
 The whole system is one Jac server (`jac-scale`).
 
-- **Endpoints.** `main.jac` imports every public function by name; the dashboard calls them over HTTP. See [API overview](/api/overview).
+- **Endpoints.** `main.jac` imports every endpoint function by name; the dashboard calls them over HTTP, and each data endpoint is private and answers 401 to an anonymous caller. See [API overview](/api/overview).
 - **Scheduled jobs.** Five static jobs run inside the server process on Jac's built-in scheduler.
 - **Model calls and network fetches** run on a shared pool of 32 worker threads.
   Workers never touch the graph; the run writes every result from its own thread when the workers finish.
 - **The graph** is stored in Postgres (embedded when run locally).
-  The team portfolio lives on the server's shared root, and each node the dashboard shows is granted public read access.
+  The admin's team portfolio lives on the server's shared root.
+  Each other user's agent lives on that user's own root, with its sealed keys in an `AgentAccount` that only its owner and the server's scheduled jobs can read.
+  See [Your agent](/guide/your-agent).
 
 ## The request budget
 

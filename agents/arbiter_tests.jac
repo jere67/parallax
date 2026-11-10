@@ -57,7 +57,7 @@ test "a confirmed BUY keeps its action and takes the Arbiter's text" {
     assert ruling.exit_condition == "A close below $240." and ruling.model == "mock-arbiter";
     prompt = main.seen_prompts[0];
     assert "BUY: open a new position" in prompt and "2026-10-30" in prompt;
-    assert "C = +0.420; A = 0.73; 90% interval for C: [+0.120, +0.610]" in prompt;
+    assert "C = +0.420; A = 0.73; 80% interval for C: [+0.120, +0.610]" in prompt;
     assert "A recall hit the headlines." in prompt and "Calm market." in prompt;
 }
 

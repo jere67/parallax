@@ -2,7 +2,7 @@
 it, rendered from what the run stored, with no model request.
 
 A card holds the action and conviction, each specialist's samples and mean score, the
-consensus score, agreement, and 90% interval, the Arbiter's thesis, the two key risks, the
+consensus score, agreement, and 80% interval, the Arbiter's thesis, the two key risks, the
 exit condition and time stop, links to the research's sources, and the disclaimer. The
 morning run publishes one per coverage, in both portfolio modes: in auto mode the card sits
 beside the orders, and in insight mode it is the run's only output. On-demand reports reuse
@@ -61,10 +61,21 @@ def render_card(coverage: Coverage, run_day: str, mode: str, published_at: str) 
         ci_high=c.ci_high if c is not None else None,
         specialists=tallies([v for v in [coverage ->:Voted:->[?:VoteRecord]]]),
         sources=sources([r for r in [coverage ->:Researched:->[?:ResearchRecord]]]),
-        note=d.forced_hold_reason or (f"Downgraded by the Arbiter: {d.downgrade_reason}" if d.downgrade_reason else ""),
+        note=card_note(d),
         disclaimer=DISCLAIMER
     );
     return card;
+}
+
+"""Why a card's action is not simply the panel's: a forced HOLD's reason, the Arbiter's
+downgrade, and each change the team policy's rules made, in that order."""
+def card_note(d: Decision) -> str {
+    lead = d.forced_hold_reason or (f"Downgraded by the Arbiter: {d.downgrade_reason}" if d.downgrade_reason else "");
+    notes = [f"Team policy v{d.policy_version}: {n}" for n in d.policy_notes];
+    if not notes {
+        return lead;
+    }
+    return " ".join(([lead.rstrip(".") + "."] if lead else []) + notes);
 }
 
 """Each specialist's samples in panel order, and their mean signed score."""

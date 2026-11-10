@@ -1,9 +1,10 @@
 """Export runs from a local server's embedded Postgres for tests/spikes/decision_backtest.jac.
 
-Only the team portfolio's runs count: an on-demand report keeps its own portfolio, and its
-runs share the dates. For each run it writes the macro record and, per covered ticker, the
-market figures, the research reports in write order, the specialist votes, the consensus, and
-the decision, as JSON keyed by run date. It reads in one read-only transaction, so it is safe
+Only one portfolio's runs count, the team's unless EXPORT_PORTFOLIO names another (`agent`
+while only one user has an agent of their own): an on-demand report keeps its own portfolio,
+and its runs share the dates. For each run it writes the macro record and, per covered
+ticker, the market figures, the research reports in write order, the specialist votes, the
+consensus, and the decision, as JSON keyed by run date. It reads in one read-only transaction, so it is safe
 beside a running server.
 
 The Jac CLI bundles its own Postgres driver, so this uses psycopg from a scratch environment:
@@ -16,6 +17,7 @@ The socket directory is the `unix_socket_directories` of the embedded postgres p
 `ps`), and the database is `jac_<project>_<sha1 of the project path>[:8]`.
 """
 import json
+import os
 import sys
 
 import psycopg
@@ -47,13 +49,14 @@ def main(socket_dir, database, out_path, days):
         return strip(found[0][1]) if found else None
 
     out = {}
-    team = [nid for nid, (t, a) in nodes.items() if t == "Portfolio" and a.get("name") == "team"]
-    for run_id, run in [r for portfolio in team for r in children(portfolio, "Ran", "Run")]:
+    name = os.environ.get("EXPORT_PORTFOLIO", "team")
+    chosen = [nid for nid, (t, a) in nodes.items() if t == "Portfolio" and a.get("name") == name]
+    for run_id, run in [r for portfolio in chosen for r in children(portfolio, "Ran", "Run")]:
         day = run["run_date"]
         if day not in days:
             continue
         if day in out:
-            raise SystemExit(f"two team runs on {day}")
+            raise SystemExit(f"two {name} runs on {day}")
         tickers = {}
         for cov_id, cov in children(run_id, "Covers", "Coverage"):
             tickers[cov["ticker"]] = {

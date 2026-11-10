@@ -1,14 +1,15 @@
 ---
 title: get_decision_trail
 description: Everything behind one decision - research, every specialist sample, the consensus, the Arbiter, the risk gate, and the orders.
-api: { method: POST, path: /function/get_decision_trail, auth: none }
+api: { method: POST, path: /function/get_decision_trail, auth: Bearer token }
 related:
   - { text: Reading the dashboard, link: /guide/dashboard#decision-trail }
   - { text: Stochastic consensus, link: /system/consensus }
   - { text: Risk gate, link: /system/risk-gate }
 ---
 
-Returns the full trail of one ticker's decision on one day, in the order the system made it.
+Returns the full trail of one ticker's decision on one day for the caller's own agent, in the order the system made it.
+It needs a bearer token.
 This is the audit record: every claim a research agent made with its source, every vote with its rationale, and every risk rule with its result.
 
 <div class="api-grid">

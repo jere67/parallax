@@ -17,12 +17,14 @@ import logging;
 import os;
 import threading;
 import time;
+import from copy { copy }
 import from datetime { datetime, timezone }
 import from importlib { import_module }
 import httpx;
 import from jaclang.byllm.lib { AuthenticationError, ConfigurationError, Model, ModelNotFoundError, RateLimitError }
 import from jaclang.byllm.mtir { MTRuntime }
 import from jaclang.byllm.types { CompletionResult }
+import from research.credentials { OPENROUTER_KEY, current_credentials, key_fingerprint, redact, user_key }
 
 """Optional per-report ceiling, shared by its network tasks and including retries."""
 obj RequestBudget {
@@ -71,7 +73,7 @@ def model_error(error: Exception, previous: str = "") -> str {
     if previous and previous not in "\n".join(parts) {
         parts.append(f"Previous role attempt: {previous}");
     }
-    return "\nCaused by: ".join(parts);
+    return redact("\nCaused by: ".join(parts));
 }
 
 # The vetted order, from the free-model spike of 2026-11-02 (docs/spikes/2026-11-02-free-models.md),
@@ -246,14 +248,32 @@ obj RequestLimiter {
     }
 }
 
+# The server's own key's limiter. Each user's key has its own (limiter_now): OpenRouter's limits
+# are per key, so one agent's run never slows another's.
 glob LIMITER: RequestLimiter = RequestLimiter(per_minute=REQUESTS_PER_MINUTE);
+glob _LIMITERS: dict[str, RequestLimiter] = {};
+glob _LIMITERS_LOCK: threading.Lock = threading.Lock();
+
+"""The limiter for the key this work calls with."""
+def limiter_now -> RequestLimiter {
+    held_by = key_fingerprint(OPENROUTER_KEY);
+    if not held_by {
+        return LIMITER;
+    }
+    with _LIMITERS_LOCK {
+        if held_by not in _LIMITERS {
+            _LIMITERS[held_by] = RequestLimiter(per_minute=REQUESTS_PER_MINUTE);
+        }
+        return _LIMITERS[held_by];
+    }
+}
 
 """Free-model requests OpenRouter reports left for the UTC day, from GET /key, or None when
 there is no key or no readable answer. The research exit run saw OpenRouter's `used` lag the
 real count, so the Run Guard takes the lower of this and its own count (TDD §12). This is not
 a model request and does not pass the limiter."""
 def provider_requests_left -> int | None {
-    key = os.environ.get("OPENROUTER_API_KEY", "");
+    key = user_key(OPENROUTER_KEY);
     if not key {
         return None;
     }
@@ -277,7 +297,7 @@ byLLM maps only 401, 429, and 404 to ByLLMError; a 5xx, an overloaded provider, 
 connection, or a timeout arrives as LiteLLM's own exception, so every error but an
 authentication or configuration one falls back (#53)."""
 obj LimitedModel(Model) {
-    has limiter: RequestLimiter = LIMITER,
+    has limiter: RequestLimiter | None = None,
         role: str = "unknown",
         chain: ModelChain = CHAIN,
         max_429_retries: int = 3,
@@ -312,6 +332,17 @@ obj LimitedModel(Model) {
         }
     }
 
+    """Call the provider with this work's key. The models are shared across every agent's
+    threads, so the key goes on a copy rather than on the shared one."""
+    def send(params: dict[str, object]) -> dict[str, object] {
+        if current_credentials() is None {
+            return super.model_call_no_stream(params);
+        }
+        caller: any = copy(self);
+        caller.api_key = user_key(OPENROUTER_KEY);
+        return Model.model_call_no_stream(caller, params);
+    }
+
     override def model_call_no_stream(params: dict[str, object]) -> dict[str, object] {
         if models_disabled() {
             raise ModelsDisabledError(f"{KILL_SWITCH_ENV} is set; no model requests are made");
@@ -327,6 +358,7 @@ obj LimitedModel(Model) {
         };
         params["timeout"] = self.request_timeout_s;
         state = _ATTEMPT.get() or RequestAttempt();
+        limiter = self.limiter or limiter_now();
         models = self.chain.live();
         for (index, model) in enumerate(models) {
             params["model"] = model;
@@ -335,13 +367,13 @@ obj LimitedModel(Model) {
             tries = self.max_429_retries + 1 if index == 0 else 1;
             for attempt in range(tries) {
                 if index == 0 {
-                    self.limiter.acquire(self.role, "transient_retry" if state.sent else state.kind);
+                    limiter.acquire(self.role, "transient_retry" if state.sent else state.kind);
                 } else {
-                    self.limiter.acquire(self.role, "fallback");
+                    limiter.acquire(self.role, "fallback");
                 }
                 state.sent += 1;
                 try {
-                    response = super.model_call_no_stream(params);
+                    response = self.send(params);
                     if model == ROUTER_MODEL {
                         answered_by = str(getattr(response, "model", "") or "unknown");
                         self.chain.note_routed(answered_by);
@@ -392,3 +424,5 @@ glob specialist_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role=
 glob arbiter_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role="arbiter");
 glob orchestrator_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role="orchestrator");
 glob retry_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role="retry");
+# Someone is waiting on this one, so it gives up on a slow model sooner than the run does.
+glob policy_llm: LimitedModel = LimitedModel(model_name=PRIMARY_MODEL, role="policy_chat", request_timeout_s=60.0, max_429_retries=1);

@@ -14,11 +14,13 @@ main.jac        server entry; imports every endpoint by name
 models/         node, edge, obj, and enum definitions; no server-only imports
 agents/         role model instances, Orchestrator, research sub-agents, specialists, Arbiter
 research/       data collectors and the S&P 500 screener
-analysis/       indicators, the consensus engine, and vote scoring
+analysis/       indicators, the consensus engine, vote scoring, and what a policy decides
+policy/         saved policies, replays of stored runs, their endpoints, and the assistant's chat
 action/         broker client, sizing, risk gate, executor, reconciliation, insight cards, baselines
 run/            daily run, Run Guard, trading day, scheduled jobs, health
+market/         whole-market data for the screener and stock pages
 dashboard/      client pages and components
-assets/         static files served at /static/assets/
+assets/         static files, plus the app's manifest, icons, and service worker at the root
 tests/          integration and smoke tests, fixtures, fakes
 e2e/            the dashboard's browser checks on each device (Playwright)
 docs/           design documents and spike findings
@@ -32,6 +34,7 @@ site/           this documentation site (VitePress)
 | What a node or report holds | `models/graph.jac` (graph), `models/research.jac` and `models/agents.jac` (typed reports and votes), `models/views.jac` (API responses) |
 | A data source, its limits, or its cache lifetime | `research/sources.jac`, then the source's collector |
 | The universe screen | `research/screener.jac` |
+| A screener field or tab | `market/rows.jac`, then `dashboard/market/columns.jac` |
 | A technical indicator | `research/indicators.jac` |
 | An agent's prompt or output type | `agents/` |
 | The consensus or the decision rule | `analysis/consensus.jac` |

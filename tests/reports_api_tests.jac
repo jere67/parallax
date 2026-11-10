@@ -10,6 +10,7 @@ test "report history is private; duplicate and shared requests do not spend quot
     try {
         assert c.post("/function/request_report", json={"ticker": "AAPL"}).status_code == 401;
         c.register_user("alice", "test-password-1");
+        assert c.post("/function/set_admin", json={"on": True}).ok;
         assert c.post("/function/seed_report_catalog", json={}).ok;
         a = c.post("/function/request_report", json={"ticker": " aapl "}).json()["data"]["result"];
         assert a["accepted"];
@@ -32,6 +33,7 @@ test "new-report quota and cache-only mode still permit existing reports" {
     c = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
     try {
         c.register_user("alice", "test-password-1");
+        c.post("/function/set_admin", json={"on": True});
         c.post("/function/seed_report_catalog", json={});
         for ticker in ["AAPL", "MSFT", "NVDA"] {
             assert c.post("/function/request_report", json={"ticker": ticker}).json()["data"]["result"]["accepted"];
@@ -41,5 +43,19 @@ test "new-report quota and cache-only mode still permit existing reports" {
         c.post("/function/make_cache_only", json={});
         cached = c.post("/function/request_report", json={"ticker": "brk.b"}).json()["data"]["result"];
         assert cached["accepted"] and cached["item"]["status"] == "ready";
+    } finally { c.close(); }
+}
+
+test "a member with no keys is told to connect them, and can still read a cached report" {
+    c = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
+    try {
+        c.register_user("alice", "test-password-1");
+        c.post("/function/set_admin", json={"on": False});
+        c.post("/function/seed_report_catalog", json={});
+        refused = c.post("/function/request_report", json={"ticker": "AAPL"}).json()["data"]["result"];
+        assert not refused["accepted"];
+        assert "Settings" in c.post("/function/list_reports", json={}).json()["data"]["result"]["message"];
+        c.post("/function/make_cache_only", json={});
+        assert c.post("/function/request_report", json={"ticker": "brk.b"}).json()["data"]["result"]["accepted"];
     } finally { c.close(); }
 }

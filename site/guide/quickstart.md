@@ -7,7 +7,8 @@ related:
 ---
 
 This page gets the app running on your machine.
-With demo data you need no API keys at all, and the dashboard fills with a few weeks of made-up history within a minute.
+With demo data you need no provider API keys, and the dashboard fills with a few weeks of made-up history within a minute.
+The dashboard needs an account, so you sign up once at `/signup`.
 
 ## Before you start
 
@@ -39,8 +40,13 @@ You need:
    cp .env.example .env
    ```
 
-   For demo data, you can leave the keys empty.
+   For demo data, you can leave the provider keys empty.
    [Configuration](/guide/configuration) lists every variable.
+
+   Set `PARALLAX_KEYS_SECRET` on any server that lets users connect their own keys.
+   It must be at least 32 characters; generate one with `openssl rand -base64 48`.
+   Changing it later makes every stored key unreadable, and users must connect theirs again.
+   `PARALLAX_MAX_AGENTS` caps how many agents the server keeps (10 by default).
 
 3. **Export the variables.**
    `jac run` and `jac test` do not read `.env`, so export it into your shell.
@@ -65,8 +71,9 @@ You need:
    TRADING_AGENT_DEMO=1 TRADING_AGENT_DISABLE_ORDERS=1 jac run --dev main.jac
    ```
 
-   The dashboard is at `http://localhost:8000`.
-   Within a minute, a scheduled job fills the empty team portfolio with simulated sessions.
+   The landing page is at `http://localhost:8000`.
+   Sign up at `/signup` to reach the dashboard at `/app`.
+   Within a minute, a scheduled job fills the empty team portfolio with simulated sessions, and every account sees them.
 
 </Steps>
 
@@ -82,17 +89,20 @@ The second call answers with `"status": "ok"` and the server's UTC time.
 
 ## Run it for real
 
-Without `TRADING_AGENT_DEMO`, the server starts with an empty team portfolio in insight mode.
-With your keys exported, `jac run` serves the app with hot reload, and the scheduler starts the morning run at 7:30 a.m. New York time on each trading day.
+Without `TRADING_AGENT_DEMO`, the server starts with an empty team portfolio in insight mode, and every new account starts empty.
+With `PARALLAX_KEYS_SECRET` exported, `jac run` serves the app with hot reload.
+The admin's team agent runs on the keys in `.env`, and the scheduler starts its morning run at 7:30 a.m. New York time on each trading day.
+Every other user connects their own keys in Settings; see [Your agent](/guide/your-agent).
 
 ::: warning Orders go to the paper account in the keys
 In insight mode the server never sends an order.
-It trades only after the [forward test](/guide/forward-test) switches the team portfolio to auto mode, and only on an Alpaca paper account: the broker client refuses any other host and any account number that does not start with `PA`.
+A user's agent trades only after its owner turns on paper trading in Settings, and the team agent only after the [forward test](/guide/forward-test) switches its portfolio to auto mode.
+Both trade only on an Alpaca paper account: the broker client refuses any other host and any account number that does not start with `PA`.
 Set `TRADING_AGENT_DISABLE_ORDERS=1` to keep every order off while you experiment.
 :::
 
-A server that was down at 7:30 a.m. has no run that day.
-The admin can [start it by hand](/guide/manual-run).
+A server that was down at 7:30 a.m. has no team run that day.
+The admin can [start it by hand](/guide/manual-run), and a user can press **Start today's run** in Settings.
 
 ## Next steps
 

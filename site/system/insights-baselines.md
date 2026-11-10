@@ -22,7 +22,7 @@ Publishing is idempotent; a second call returns the card already published.
 | `ticker`, `action`, `conviction` | The final decision |
 | `run_date`, `mode`, `published_at` | When and in which mode it was published |
 | `thesis`, `risks`, `exit_condition`, `time_stop` | The Arbiter's text (the first two risks) and the time stop computed in code |
-| `score`, `agreement`, `ci_low`, `ci_high` | The consensus C, A, and its 90% interval, when the panel ran |
+| `score`, `agreement`, `ci_low`, `ci_high` | The consensus C, A, and its 80% interval, when the panel ran |
 | `specialists` | Each specialist's stances and confidences in sample order, and its mean signed score |
 | `sources` | Up to 8 distinct sources the research cited: market first, then fundamentals, news, and macro, each with a label of up to 160 characters, URL, publish time, and host |
 | `note` | Why the decision was forced to HOLD, or why the Arbiter downgraded it |
@@ -38,11 +38,11 @@ The forward test runs three portfolios from the same day with the same starting 
 
 | Portfolio | What it isolates | Where it trades |
 | --- | --- | --- |
-| Team portfolio | The full system | The team's Alpaca paper account |
+| Your agent (the team portfolio for the admin) | The full system | The user's Alpaca paper account |
 | Equal-weight shortlist | Whether the agents add value beyond the screen | Simulated from daily bars |
 | SPY buy-and-hold | The market | Simulated from daily bars |
 
-The test starts when `TRADING_AGENT_FORWARD_TEST_START` is set to a trading date, at the first trading tick on or after that date before the day's run executes.
+For the admin's team agent, the test starts when `TRADING_AGENT_FORWARD_TEST_START` is set to a trading date, at the first trading tick on or after that date before the day's run executes.
 The paper account must be flat, with no positions and no open orders.
 Its equity becomes the starting balance of all three portfolios, the team portfolio switches to auto mode, and both baselines are created in cash.
 See [The forward test](/guide/forward-test) for how to start it and [`action/baselines.jac`](https://github.com/jere67/parallax/blob/main/action/baselines.jac) for the code.

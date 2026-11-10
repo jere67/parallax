@@ -9,7 +9,7 @@ Every base URL can be overridden through its environment variable, which is how 
 replay recorded fixtures from a local server instead of calling the provider.
 """
 
-glob SOURCES_VERSION: str = "2026-10-23.1";
+glob SOURCES_VERSION: str = "2026-11-06.1";
 
 glob HOUR: float = 1.0;
 glob DAY: float = 24.0;
@@ -205,6 +205,18 @@ glob DATASETS: dict[str, Dataset] = {
             max_age_hours=8 * DAY,
             cache_ttl_hours=7 * DAY
         ),
-        Dataset(name="wikipedia.history", source="wikipedia", max_age_hours=8 * DAY, cache_ttl_hours=7 * DAY)
+        Dataset(name="wikipedia.history", source="wikipedia", max_age_hours=8 * DAY, cache_ttl_hours=7 * DAY),
+        # The stock market pages (market/). The sweeps keep only what they reduce, so their
+        # datasets are never held in the raw cache; the rest are fetched when a page asks.
+        Dataset(name="sec.market_tickers", source="sec_archives", max_age_hours=8 * DAY, cache_ttl_hours=DAY),
+        Dataset(name="alpaca.market_snapshots", source="alpaca_data", max_age_hours=4 * DAY),
+        Dataset(name="alpaca.market_history", source="alpaca_data", max_age_hours=4 * DAY, cache_ttl_hours=6 * HOUR),
+        Dataset(name="alpaca.market_intraday", source="alpaca_data", max_age_hours=4 * DAY, cache_ttl_hours=HOUR / 12),
+        Dataset(name="alpaca.market_news", source="alpaca_data", max_age_hours=7 * DAY, cache_ttl_hours=HOUR),
+        Dataset(name="sec.market_submissions", source="sec_data", max_age_hours=2 * DAY),
+        Dataset(name="sec.market_companyfacts", source="sec_data", max_age_hours=150 * DAY),
+        Dataset(name="finnhub.market_profile", source="finnhub", max_age_hours=30 * DAY),
+        Dataset(name="wikipedia.market_search", source="wikipedia", max_age_hours=30 * DAY, cache_ttl_hours=30 * DAY),
+        Dataset(name="wikipedia.market_summary", source="wikipedia", max_age_hours=30 * DAY, cache_ttl_hours=30 * DAY)
     ]
 };
