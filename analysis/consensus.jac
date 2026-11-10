@@ -20,25 +20,27 @@ import from models.graph { TradeAction }
 
 # Bump when a threshold, the band, or the aggregation changes; runs store it with their
 # model versions so a decision can be traced to the rule that made it.
-glob CONSENSUS_VERSION: str = "2026-11-04";
+glob CONSENSUS_VERSION: str = "2026-11-10";
 
 """The panel's sampling settings and the decision thresholds.
 
-The thresholds are TDD §7's starting values, except the buy pair: three live runs (November
-2 to 4, 2026) bought nothing at C ≥ 0.35 and A ≥ 0.6, so it is now 0.2 and 0.5
-(docs/spikes/2026-11-04-decision-backtest.md). `ambiguity_band` is proposed (GAP-04). All are
+The thresholds are TDD §7's starting values, except the buy bar. Three live runs (November 2
+to 4, 2026) bought nothing at C ≥ 0.35 and A ≥ 0.6, so the pair became 0.2 and 0.5
+(docs/spikes/2026-11-04-decision-backtest.md). At that bar the votes of six runs (November 4
+to 10) drafted one buy between them, so C ≥ 0.1 with an 80% interval is the bar since November 10
+(docs/spikes/2026-11-10-decision-replay.md). `ambiguity_band` is proposed (GAP-04). All are
 retuned as the forward test adds history. A result is ambiguous when moving C,
 its interval, or A by up to the band would change the draft action; such a ticker gets
 `extra_samples` more samples per specialist."""
 obj ConsensusConfig {
     has samples: int = 3,
         extra_samples: int = 2,
-        buy_score: float = 0.2,
+        buy_score: float = 0.1,
         buy_agreement: float = 0.5,
         sell_score: float = -0.25,
         trim_agreement: float = 0.5,
         min_success: float = 0.6,
-        interval: float = 0.9,
+        interval: float = 0.8,
         draws: int = 1000,
         ambiguity_band: float = 0.05;
 }

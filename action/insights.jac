@@ -2,7 +2,7 @@
 it, rendered from what the run stored, with no model request.
 
 A card holds the action and conviction, each specialist's samples and mean score, the
-consensus score, agreement, and 90% interval, the Arbiter's thesis, the two key risks, the
+consensus score, agreement, and 80% interval, the Arbiter's thesis, the two key risks, the
 exit condition and time stop, links to the research's sources, and the disclaimer. The
 morning run publishes one per coverage, in both portfolio modes: in auto mode the card sits
 beside the orders, and in insight mode it is the run's only output. On-demand reports reuse

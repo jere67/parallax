@@ -78,7 +78,7 @@ glob REGIMES: list[str] = ["RISK_ON", "NEUTRAL", "RISK_OFF"];
 glob METRICS: list[Metric] = [
     Metric(name="score", label="panel score", group="Panel", kind=MetricKind.SCORE, help="The consensus score C, from -1 to +1.", low=-1.0, high=1.0),
     Metric(name="agreement", label="panel agreement", group="Panel", kind=MetricKind.SHARE, help="The share of samples pointing the same way as C.", low=0.0, high=1.0),
-    Metric(name="ci_low", label="low end of the score's interval", group="Panel", kind=MetricKind.SCORE, help="The low end of the 90% bootstrap interval for C.", low=-1.0, high=1.0),
+    Metric(name="ci_low", label="low end of the score's interval", group="Panel", kind=MetricKind.SCORE, help="The low end of the 80% bootstrap interval for C.", low=-1.0, high=1.0),
     Metric(name="conviction", label="conviction", group="Panel", kind=MetricKind.SCORE, help="|C| × A, from 0 to 1.", low=0.0, high=1.0),
     Metric(name="fundamentals_score", label="Fundamentals specialist's score", group="Specialists", kind=MetricKind.SCORE, help="The Fundamentals specialist's mean signed vote, from -1 to +1.", low=-1.0, high=1.0),
     Metric(name="technical_score", label="Technical specialist's score", group="Specialists", kind=MetricKind.SCORE, help="The Technical specialist's mean signed vote, from -1 to +1.", low=-1.0, high=1.0),

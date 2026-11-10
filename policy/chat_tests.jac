@@ -10,7 +10,7 @@ test "edits apply to a copy, and the original policy never changes" {
         PolicyEdit(kind=EditKind.ADD_RULE, effect=RuleEffect.AVOID_BUY, label="Too hot", conditions=[ConditionDraft(metric="rsi_14", op=Op.GT, number=70.0)])
     ]);
     assert problems == [];
-    assert start.buy_score == 0.2 and start.rules == [];
+    assert start.buy_score == 0.1 and start.rules == [];
     assert found.buy_score == 0.4 and found.rules[0].id == "R1" and found.rules[0].effect == RuleEffect.AVOID_BUY;
     assert found.rules[0].conditions[0].op == Op.GT and found.rules[0].label == "Too hot";
 }

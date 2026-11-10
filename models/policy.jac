@@ -71,7 +71,7 @@ obj PolicyRule {
 """The whole policy. The defaults are TDD §7's decision rule and §8's sizing and risk gate, so
 a team with no saved version trades exactly as before."""
 obj Policy {
-    has buy_score: float = 0.2,
+    has buy_score: float = 0.1,
         buy_agreement: float = 0.5,
         sell_score: float = -0.25,
         trim_agreement: float = 0.5,

@@ -145,6 +145,18 @@ test "the bootstrap resamples whole specialists, reproducibly for a seed" {
     assert close_to(low, 0.2) and close_to(high, 0.2);
 }
 
+test "the default 80% interval sits inside the 90% one, so its low end clears zero more often" {
+    # BDX on November 9, 2026, its specialists' means in flow, fundamentals, macro, news,
+    # technical order: C = +0.13, and the run's 90% interval was [-0.063, +0.286].
+    means = [167 / 600, -0.3, 170 / 600, 185 / 600, 55 / 600];
+    weights = [1.0] * 5;
+    (low90, high90) = bootstrap_interval(means, weights, "BDX:2026-11-09", ConsensusConfig(interval=0.9));
+    assert abs(low90 + 0.0627) < 0.001 and abs(high90 - 0.2863) < 0.001;
+    (low80, high80) = bootstrap_interval(means, weights, "BDX:2026-11-09");
+    assert CONFIG.interval == 0.8;
+    assert low90 < 0 < low80 and high80 < high90;
+}
+
 test "the quantile interpolates between neighbors" {
     values = [0.0, 1.0, 2.0, 3.0, 4.0];
     assert quantile(values, 0.0) == 0.0;
@@ -158,20 +170,24 @@ test "the decision rule follows TDD §7's table" {
     # BUY needs C, A, and an interval above zero; held, it is an ADD.
     assert decide(0.4, 0.7, 0.1, False, False, CONFIG) == TradeAction.BUY;
     assert decide(0.4, 0.7, 0.1, True, False, CONFIG) == TradeAction.ADD;
-    assert decide(0.2, 0.5, 0.01, False, False, CONFIG) == TradeAction.BUY;
-    assert decide(0.19, 0.7, 0.1, False, False, CONFIG) == TradeAction.NO_ACTION;
+    assert decide(0.1, 0.5, 0.01, False, False, CONFIG) == TradeAction.BUY;
+    assert decide(0.09, 0.7, 0.1, False, False, CONFIG) == TradeAction.NO_ACTION;
     assert decide(0.4, 0.49, 0.1, False, False, CONFIG) == TradeAction.NO_ACTION;
     assert decide(0.4, 0.7, 0.0, False, False, CONFIG) == TradeAction.NO_ACTION;
     # The thresholds before November 4, 2026 still apply when configured.
     before = ConsensusConfig(buy_score=0.35, buy_agreement=0.6);
     assert decide(0.3, 0.7, 0.1, False, False, before) == TradeAction.NO_ACTION;
     assert decide(0.3, 0.7, 0.1, False, False, CONFIG) == TradeAction.BUY;
+    # So do November 4 to 10's, under which EW (C 0.15, A 0.5) bought nothing on November 10.
+    nov4 = ConsensusConfig(buy_score=0.2, interval=0.9);
+    assert decide(0.15, 0.5, 0.05, False, False, nov4) == TradeAction.NO_ACTION;
+    assert decide(0.15, 0.5, 0.05, False, False, CONFIG) == TradeAction.BUY;
     # A held ticker exits at C <= -0.25 or when its exit fires, whatever the panel says.
     assert decide(-0.25, 0.9, -0.5, True, False, CONFIG) == TradeAction.SELL;
     assert decide(0.8, 0.9, 0.5, True, True, CONFIG) == TradeAction.SELL;
     # Held in between: HOLD, or TRIM when agreement is below 0.5.
-    assert decide(0.1, 0.5, -0.1, True, False, CONFIG) == TradeAction.HOLD;
-    assert decide(0.1, 0.49, -0.1, True, False, CONFIG) == TradeAction.TRIM;
+    assert decide(0.05, 0.5, -0.1, True, False, CONFIG) == TradeAction.HOLD;
+    assert decide(0.05, 0.49, -0.1, True, False, CONFIG) == TradeAction.TRIM;
     # Held with a strong C but weak agreement: unchanged.
     assert decide(0.5, 0.4, 0.2, True, False, CONFIG) == TradeAction.NO_ACTION;
     # Not held: never a sell, trim, hold, or add, and an exit cannot fire.
@@ -179,7 +195,7 @@ test "the decision rule follows TDD §7's table" {
 }
 
 test "a result near a threshold is ambiguous, and one far from every threshold is not" {
-    near = Consensus(score=0.22, agreement=0.8, ci_low=0.1, ci_high=0.4);
+    near = Consensus(score=0.12, agreement=0.8, ci_low=0.1, ci_high=0.4);
     assert draft_action(near, False) == TradeAction.BUY and ambiguous(near, False);
     weak_agreement = Consensus(score=0.6, agreement=0.52, ci_low=0.3, ci_high=0.8);
     assert ambiguous(weak_agreement, False);
