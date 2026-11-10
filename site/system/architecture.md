@@ -71,7 +71,7 @@ Follow one stock through one day.
    Each vote is a stance, a confidence, a horizon, and the sources it relies on.
 
 4. **The consensus drafts an action.**
-   The [consensus engine](/system/consensus) bootstraps the 15 votes into a score with a 90% interval, and a fixed rule drafts BUY, ADD, HOLD, TRIM, SELL, or NO_ACTION.
+   The [consensus engine](/system/consensus) bootstraps the 15 votes into a score with an 80% interval, and a fixed rule drafts BUY, ADD, HOLD, TRIM, SELL, or NO_ACTION.
 
 5. **The Arbiter reviews it.**
    The [Arbiter](/system/agents#arbiter) may confirm the draft or downgrade it, never upgrade it.
