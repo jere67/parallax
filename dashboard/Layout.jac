@@ -1,7 +1,7 @@
 """The frame around every page of the app: the top bar with navigation, the portfolio's status,
 the theme switch, settings, and logging out; a banner when the graph holds demo history; and the disclaimer (TDD §9)."""
 import from "@jac/runtime" { Link, Outlet, jacLogout, useLocation, useNavigate }
-import from "lucide-react" { BookOpen, ChartCandlestick, FileText, History, Newspaper, Settings, SlidersHorizontal }
+import from "lucide-react" { BookOpen, ChartCandlestick, FileText, History, Newspaper, Settings, SlidersHorizontal, UsersRound }
 import from dashboard.ui.brand { DISCLAIMER, REPO_URL, ThemeSwitch, Wordmark }
 import from dashboard.ui.rpc { get_portfolio }
 import from models.views { PortfolioView as Portfolio }
@@ -63,6 +63,7 @@ def:pub Layout -> JsxElement {
                     <NavLink to="/app/runs" active={path.startsWith("/app/runs")}>Runs</NavLink>
                     <NavLink to="/app/policy" active={path.startsWith("/app/policy")}>Policy</NavLink>
                     <NavLink to="/app/reports" active={path.startsWith("/app/reports")}>Reports</NavLink>
+                    <NavLink to="/app/specialists" active={path.startsWith("/app/specialists")}>Specialists</NavLink>
                 </nav>
                 <div className="ml-auto flex items-center gap-3">
                     {if info is not None and info.started {
@@ -117,6 +118,7 @@ def:pub Layout -> JsxElement {
             <TabLink to="/app/runs" label="Runs" active={path.startsWith("/app/runs")}><History size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/app/policy" label="Policy" active={path.startsWith("/app/policy")}><SlidersHorizontal size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/app/reports" label="Reports" active={path.startsWith("/app/reports")}><FileText size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app/specialists" label="Panel" active={path.startsWith("/app/specialists")}><UsersRound size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
         </nav>
     </div>
 }

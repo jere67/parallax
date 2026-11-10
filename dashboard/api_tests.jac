@@ -5,7 +5,7 @@ import from datetime { datetime, timezone }
 import from action.executor { execute_run, keep_stops, sync_orders }
 import from action.fixtures { Call, broker_for, finished_run, market, team }
 import from action.reconcile { marks_of, reconcile }
-import from dashboard.api { performance_view, portfolio_view, run_summaries, run_view, series, specialist_views, trail_view }
+import from dashboard.api { performance_view, portfolio_view, run_summaries, run_view, series, specialist_summaries, specialist_views, trail_view }
 import from models.agents { Domain, Evidence, ResearchReport, Specialist, Stance, Vote }
 import from models.graph {
     Concluded,
@@ -73,6 +73,30 @@ def traded(fake: FakeBroker) -> tuple[Portfolio, Run, Run] {
     sync_orders(portfolio, broker, NOW2);
     reconcile(portfolio, broker, CLOSE2, DAY2);
     return (portfolio, first, second);
+}
+
+test "specialist summaries count scored directional votes and link recent output" {
+    fake = FakeBroker();
+    try {
+        (portfolio, first, _) = traded(fake);
+        cov = coverage_of(first, "AAA");
+        votes = [v for v in [cov ->:Voted:->[?:VoteRecord]]];
+        for v in votes {
+            v.scored_at = "2026-10-29T20:30:00+00:00";
+            v.excess_return = 0.05;
+        }
+        by_role = {s.specialist: s for s in specialist_summaries(portfolio)};
+        assert len(by_role) == 5;
+        technical = by_role["technical"];
+        assert (technical.votes, technical.scored, technical.hits, technical.hit_rate) == (2, 2, 2, 1.0);
+        assert [(v.run_date, v.ticker, v.sample) for v in technical.recent] == [(DAY1, "AAA", 0), (DAY1, "AAA", 1)];
+        fundamentals = by_role["fundamentals"];
+        assert (fundamentals.votes, fundamentals.scored, fundamentals.hits, fundamentals.hit_rate) == (2, 1, 0, 0.0);
+        assert fundamentals.recent[1].hit is None;
+        assert by_role["macro"].votes == 0 and by_role["macro"].hit_rate is None;
+    } finally {
+        fake.stop();
+    }
 }
 
 test "an open position is valued at its last mark and linked to the decision that opened it" {

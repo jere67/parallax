@@ -45,6 +45,7 @@ def:pub App -> JsxElement {
             <Route path="/runs/*" element={<Moved/>}/>
             <Route path="/policy" element={<Moved/>}/>
             <Route path="/reports" element={<Moved/>}/>
+            <Route path="/specialists" element={<Moved/>}/>
             <Route path="/screener" element={<Moved/>}/>
             <Route path="/stocks/*" element={<Moved/>}/>
             <Route path="/app" element={<RequireAccount/>}>
@@ -56,6 +57,7 @@ def:pub App -> JsxElement {
                     <Route path="news/*" element={<NewsPage/>}/>
                     <Route path="policy" element={<PolicyPage/>}/>
                     <Route path="reports" element={<ReportsPage/>}/>
+                    <Route path="specialists" element={<SpecialistsPage/>}/>
                     <Route path="settings" element={<SettingsPage/>}/>
                     <Route path="runs" element={<RunPage/>}/>
                     <Route path="runs/:day" element={<RunPage/>}/>

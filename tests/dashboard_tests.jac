@@ -78,6 +78,7 @@ test "the admin reads the team agent's portfolio, runs, and decision trail" {
         runs = call(client, "list_runs");
         run = call(client, "get_run");
         trail = call(client, "get_decision_trail", {"run_date": "2026-10-21", "ticker": "aapl"});
+        specialists = call(client, "get_specialists");
         missing = call(client, "get_decision_trail", {"run_date": "2026-10-21", "ticker": "MSFT"});
     } finally {
         client.close();
@@ -88,13 +89,15 @@ test "the admin reads the team agent's portfolio, runs, and decision trail" {
     assert [r["run_date"] for r in runs] == ["2026-10-21"] and runs[0]["actions"] == {"BUY": 1};
     assert run["run_date"] == "2026-10-21" and [r["ticker"] for r in run["rows"]] == ["AAPL"];
     assert trail["ticker"] == "AAPL" and trail["decision"]["action"] == "BUY" and trail["disclaimer"];
+    assert isinstance(specialists, list);
+    assert len(specialists) == 5 and all(s["votes"] == 0 and s["hit_rate"] is None for s in specialists);
     assert missing is None;
 }
 
 test "every data endpoint refuses an anonymous reader" {
     client = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
     try {
-        for name in ["get_portfolio", "get_performance", "list_runs", "get_run", "get_news_feed"] {
+        for name in ["get_portfolio", "get_performance", "list_runs", "get_run", "get_specialists", "get_news_feed"] {
             assert client.post(f"/function/{name}", json={}).status_code == 401, name;
         }
         assert client.post("/function/get_decision_trail", json={"run_date": "2026-10-21", "ticker": "AAPL"}).status_code == 401;
@@ -120,6 +123,9 @@ test "a member sees only their own agent, never the team's" {
         mine = call(client, "get_portfolio");
         assert mine["started"] is False and mine["positions"] == [];
         assert call(client, "list_runs") == [];
+        specialists = call(client, "get_specialists");
+        assert isinstance(specialists, list);
+        assert len(specialists) == 5 and all(s["votes"] == 0 for s in specialists);
         assert call(client, "get_decision_trail", {"run_date": "2026-10-21", "ticker": "AAPL"}) is None;
     } finally {
         client.close();

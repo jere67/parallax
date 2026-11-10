@@ -85,6 +85,17 @@ test("run: the latest run's shortlist leads to a decision's full trail", async (
   await fitsWidth(page);
 });
 
+test("specialists: five roles show recent votes and scoring context", async ({ page }) => {
+  await logIn(page, "specialists");
+  await page.goto("/app/specialists");
+  await expect(page.getByRole("heading", { level: 1, name: "Specialists" })).toBeVisible();
+  for (const role of ["Fundamentals", "Technical", "News", "Macro", "Flow"]) {
+    await expect(page.getByRole("heading", { name: role, exact: true })).toBeVisible();
+  }
+  await expect(page.getByText(/hit rate|awaiting scored directional votes/i).first()).toBeVisible();
+  await fitsWidth(page);
+});
+
 test("news: the feed filters by address, and a story opens beside it or over it", async ({ page }) => {
   await logIn(page, "news");
   await page.goto("/app/news");

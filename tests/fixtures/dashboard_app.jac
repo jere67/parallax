@@ -2,14 +2,14 @@
 dashboard_tests.jac."""
 import accounts.store as store;
 import from action.fixtures { Call, finished_run }
-import from dashboard.api { get_decision_trail, get_performance, get_portfolio, get_run, list_runs }
+import from dashboard.api { get_decision_trail, get_performance, get_portfolio, get_run, get_specialists, list_runs }
 import from dashboard.news { get_news_feed, get_news_story }
 import from market.api { get_stock, get_stock_about, get_stock_history, screen_stocks }
 import from models.agents { Domain, Evidence, ResearchReport, Stance }
 import from models.graph { Coverage, Covers, DailyMark, Marked, Portfolio, PortfolioMode, Researched, Run, ResearchRecord, TradeAction }
 import from models.users { ReportRequest }
 import from models.market { HistoryView, ScreenerView, StockAboutView, StockView }
-import from models.views { NewsFeed, NewsStory, PerformanceView, PortfolioView, RunSummary, RunView, TrailView }
+import from models.views { NewsFeed, NewsStory, PerformanceView, PortfolioView, RunSummary, RunView, SpecialistSummaryView, SpecialistVoteView, TrailView }
 import from run.public { public }
 
 """Stands in for the admin role, which comes from the server's user store."""

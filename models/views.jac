@@ -234,6 +234,28 @@ obj SpecialistView {
         samples: list[SampleView] = [];
 }
 
+"""A recent vote linked to the decision trail that contains its full evidence."""
+obj SpecialistVoteView {
+    has run_date: str,
+        ticker: str,
+        sample: int,
+        stance: str,
+        confidence: float,
+        rationale: str;
+    has scored_at: str = "",
+        hit: bool | None = None;
+}
+
+"""One role's record over the most recent runs. Only scored directional votes count as hits."""
+obj SpecialistSummaryView {
+    has specialist: str;
+    has votes: int = 0,
+        scored: int = 0,
+        hits: int = 0,
+        hit_rate: float | None = None,
+        recent: list[SpecialistVoteView] = [];
+}
+
 obj ConsensusView {
     has score: float,
         agreement: float,

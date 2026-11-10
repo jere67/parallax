@@ -6,7 +6,7 @@ import from "@jac/runtime" { jacIsLoggedIn }
 import from dashboard.ui.retry { call_function }
 import from models.accounts { AgentReply, AgentSettings, KeysReply }
 import from models.market { HistoryView, ScreenerView, StockAboutView, StockView }
-import from models.views { NewsFeed, NewsStory, PerformanceView, PortfolioView, RunSummary, RunView, TrailView }
+import from models.views { NewsFeed, NewsStory, PerformanceView, PortfolioView, RunSummary, RunView, SpecialistSummaryView, TrailView }
 
 def contract(file: str, name: str) -> dict[str, str] {
     return {"contract": "[\"trading-agent\",\"" + file + "\",\"func\",\"" + name + "\"]"};
@@ -25,6 +25,11 @@ async def:pub get_portfolio -> PortfolioView | None {
 
 async def:pub get_performance -> PerformanceView | None {
     return await call("dashboard/api.jac", "get_performance");
+}
+
+async def:pub get_specialists -> list[SpecialistSummaryView] {
+    found: any = await call("dashboard/api.jac", "get_specialists");
+    return found or [];
 }
 
 async def:pub list_runs -> list[RunSummary] {
