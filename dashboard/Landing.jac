@@ -39,7 +39,7 @@ def spot(value: float) -> str {
 """The hero's example vote. The bar is the one control: moving it changes the decision, as moving
 a policy's bar does."""
 def VotePanel -> JsxElement {
-    has bar: float = 0.2;
+    has bar: float = 0.1;
 
     buys: bool = SCORE >= bar;
 

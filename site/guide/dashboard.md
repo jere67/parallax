@@ -144,7 +144,7 @@ Filter it by All, Buys, Sells, or Holds.
 | --- | --- |
 | Decision | The final action, with a note when the Arbiter cut it or the Run Guard forced a hold. |
 | Conviction | How strong the decision is, from 0 to 1. |
-| Consensus | The consensus score on a scale from -1 to +1, with its 90% interval drawn as a bar. |
+| Consensus | The consensus score on a scale from -1 to +1, with its 80% interval drawn as a bar. |
 | Agreement | The share of specialists that agree with the consensus's direction. |
 | Risk gate | Approved, resized, or rejected, and by which rule. |
 | Order | The order's side, quantity, and status. |

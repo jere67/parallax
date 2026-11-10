@@ -31,7 +31,7 @@ test "a new account starts from the defaults, and can try a draft with no run ye
         c.register_user("alice", "test-password-1");
         assert call(c, "set_admin", {"on": False}) == "ok";
         catalog = call(c, "get_policy_catalog");
-        assert catalog["defaults"]["buy_score"] == 0.2 and catalog["max_rules"] == 20;
+        assert catalog["defaults"]["buy_score"] == 0.1 and catalog["max_rules"] == 20;
         assert any(k["name"] == "max_position_weight" and k["high"] == 0.15 for k in catalog["knobs"]);
         assert any(m["name"] == "rsi_14" for m in catalog["metrics"]);
         mine = call(c, "get_my_policy");
@@ -80,7 +80,7 @@ test "a policy is its owner's, versioned, and checked; a stale save is refused" 
         over = call(c, "save_policy_version", {"policy": dict(mine, gross_limit=2.0), "base_version": 1});
         assert not over["saved"] and over["problems"];
         restored = call(c, "restore_policy_version", {"version": 0, "base_version": 1});
-        assert restored["saved"] and restored["version"] == 2 and restored["doc"]["policy"]["buy_score"] == 0.2;
+        assert restored["saved"] and restored["version"] == 2 and restored["doc"]["policy"]["buy_score"] == 0.1;
         assert restored["doc"]["history"][0]["source"] == "restore";
         again = call(c, "restore_policy_version", {"version": 1, "base_version": 2});
         assert again["saved"] and again["doc"]["policy"]["buy_score"] == 0.5;
@@ -99,14 +99,14 @@ test "the admin's policy is the team agent's, and no other account's save reache
         draft = dict(call(c, "get_my_policy")["policy"], buy_score=0.3);
         saved = call(c, "save_policy_version", {"policy": draft, "base_version": 0, "note": "Higher bar"});
         assert saved["saved"] and saved["version"] == 1 and saved["doc"]["scope"] == "team";
-        assert any("0.2" in change and "0.3" in change for change in saved["changes"]);
+        assert any("0.1" in change and "0.3" in change for change in saved["changes"]);
         assert saved["doc"]["history"][0]["note"] == "Higher bar";
 
         c.clear_auth();
         c.register_user("member", "test-password-2");
         assert call(c, "set_admin", {"on": False}) == "ok";
         theirs = call(c, "get_my_policy");
-        assert theirs["scope"] == "personal" and theirs["version"] == 0 and theirs["policy"]["buy_score"] == 0.2;
+        assert theirs["scope"] == "personal" and theirs["version"] == 0 and theirs["policy"]["buy_score"] == 0.1;
         assert call(c, "save_policy_version", {"policy": dict(theirs["policy"], buy_score=0.9), "base_version": 0})["saved"];
 
         c.clear_auth();

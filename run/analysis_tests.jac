@@ -85,8 +85,8 @@ test "a clear, unanimous call takes K samples from each specialist and one Arbit
 }
 
 test "an ambiguous result draws two more samples per specialist before the Arbiter" {
-    # x = 0.225 for every vote, just above the 0.2 buy threshold.
-    (found, panel, judge) = run_with({"AAPL": research("AAPL")}, MockRawResponse(content=vote_json("BUY", 0.45)), MockRawResponse(content=review_json("DOWNGRADE")));
+    # x = 0.125 for every vote, just above the 0.1 buy threshold.
+    (found, panel, judge) = run_with({"AAPL": research("AAPL")}, MockRawResponse(content=vote_json("BUY", 0.25)), MockRawResponse(content=review_json("DOWNGRADE")));
     a = found[0];
     assert a.resampled and len(a.votes) == 25 and len(panel.seen_prompts) == 25;
     assert sorted({r.sample for r in a.votes}) == [0, 1, 2, 3, 4];

@@ -651,7 +651,7 @@ $$
 A HOLD vote (x = 0) points neither way, so it counts as not agreeing with C.
 A vote that cites only data gaps abstains: it is left out of m_s, C, A, and the interval, and a specialist whose samples all abstain is left out like one with no valid vote, so missing inputs never pull C toward zero.
 Weights are equal in the core build.
-A 1,000-draw bootstrap gives a 90% interval for C by resampling whole specialists, each with all of its samples, rather than individual samples.
+A 1,000-draw bootstrap gives an 80% interval for C by resampling whole specialists, each with all of its samples, rather than individual samples.
 A specialist's K samples share one prompt and one evidence set, so resampling them as if independent would make the interval too narrow.
 Weights based on each specialist's track record are a stretch goal.
 The bootstrap is seeded from the ticker and run date, so the same votes always give the same interval.
@@ -660,13 +660,14 @@ The bootstrap is seeded from the ticker and run date, so the same votes always g
 
 | Condition (starting values, tuned on history) | Draft action |
 | --- | --- |
-| C ≥ 0.2, A ≥ 0.5, and the 90% interval excludes zero | BUY (or ADD if held) |
+| C ≥ 0.1, A ≥ 0.5, and the 80% interval excludes zero | BUY (or ADD if held) |
 | Ticker held and C ≤ −0.25, or its exit condition triggered | SELL (exit) |
-| Ticker held and −0.25 < C < 0.2 | HOLD, with a possible trim if agreement falls below 0.5 |
+| Ticker held and −0.25 < C < 0.1 | HOLD, with a possible trim if agreement falls below 0.5 |
 | Anything else | NO ACTION (a held position stays unchanged) |
 
 Conviction is |C| × A.
-The buy thresholds started at C ≥ 0.35 and A ≥ 0.6, and no ticker reached them in the first three live runs (November 2 to 4, 2026), so they are now 0.2 and 0.5 ([decision backtest](spikes/2026-11-04-decision-backtest.md)); all thresholds are retuned as the forward test adds history.
+The buy thresholds started at C ≥ 0.35 and A ≥ 0.6, and no ticker reached them in the first three live runs (November 2 to 4, 2026), so they became 0.2 and 0.5 ([decision backtest](spikes/2026-11-04-decision-backtest.md)).
+At that bar the votes of the next six runs (November 4 to 10) drafted one buy between them, so on November 10 the score bar became 0.1 and the interval 80% ([decision replay](spikes/2026-11-10-decision-replay.md)); all thresholds are retuned as the forward test adds history.
 In code, a held position's exit condition triggers when its time stop has passed; price exits are the stop orders the Action layer places (Section 8), and an event exit is the Arbiter's text for the next run's research to test.
 The thresholds, the ambiguity band, and the 60% minimum share of valid samples live in `ConsensusConfig` (`analysis/consensus.jac`), versioned with `CONSENSUS_VERSION`, which each run records.
 These thresholds are the default policy's, and each account can change its own within hard limits (see Policies below).
@@ -1006,7 +1007,7 @@ Moving a module that declares node types quarantines their stored rows until a `
 | `Coverage` | ticker, screen score, reason included (screen, held, wildcard, user request), the figures sizing and policy rules read | Permanent |
 | `ResearchReport` | domain, view, confidence, summary, evidence list with URLs and timestamps, data gaps | Permanent |
 | `Vote` | specialist, sample index, stance, confidence, horizon, rationale, cited evidence, scored outcome | Permanent (needed for weights) |
-| `ConsensusResult` | C, A, 90% interval, per-specialist scores, weights used, draft action | Permanent |
+| `ConsensusResult` | C, A, 80% interval, per-specialist scores, weights used, draft action | Permanent |
 | `Decision` | final action, conviction, thesis, risks, exit condition, time stop, Arbiter override reason, policy version and how its rules changed the action | Permanent |
 | `RiskCheck` | each rule evaluated, result, resize amount | Permanent |
 | `Order` / `Fill` | Alpaca order ID, client order ID, side, quantity, limit, status, fill price and time | Permanent |

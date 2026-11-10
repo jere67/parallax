@@ -218,7 +218,7 @@ test "a policy reads as sentences, and a change as a list of edits" {
     p = Policy(rules=[rule("R1", RuleEffect.AVOID_BUY, [above("rsi_14", 70.0), Condition(metric="sector", op=Op.IN, words=["Energy", "Utilities"])])]);
     assert rule_sentence(p.rules[0]) == "Don't buy or add when RSI(14) is above 70 and sector is one of Energy, Utilities.";
     lines = describe(p);
-    assert lines[0].startswith("Buy or add when the panel score is at least +0.20, at least 50% of samples agree");
+    assert lines[0].startswith("Buy or add when the panel score is at least +0.10, at least 50% of samples agree");
     assert "time stop" in lines[1];
     assert lines[3] == rule_sentence(p.rules[0]);
     assert lines[-1] == "Sizing and risk limits are the defaults.";
@@ -226,7 +226,7 @@ test "a policy reads as sentences, and a change as a list of edits" {
     stop = rule("R2", RuleEffect.SELL, [below("return_since_entry", -0.08)]);
     after = Policy(buy_score=0.3, time_stop=False, rules=[stop]);
     edits = changes(p, after);
-    assert "Minimum panel score to buy: +0.20 → +0.30" in edits;
+    assert "Minimum panel score to buy: +0.10 → +0.30" in edits;
     assert "Sell when the time stop passes: on → off" in edits;
     assert "Added rule R2: Sell a held stock when return since entry is below -8%." in edits;
     assert any(e.startswith("Removed rule R1") for e in edits);

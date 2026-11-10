@@ -41,7 +41,7 @@ Deterministic code does the arithmetic and has the last word on risk.
    The spread of those samples is a measure of how unsure the panel is.
 
 4. **Draft and review the decision.**
-   A bootstrap over the votes gives a consensus score, an agreement share, and a 90% confidence interval, and a fixed rule turns them into a draft action.
+   A bootstrap over the votes gives a consensus score, an agreement share, and an 80% confidence interval, and a fixed rule turns them into a draft action.
    An Arbiter agent may confirm the draft or downgrade it, but never upgrade it.
 
 5. **Pass the risk gate and trade.**

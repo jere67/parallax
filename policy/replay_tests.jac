@@ -41,7 +41,7 @@ def seeded -> tuple[Portfolio, Run] {
         Call(ticker="NEW", action=TradeAction.BUY, sector="Utilities", close=50.0),
         Call(ticker="WAT", action=TradeAction.NO_ACTION, sector="Financials", close=20.0)
     ]);
-    conclude(run, "HLD", 0.1, 0.6, TradeAction.HOLD);
+    conclude(run, "HLD", 0.05, 0.6, TradeAction.HOLD);
     conclude(run, "NEW", 0.5, 0.8, TradeAction.BUY);
     conclude(run, "WAT", 0.3, 0.45, TradeAction.NO_ACTION);
     return (portfolio, run);

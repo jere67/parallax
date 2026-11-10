@@ -170,7 +170,7 @@ The following user needs are the basis for the functional requirements and user 
 - Core specialist weights shall be equal.
 - The overall consensus score shall be the weighted mean of specialist scores.
 - Agreement shall be the weighted share of specialist samples whose direction agrees with the consensus direction; HOLD samples shall not count as agreement.
-- The system shall calculate a 90% consensus interval using 1,000 bootstrap draws that resample whole specialists rather than individual samples.
+- The system shall calculate an 80% consensus interval using 1,000 bootstrap draws that resample whole specialists rather than individual samples.
 - The system shall store all valid votes and the resulting consensus statistics permanently.
 
 ---
@@ -182,10 +182,10 @@ The following user needs are the basis for the functional requirements and user 
 **Acceptance criteria**
 
 - Using the currently configured, pre-launch-frozen thresholds, the system shall produce one of BUY/ADD, SELL, HOLD, or NO ACTION.
-- The decision thresholds are (the buy pair started at `C >= 0.35` and `A >= 0.60`, and was lowered on November 4, 2026; see [the decision backtest](spikes/2026-11-04-decision-backtest.md)):
-  - BUY/ADD when `C >= 0.20`, agreement `A >= 0.50`, and the 90% interval excludes zero.
+- The decision thresholds are (the buy pair started at `C >= 0.35` and `A >= 0.60`, was lowered on November 4, 2026, and the score bar and interval were lowered again on November 10; see [the decision backtest](spikes/2026-11-04-decision-backtest.md) and [the decision replay](spikes/2026-11-10-decision-replay.md)):
+  - BUY/ADD when `C >= 0.10`, agreement `A >= 0.50`, and the 80% interval excludes zero.
   - SELL for a held ticker when `C <= -0.25` or the stored exit condition is triggered.
-  - HOLD for a held ticker when `-0.25 < C < 0.20`, with a possible trim when agreement is below 0.50.
+  - HOLD for a held ticker when `-0.25 < C < 0.10`, with a possible trim when agreement is below 0.50.
   - NO ACTION otherwise.
 - Conviction shall equal `abs(C) × A`.
 - The final adjudication stage shall receive the consensus statistics, leading rationales on both sides, and research reports.

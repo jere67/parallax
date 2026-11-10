@@ -22,7 +22,7 @@ Publishing is idempotent; a second call returns the card already published.
 | `ticker`, `action`, `conviction` | The final decision |
 | `run_date`, `mode`, `published_at` | When and in which mode it was published |
 | `thesis`, `risks`, `exit_condition`, `time_stop` | The Arbiter's text (the first two risks) and the time stop computed in code |
-| `score`, `agreement`, `ci_low`, `ci_high` | The consensus C, A, and its 90% interval, when the panel ran |
+| `score`, `agreement`, `ci_low`, `ci_high` | The consensus C, A, and its 80% interval, when the panel ran |
 | `specialists` | Each specialist's stances and confidences in sample order, and its mean signed score |
 | `sources` | Up to 8 distinct sources the research cited: market first, then fundamentals, news, and macro, each with a label of up to 160 characters, URL, publish time, and host |
 | `note` | Why the decision was forced to HOLD, or why the Arbiter downgraded it |

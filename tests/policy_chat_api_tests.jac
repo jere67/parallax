@@ -122,7 +122,7 @@ test "a proposal says what it would change, and saves only when applied" {
         second = settled(c)["turns"][-1];
         discarded = call(c, "discard_policy_proposal", {"turn_id": second["id"]});
         assert discarded["ok"] and discarded["chat"]["turns"][-1]["status"] == "discarded";
-        assert call(c, "get_my_policy")["policy"]["buy_score"] == 0.2;
+        assert call(c, "get_my_policy")["policy"]["buy_score"] == 0.1;
     } finally { c.close(); }
 }
 
@@ -145,7 +145,7 @@ test "a proposal past a limit cannot be applied, and an old one goes stale" {
         assert settled(c)["turns"][-1]["status"] == "stale";
         refused = call(c, "apply_policy_proposal", {"turn_id": open_one["id"]});
         assert not refused["ok"];
-        assert call(c, "get_my_policy")["policy"]["buy_score"] == 0.2;
+        assert call(c, "get_my_policy")["policy"]["buy_score"] == 0.1;
     } finally { c.close(); }
 }
 
