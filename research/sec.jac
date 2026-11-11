@@ -249,9 +249,12 @@ def fundamentals(symbol: str, cik: str, budget: RunBudget, client: SourceClient 
         f"/api/xbrl/companyfacts/CIK{padded}.json",
         budget,
         symbol=symbol,
-        check=_check_keys("facts")
+        check=_check_facts
     );
     parsed = json.loads(fetched.body);
+    if not parsed {
+        return (None, [f"sec.companyfacts: {symbol} has no usable XBRL facts"]);
+    }
     return reduce_facts(symbol, padded, str(parsed.get("entityName") or ""), parsed["facts"], fetched);
 }
 
@@ -682,6 +685,11 @@ def _check_tickers(body: str) -> str {
     }
     first = next(iter(parsed.values()));
     return "" if isinstance(first, dict) and "ticker" in first and "cik_str" in first else f"unexpected ticker row: {body[:200]}";
+}
+
+"""SEC answers some filers with no XBRL facts, closed-end funds among them, with an empty object."""
+def _check_facts(body: str) -> str {
+    return "" if _parse(body) == {} else _check_keys("facts")(body);
 }
 
 def _check_keys(*keys: str) -> Callable[[str], str] {
