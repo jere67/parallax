@@ -13,6 +13,7 @@ import from dashboard.PortfolioPage { PortfolioPage }
 import from dashboard.ReportsPage { ReportsPage }
 import from dashboard.RunPage { RunPage }
 import from dashboard.SettingsPage { SettingsPage }
+import from dashboard.SpecialistsPage { SpecialistsPage }
 import from dashboard.market.ScreenerPage { ScreenerPage }
 import from dashboard.market.StockPage { StockPage }
 import from dashboard.ui.pwa { register_worker }
