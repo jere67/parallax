@@ -10,6 +10,7 @@
            │    ├─ SimHolds ──> Position
            │    └─ SimMarked ──> DailyMark(day)
            ├─ Counted ──> RequestCount(day)
+           ├─ Evaluated ──> EvaluationRecord (the latest evening evaluation)
            └─ Ran ──> Run(run_date)
                 ├─ HasMacro ──> MacroRecord
                 └─ Covers ──> Coverage(ticker)
@@ -27,6 +28,7 @@ Timestamps are ISO 8601 strings in UTC, and trading dates are "YYYY-MM-DD" in Ne
 (TDD §3, rule 11).
 """
 import from models.agents { Domain, MacroReport, ResearchReport, Specialist, Vote }
+import from models.evaluation { Evaluation }
 import from models.research { RegimeInputs }
 
 enum PortfolioMode: str {
@@ -122,6 +124,10 @@ node Position {
     }
 }
 
+"""One day's run. The `screen_*` figures score its screen once its ten-session window closes
+(analysis/scoring.jac, `score_screens`): the mean excess return over SPY of the names it
+shortlisted and of the rest of the S&P 500. `evaluated_at` is when the evening review last
+refreshed the portfolio's evaluation on this run's day."""
 node Run {
     has run_date: str,
         started_at: str;
@@ -142,7 +148,12 @@ node Run {
         model_requests_by_role: dict[str, dict[str, int]] = {},
         prompt_tokens: int = 0,
         completion_tokens: int = 0,
-        policy_version: int = 0;
+        policy_version: int = 0,
+        screen_picks_excess: float | None = None,
+        screen_rest_excess: float | None = None,
+        screen_names: int = 0,
+        screen_scored_at: str = "",
+        evaluated_at: str = "";
 }
 
 """Free-model requests the app made on one UTC day (TDD §12, request controls), kept in the
@@ -222,7 +233,9 @@ node ConsensusResult {
 
 """A ticker's final decision. `policy_version` is the team policy it was decided under (0 for
 the defaults); `policy_notes` say how that policy's rules changed the thresholds' action, and
-`policy_skipped` which rules it could not check (analysis/policy.jac)."""
+`policy_skipped` which rules it could not check (analysis/policy.jac). `excess_return` is the
+ticker's return over SPY across the decision's ten-session window, scored with the votes
+(analysis/scoring.jac), so a decision not taken can still be judged."""
 node Decision {
     has ticker: str,
         action: TradeAction,
@@ -238,7 +251,9 @@ node Decision {
         model: str = "",
         policy_version: int = 0,
         policy_notes: list[str] = [],
-        policy_skipped: list[str] = [];
+        policy_skipped: list[str] = [],
+        excess_return: float | None = None,
+        scored_at: str = "";
 }
 
 obj RuleResult {
@@ -366,6 +381,13 @@ node InsightCard {
         disclaimer: str = "";
 }
 
+"""The portfolio's latest evaluation (TDD §13, metrics), rewritten by each evening review
+(run/trading.jac) and read by the Results page and the final report."""
+node EvaluationRecord {
+    has as_of: str,
+        body: Evaluation;
+}
+
 edge Holds: Portfolio --> Position {}
 edge Sent: Portfolio --> Order {}
 edge Marked: Portfolio --> DailyMark {}
@@ -386,3 +408,4 @@ edge CheckedBy: Decision --> RiskCheck {}
 edge Placed: RiskCheck --> Order {}
 edge FilledBy: Order --> Fill {}
 edge Published: Coverage --> InsightCard {}
+edge Evaluated: Portfolio --> EvaluationRecord {}

@@ -21,8 +21,10 @@ import from action.reconcile { marks_of }
 import from agents.specialists { packet }
 import from dashboard.cache { VIEWS }
 import from analysis.consensus { abstains, signed_score }
+import from analysis.evaluation { latest_evaluation }
 import from analysis.scoring { hit, tally_votes }
 import from models.agents { Domain, Evidence, ResearchReport, Specialist }
+import from models.evaluation { Evaluation }
 import from models.graph {
     BaselineKind,
     CheckedBy,
@@ -153,6 +155,13 @@ def:priv get_decision_trail(run_date: str, ticker: str) -> TrailView | None {
     }
     symbol = ticker.strip().upper();
     return VIEWS.get(view_key(team, "trail", run_date, symbol), trail_view, team, run_date, symbol);
+}
+
+"""The caller's agent's latest evaluation (TDD §13, metrics), as the evening review stored it,
+or None before its first evening review."""
+def:priv get_evaluation -> Evaluation | None {
+    portfolio = my_portfolio();
+    return latest_evaluation(portfolio) if portfolio is not None else None;
 }
 
 """The five roles' recent votes and outcomes from the caller's own agent."""

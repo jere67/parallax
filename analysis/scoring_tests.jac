@@ -3,10 +3,10 @@ scoring once, after the window's last close is final."""
 import from datetime { datetime }
 import from action.fixtures { Call, finished_run, team }
 import from analysis.history { History, bar }
-import from analysis.scoring { excess_return, hit, records, score_votes, tally_votes, vote_window }
+import from analysis.scoring { excess_return, hit, records, score_screens, score_votes, tally_votes, vote_window }
 import from research.alpaca { Bar }
 import from models.agents { Specialist, Stance, Vote }
-import from models.graph { Coverage, Covers, Run, TradeAction, VoteRecord, Voted }
+import from models.graph { Coverage, CoverageReason, Covers, Decided, Decision, Run, RunStatus, TradeAction, VoteRecord, Voted }
 import from run.guard { NEW_YORK }
 
 glob SESSIONS: list[str] = ["2026-10-16", "2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23", "2026-10-26"];
@@ -77,4 +77,58 @@ test "votes are scored once their window's close is final, and HOLD votes are ne
     last = score_votes(portfolio, ny("2026-10-23T16:30:00"), sources(closes, asked));
     assert (last.scored, last.waiting) == (1, 0) and later.excess_return is not None and abs(later.excess_return + 0.02) < 1e-12 and hit(later) is False;
     assert run.specialist_tallies["news"] == [1, 1, 0] and run.specialist_tallies == tally_votes([right, wrong, neutral, later, unpriced]);
+}
+
+# Fourteen sessions; a ten-session window from 2026-10-21 ends on 2026-11-03.
+glob LONG: list[str] = ["2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"];
+
+"""History over LONG, `closes` (flat at 100 where a symbol has none for a day), and `members`."""
+def long_history(closes: dict[str, dict[str, float]], members: list[str], asked: list[list[str]]) -> History {
+    def read(symbols: list[str], start: str, end: str) -> dict[str, dict[str, Bar]] {
+        asked.append(symbols);
+        return {s: {d: bar(d, closes.get(s, {}).get(d, 100.0)) for d in LONG if start <= d <= end} for s in symbols if s in closes or s in members};
+    }
+    return History(bars=read, sessions=lambda (start: str, end: str) { [s for s in LONG if start <= s <= end]; }, members=lambda (day: str) { members; });
+}
+
+test "every decision is scored over ten sessions, whatever its action, once that window closes" {
+    portfolio = team();
+    run = finished_run(portfolio, "2026-10-21", [Call(ticker="AAA", action=TradeAction.NO_ACTION), Call(ticker="BBB", action=TradeAction.BUY)]);
+    closes = {"AAA": {"2026-10-20": 100.0, "2026-11-03": 90.0}, "BBB": {"2026-10-20": 100.0, "2026-11-03": 110.0}, "SPY": {"2026-10-20": 500.0, "2026-11-03": 500.0}};
+    asked: list[list[str]] = [];
+    early = score_votes(portfolio, ny("2026-11-02T21:00:00"), long_history(closes, [], asked));
+    assert early.decisions == 0 and asked == [];
+    found = score_votes(portfolio, ny("2026-11-03T21:00:00"), long_history(closes, [], asked));
+    assert found.decisions == 2;
+    by_ticker = {d.ticker: d for c in [run ->:Covers:->[?:Coverage]] for d in [c ->:Decided:->[?:Decision]]};
+    assert abs(by_ticker["AAA"].excess_return + 0.1) < 1e-12 and abs(by_ticker["BBB"].excess_return - 0.1) < 1e-12;
+    assert by_ticker["AAA"].scored_at and score_votes(portfolio, ny("2026-11-03T21:05:00"), long_history(closes, [], asked)).decisions == 0;
+}
+
+test "a run's screen is scored against every other member once its window closes, and only once" {
+    portfolio = team();
+    run = finished_run(portfolio, "2026-10-21", [Call(ticker="AAA", action=TradeAction.HOLD), Call(ticker="BBB", action=TradeAction.HOLD)]);
+    held = [c for c in [run ->:Covers:->[?:Coverage]] if c.ticker == "BBB"][0];
+    held.reason = CoverageReason.HELD;
+    closes = {"AAA": {"2026-10-20": 100.0, "2026-11-03": 106.0}, "CCC": {"2026-10-20": 100.0, "2026-11-03": 98.0}, "SPY": {"2026-10-20": 500.0, "2026-11-03": 505.0}};
+    asked: list[list[str]] = [];
+    members = ["AAA", "BBB", "CCC", "DDD"];
+    assert score_screens(portfolio, ny("2026-11-02T21:00:00"), long_history(closes, members, asked)).waiting == 1 and not run.screen_scored_at;
+    found = score_screens(portfolio, ny("2026-11-03T21:00:00"), long_history(closes, members, asked));
+    assert found.scored == 1 and run.screen_names == 1;
+    # The held name is not a pick, so it joins the rest: BBB and DDD flat, CCC down 2%, each less SPY's 1%.
+    assert abs(run.screen_picks_excess - 0.05) < 1e-12;
+    assert abs(run.screen_rest_excess - ((0.0 - 0.01) * 2 + (-0.02 - 0.01)) / 3) < 1e-12;
+    assert score_screens(portfolio, ny("2026-11-03T21:05:00"), long_history(closes, members, asked)).scored == 0 and len(asked) == 1;
+}
+
+test "a screen with no members to compare waits, and a run that shortlisted nothing or failed is never scored" {
+    portfolio = team();
+    run = finished_run(portfolio, "2026-10-21", [Call(ticker="AAA", action=TradeAction.HOLD)]);
+    empty = finished_run(portfolio, "2026-10-22", []);
+    failed = finished_run(portfolio, "2026-10-23", [Call(ticker="AAA", action=TradeAction.HOLD)], status=RunStatus.FAILED);
+    asked: list[list[str]] = [];
+    found = score_screens(portfolio, ny("2026-11-04T21:00:00"), long_history({}, [], asked));
+    assert not run.screen_scored_at and empty.screen_scored_at and not failed.screen_scored_at;
+    assert found.waiting >= 1 and found.unscorable == 1 and asked == [];
 }

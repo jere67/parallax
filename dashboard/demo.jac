@@ -29,10 +29,11 @@ import from action.sizing { SizingCandidate, size_positions }
 import from agents.models { FALLBACK_MODEL, PRIMARY_MODEL }
 import from agents.specialists { packet }
 import from analysis.consensus { CONSENSUS_VERSION, consensus, draft_action }
-import from analysis.history { bar }
+import from analysis.evaluation { evaluate, record_evaluation }
+import from analysis.history { History, bar }
 import from research.indicators { momentum, range_position, relative_strength, rsi, sma }
 import from dashboard.ui.format { count }
-import from analysis.scoring { BENCHMARK, excess_return, tally_run, vote_window }
+import from analysis.scoring { BENCHMARK, score_screens, score_votes as score_all }
 import from models.agents { Domain, Evidence, MacroReport, ResearchReport, RiskRegime, Specialist, Stance, Vote }
 import from models.graph {
     Baseline,
@@ -277,7 +278,7 @@ obj DemoSim {
             log.extend(self.close(run, day));
             run.action_log = log;
         }
-        self.score_votes();
+        self.evening_review();
     }
 
     """Daily bars for every stock and SPY: a market factor plus each stock's own move."""
@@ -788,21 +789,23 @@ obj DemoSim {
         return lines;
     }
 
-    """Score every vote whose window closed by the last session, as the evening job does."""
-    def score_votes {
-        closes = {t: {d: b.close for (d, b) in found.items()} for (t, found) in self.bars.items()};
-        scored_at = at(self.days[-1], "16:30");
-        for run in [self.portfolio ->:Ran:->[?:Run]] {
-            for c in [run ->:Covers:->[?:Coverage]] {
-                for v in [c ->:Voted:->[?:VoteRecord]] {
-                    window = vote_window(self.sessions, run.run_date, v.body.horizon_days);
-                    if window is not None {
-                        v.excess_return = excess_return(closes, v.ticker, window[0], window[1]);
-                        v.scored_at = scored_at;
-                    }
-                }
-            }
-            tally_run(run);
+    """The last evening's review, through the real scorers and evaluation on the demo's own bars
+    and calendar, with the demo's stocks as the whole index: every vote, decision, and screen whose
+    window closed by the last session is scored, and the evaluation is stored."""
+    def evening_review {
+        def read_bars(symbols: list[str], start: str, end: str) -> dict[str, dict[str, Bar]] {
+            return {t: {d: b for (d, b) in self.bars[t].items() if start <= d <= end} for t in symbols if t in self.bars};
         }
+        def read_sessions(start: str, end: str) -> list[str] {
+            return [s for s in self.sessions if start <= s <= end];
+        }
+        def read_members(day: str) -> list[str] {
+            return [s.ticker for s in UNIVERSE];
+        }
+        history = History(bars=read_bars, sessions=read_sessions, members=read_members);
+        now = datetime.fromisoformat(at(self.days[-1], "20:30"));
+        score_all(self.portfolio, now, history);
+        score_screens(self.portfolio, now, history);
+        record_evaluation(self.portfolio, evaluate(self.portfolio, self.sessions, now));
     }
 }

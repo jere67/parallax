@@ -70,7 +70,8 @@ const system: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'Agents and models', link: '/system/agents' },
       { text: 'Stochastic consensus', link: '/system/consensus' },
-      { text: 'Vote scoring', link: '/system/scoring' }
+      { text: 'Vote scoring', link: '/system/scoring' },
+      { text: 'Evaluation', link: '/system/evaluation' }
     ]
   },
   {

@@ -1,7 +1,7 @@
 """The frame around every page of the app: the top bar with navigation, the portfolio's status,
 the theme switch, settings, and logging out; a banner when the graph holds demo history; and the disclaimer (TDD §9)."""
 import from "@jac/runtime" { Link, Outlet, jacLogout, useLocation, useNavigate }
-import from "lucide-react" { BookOpen, ChartCandlestick, FileText, History, Newspaper, Settings, SlidersHorizontal, UsersRound }
+import from "lucide-react" { BookOpen, ChartCandlestick, FileText, History, Newspaper, Settings, SlidersHorizontal, Target }
 import from dashboard.ui.brand { DISCLAIMER, REPO_URL, ThemeSwitch, Wordmark }
 import from dashboard.ui.rpc { get_portfolio }
 import from models.views { PortfolioView as Portfolio }
@@ -52,12 +52,13 @@ def:pub Layout -> JsxElement {
         nav("/", {"replace": True});
     }
 
-    <div className="flex min-h-dvh flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
+    <div className="flex min-h-dvh flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0">
         <header className="sticky top-0 z-20 border-b border-line bg-bg/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
             <div className={"mx-auto flex h-12 items-center gap-6 px-4 sm:px-6 lg:px-8 " + width}>
                 <Wordmark to="/app"/>
-                <nav className="hidden shrink-0 items-center gap-4 md:flex lg:gap-6">
+                <nav className="hidden shrink-0 items-center gap-4 lg:flex xl:gap-6">
                     <NavLink to="/app" active={path == "/app"}>Portfolio</NavLink>
+                    <NavLink to="/app/results" active={path.startsWith("/app/results")}>Results</NavLink>
                     <NavLink to="/app/screener" active={path.startsWith("/app/screener") or path.startsWith("/app/stocks")}>Screener</NavLink>
                     <NavLink to="/app/news" active={path.startsWith("/app/news")}>News</NavLink>
                     <NavLink to="/app/runs" active={path.startsWith("/app/runs")}>Runs</NavLink>
@@ -67,7 +68,7 @@ def:pub Layout -> JsxElement {
                 </nav>
                 <div className="ml-auto flex items-center gap-3">
                     {if info is not None and info.started {
-                        <span className="num hidden items-center gap-1.5 whitespace-nowrap text-[11px] text-faint lg:flex">
+                        <span className="num hidden items-center gap-1.5 whitespace-nowrap text-[11px] text-faint xl:flex">
                             <span className="size-1.5 rounded-full bg-up" aria-hidden="true"></span>
                             {"Marked " + stamp_et(info.as_of)}
                         </span>
@@ -79,10 +80,10 @@ def:pub Layout -> JsxElement {
                         </span>
                     }}
                     <ThemeSwitch/>
-                    <Link to="/app/settings" aria-label="Settings" title="Settings" className={"press grid size-11 place-items-center rounded-md hover:bg-hover hover:text-text md:size-8 " + ("text-accent" if path.startsWith("/app/settings") else "text-muted")}>
+                    <Link to="/app/settings" aria-label="Settings" title="Settings" className={"press grid size-11 place-items-center rounded-md hover:bg-hover hover:text-text lg:size-8 " + ("text-accent" if path.startsWith("/app/settings") else "text-muted")}>
                         <Settings size={16} strokeWidth={1.75} aria-hidden="true"/>
                     </Link>
-                    <button type="button" onClick={leave} className="press hidden h-8 rounded-md px-2 text-[12px] font-medium text-muted hover:bg-hover hover:text-text md:block">Log out</button>
+                    <button type="button" onClick={leave} className="press hidden h-8 rounded-md px-2 text-[12px] font-medium text-muted hover:bg-hover hover:text-text lg:block">Log out</button>
                 </div>
             </div>
         </header>
@@ -111,14 +112,14 @@ def:pub Layout -> JsxElement {
                 </p>
             </div>
         </footer>
-        <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
+        <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
             <TabLink to="/app" label="Portfolio" active={path == "/app"}><BookOpen size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/app/screener" label="Screener" active={path.startsWith("/app/screener") or path.startsWith("/app/stocks")}><ChartCandlestick size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/app/news" label="News" active={path.startsWith("/app/news")}><Newspaper size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/app/runs" label="Runs" active={path.startsWith("/app/runs")}><History size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/app/policy" label="Policy" active={path.startsWith("/app/policy")}><SlidersHorizontal size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/app/reports" label="Reports" active={path.startsWith("/app/reports")}><FileText size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
-            <TabLink to="/app/specialists" label="Panel" active={path.startsWith("/app/specialists")}><UsersRound size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app/results" label="Results" active={path.startsWith("/app/results") or path.startsWith("/app/specialists")}><Target size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
         </nav>
     </div>
 }

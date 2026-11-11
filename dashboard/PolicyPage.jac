@@ -610,11 +610,11 @@ def:pub PolicyPage -> JsxElement {
         }}
 
         {if message and not dirty {
-            <p className="fixed inset-x-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 mx-auto max-w-md rounded-md border border-line-strong bg-overlay px-3 py-2 text-center text-[13px] shadow-[var(--shadow-overlay)] md:bottom-4" role="status">{message}</p>
+            <p className="fixed inset-x-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 mx-auto max-w-md rounded-md border border-line-strong bg-overlay px-3 py-2 text-center text-[13px] shadow-[var(--shadow-overlay)] lg:bottom-4" role="status">{message}</p>
         }}
 
         {if dirty {
-            <form onSubmit={save} className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-20 border-t border-line-strong bg-overlay md:bottom-0" data-testid="save-bar">
+            <form onSubmit={save} className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-20 border-t border-line-strong bg-overlay lg:bottom-0" data-testid="save-bar">
                 <div className="mx-auto flex max-w-[1200px] flex-col gap-2 px-4 py-2.5 sm:px-6 md:flex-row md:items-center lg:px-8">
                     <div className="min-w-0 flex-1">
                         {if len(problems) > 0 or message {
