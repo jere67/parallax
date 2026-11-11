@@ -20,7 +20,7 @@ The scheduler reads cron in UTC, and counts day 0 as Monday, so `0-4` means Mond
 
 | Job | Cron (UTC) | What it does |
 | --- | --- | --- |
-| `morning_job` | `30 11,12 * * 0-4` | Starts the morning run at 7:30 a.m. New York time. |
+| `morning_job` | `* 11-14 * * 0-4` | Starts the morning run at 7:30 a.m. New York time, or later in the window if the server was asleep or down. |
 | `trading_job` | `* 13-21 * * 0-4` | Runs the trading tick every minute through the trading day. |
 | `manual_run_job` | `* * * * *` | Runs a morning run the admin [asked for by hand](/guide/manual-run). |
 | `refresh_job` | `* * * * *` | Rebuilds the dashboard's cached views. See [Dashboard internals](/system/dashboard#read-cache). |
@@ -29,9 +29,10 @@ The scheduler reads cron in UTC, and counts day 0 as Monday, so `0-4` means Mond
 ### Daylight saving time
 
 New York is UTC-4 in summer and UTC-5 in winter, but cron has no time zones.
-So `morning_job` fires at both 11:30 and 12:30 UTC, and proceeds only when New York time is a weekday between 7:30 and 7:44 a.m.
-Exactly one of the two firings passes, in either season.
-The 15-minute window lets a slow scheduler still start the run.
+So `morning_job` fires every minute from 11:00 to 14:59 UTC, which holds 7:30 to 9:15 a.m. New York time in both seasons.
+It starts a run only inside that window, and only while the team portfolio has no run for the day, so every later firing does nothing.
+A server that was asleep or down at 7:30 starts the run at the first minute it is back, and the run still finishes before the orders go out at 9:45.
+Users' agents start in the same window.
 
 `trading_job` fires every minute from 13:00 to 21:59 UTC, which covers 9:45 a.m. to 4:30 p.m. New York time in both seasons; the tick itself decides, from New York time, what is due.
 

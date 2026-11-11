@@ -25,14 +25,12 @@ import from models.accounts { AgentAccount }
 import from models.graph { PortfolioMode, Run }
 import from policy.store { personal_versions, current_of }
 import from research.credentials { enter_credentials, leave_credentials }
-import from run.guard { NEW_YORK, RunLimits, RunOutcome, daily_run }
+import from run.guard { NEW_YORK, RunLimits, RunOutcome, daily_run, morning_window }
 import from run.orchestration { orchestrate }
 import from run.trading { TradingDeps, db_conflict, guarded_tick, run_for }
 
 glob LOG: logging.Logger = logging.getLogger("trading_agent.agents");
 glob _LOCK: threading.Lock = threading.Lock();
-glob WINDOW_START: int = 7 * 60 + 30;
-glob WINDOW_END: int = 9 * 60 + 15;
 glob _RUNNING: dict[str, str] = {};
 glob _CLAIMED: set[str] = set();
 
@@ -76,18 +74,12 @@ def release(owner: str, day: str) -> None {
     }
 }
 
-"""True during the part of a weekday morning when an agent can still start and finish before the
-orders go out at 9:45. It is much longer than the team's slot because there are only `RUN_SLOTS`
-runs at a time and each takes about half an hour, so a server's later agents start later."""
-def agents_window(local: datetime) -> bool {
-    minute = local.hour * 60 + local.minute;
-    return local.weekday() < 5 and minute >= WINDOW_START and minute < WINDOW_END;
-}
-
-"""True when `account` should run on `day`: it was asked to, or it is the morning window. An agent
-whose keys are incomplete never runs."""
+"""True when `account` should run on `day`: it was asked to, or it is the morning window (run/guard.jac),
+which is long enough for a server's later agents, three at a time and about half an hour each, to
+start and still finish before the orders go out at 9:45. An agent whose keys are incomplete never
+runs."""
 def due(account: AgentAccount, day: str, local: datetime) -> bool {
-    return has_required_keys(account) and (account.run_requested_day == day or agents_window(local));
+    return has_required_keys(account) and (account.run_requested_day == day or morning_window(local));
 }
 
 """The agent's run for `day`, if one is on record. Must run as the owner."""
