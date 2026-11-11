@@ -8,13 +8,20 @@ the excess return's; a HOLD vote keeps its excess return but is never a hit or a
 
 A vote is scored once, after the close of its window's last session is final. When either
 close is missing, the vote is marked scored with no excess return, so it is never retried.
+
+Each decision is scored the same way over the default ten-session horizon (run/analysis.jac,
+DEFAULT_HORIZON_DAYS), whatever its action, so a buy the Arbiter blocked can be judged as if it
+had been taken (TDD §13, Arbiter downgrade value). Each run's screen is scored over the same
+window (TDD §5, screen hit rate): the mean excess return of the names it shortlisted against the
+mean of every other S&P 500 member that day.
 """
 import statistics;
 import from datetime { date, datetime, timedelta }
 import from analysis.consensus { sign, signed_score }
-import from models.graph { Coverage, Covers, Portfolio, Ran, Run, RunStatus, VoteRecord, Voted }
+import from models.graph { Coverage, CoverageReason, Covers, Decided, Decision, Portfolio, Ran, Run, RunStatus, VoteRecord, Voted }
 import from analysis.history { History }
 import from research.alpaca { bars_final }
+import from run.analysis { DEFAULT_HORIZON_DAYS }
 
 glob SCORING_VERSION: str = "2026-10-20.1";
 glob BENCHMARK: str = "SPY";
@@ -110,61 +117,156 @@ def tally_run(run: Run, votes: list[VoteRecord] | None = None) {
 obj ScoringReport {
     has scored: int = 0,
         unscorable: int = 0,
-        waiting: int = 0;
+        waiting: int = 0,
+        decisions: int = 0;
 
     def line -> str {
-        return f"{self.scored} votes scored, {self.unscorable} without prices, {self.waiting} still open";
+        return f"{self.scored} votes scored, {self.unscorable} without prices, {self.waiting} still open, {self.decisions} decisions scored";
     }
 }
 
-"""Score every vote on `portfolio`'s runs whose window has closed by `now`, then refresh each
-run's `specialist_tallies` from the votes this pass already read. Each vote is scored once."""
+"""What one scoring pass must price: a vote or a decision, its run date, and its horizon."""
+obj Pending {
+    has run_day: str,
+        ticker: str,
+        horizon: int;
+    has vote: VoteRecord | None = None,
+        decision: Decision | None = None;
+}
+
+"""Score every vote and decision on `portfolio`'s runs whose window has closed by `now`, then
+refresh each run's `specialist_tallies` from the votes this pass already read. Each is scored
+once."""
 def score_votes(portfolio: Portfolio, now: datetime, history: History = History()) -> ScoringReport {
-    walked = [(run, votes_of(run)) for run in [portfolio ->:Ran:->[?:Run]] if run.status != RunStatus.SKIPPED];
-    found = score_walked(walked, now, history);
+    walked: list[tuple[Run, list[VoteRecord]]] = [];
+    pending: list[Pending] = [];
+    for run in [portfolio ->:Ran:->[?:Run]] {
+        if run.status == RunStatus.SKIPPED {
+            continue;
+        }
+        votes: list[VoteRecord] = [];
+        for cov in [run ->:Covers:->[?:Coverage]] {
+            mine = [v for v in [cov ->:Voted:->[?:VoteRecord]]];
+            votes.extend(mine);
+            pending.extend(Pending(run_day=run.run_date, ticker=v.ticker, horizon=v.body.horizon_days, vote=v) for v in mine if not v.scored_at);
+            pending.extend(Pending(run_day=run.run_date, ticker=d.ticker, horizon=DEFAULT_HORIZON_DAYS, decision=d) for d in [cov ->:Decided:->[?:Decision]] if not d.scored_at);
+        }
+        walked.append((run, votes));
+    }
+    found = score_pending(pending, now, history);
     for (run, votes) in walked {
         tally_run(run, votes);
     }
     return found;
 }
 
-def score_walked(walked: list[tuple[Run, list[VoteRecord]]], now: datetime, history: History) -> ScoringReport {
+def score_pending(pending: list[Pending], now: datetime, history: History) -> ScoringReport {
     found = ScoringReport();
-    pending = [(run.run_date, v) for (run, votes) in walked for v in votes if not v.scored_at];
     if not pending {
         return found;
     }
-    first = min(day for (day, _) in pending);
+    first = min(p.run_day for p in pending);
     today = now.date().isoformat();
     sessions = history.read_sessions((date.fromisoformat(first) - timedelta(days=10)).isoformat(), today);
     final = [s for s in sessions if bars_final(s, now)];
     if not final {
-        found.waiting = len(pending);
+        found.waiting = len([p for p in pending if p.vote is not None]);
         return found;
     }
-    due: list[tuple[VoteRecord, str, str]] = [];
-    for (day, v) in pending {
-        window = vote_window(sessions, day, v.body.horizon_days);
+    due: list[tuple[Pending, str, str]] = [];
+    for p in pending {
+        window = vote_window(sessions, p.run_day, p.horizon);
         if window is None or window[1] > final[-1] {
-            found.waiting += 1;
+            if p.vote is not None {
+                found.waiting += 1;
+            }
         } else {
-            due.append((v, window[0], window[1]));
+            due.append((p, window[0], window[1]));
         }
     }
     if not due {
         return found;
     }
-    tickers = sorted({v.ticker for (v, _, _) in due} | {BENCHMARK});
+    tickers = sorted({p.ticker for (p, _, _) in due} | {BENCHMARK});
     bars = history.read_bars(tickers, min(s for (_, s, _) in due), max(e for (_, _, e) in due));
     closes = {t: {day: b.close for (day, b) in found_.items()} for (t, found_) in bars.items()};
-    for (v, start, end) in due {
-        v.excess_return = excess_return(closes, v.ticker, start, end);
-        v.scored_at = now.isoformat();
-        if v.excess_return is None {
-            found.unscorable += 1;
-        } else {
-            found.scored += 1;
+    stamp = now.isoformat();
+    for (p, start, end) in due {
+        result = excess_return(closes, p.ticker, start, end);
+        if p.decision is not None {
+            p.decision.excess_return = result;
+            p.decision.scored_at = stamp;
+            found.decisions += 1;
+        } elif p.vote is not None {
+            p.vote.excess_return = result;
+            p.vote.scored_at = stamp;
+            if result is None {
+                found.unscorable += 1;
+            } else {
+                found.scored += 1;
+            }
         }
+    }
+    return found;
+}
+
+"""What one screen-scoring pass did."""
+obj ScreenScoring {
+    has scored: int = 0,
+        waiting: int = 0,
+        unscorable: int = 0;
+
+    def line -> str {
+        return f"{self.scored} screens scored, {self.unscorable} without prices, {self.waiting} still open";
+    }
+}
+
+"""Score the screen of every run on `portfolio` whose ten-session window has closed by `now`:
+the mean excess return over SPY of the names the screen shortlisted, and of every other S&P 500
+member that day with prices for the window. A run whose screen shortlisted nothing, or that has
+no prices to compare, is marked scored with no figures, so it is never retried; one whose members
+cannot be read now is tried again the next evening."""
+def score_screens(portfolio: Portfolio, now: datetime, history: History = History()) -> ScreenScoring {
+    found = ScreenScoring();
+    runs = [r for r in [portfolio ->:Ran:->[?:Run]] if not r.screen_scored_at and r.status in (RunStatus.NORMAL, RunStatus.FALLBACK)];
+    if not runs {
+        return found;
+    }
+    first = min(r.run_date for r in runs);
+    sessions = history.read_sessions((date.fromisoformat(first) - timedelta(days=10)).isoformat(), now.date().isoformat());
+    final = [s for s in sessions if bars_final(s, now)];
+    stamp = now.isoformat();
+    for run in sorted(runs, key=lambda (r: Run) { r.run_date; }) {
+        window = vote_window(sessions, run.run_date, DEFAULT_HORIZON_DAYS);
+        if window is None or not final or window[1] > final[-1] {
+            found.waiting += 1;
+            continue;
+        }
+        picks = sorted({c.ticker for c in [run ->:Covers:->[?:Coverage]] if c.reason == CoverageReason.SCREEN});
+        if not picks {
+            run.screen_scored_at = stamp;
+            found.unscorable += 1;
+            continue;
+        }
+        members = history.read_members(run.run_date);
+        if not members {
+            found.waiting += 1;
+            continue;
+        }
+        run.screen_scored_at = stamp;
+        symbols = sorted(set(members) | set(picks) | {BENCHMARK});
+        bars = history.read_bars(symbols, window[0], window[1]);
+        closes = {t: {day: b.close for (day, b) in found_.items()} for (t, found_) in bars.items()};
+        chosen = [x for x in [excess_return(closes, t, window[0], window[1]) for t in picks] if x is not None];
+        rest = [x for x in [excess_return(closes, t, window[0], window[1]) for t in sorted(set(members) - set(picks))] if x is not None];
+        if not chosen or not rest {
+            found.unscorable += 1;
+            continue;
+        }
+        run.screen_picks_excess = statistics.fmean(chosen);
+        run.screen_rest_excess = statistics.fmean(rest);
+        run.screen_names = len(chosen);
+        found.scored += 1;
     }
     return found;
 }

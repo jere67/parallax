@@ -906,7 +906,8 @@ A Live committee page (real-time run progress through polling or a [streaming en
 ### Mobile
 
 The dashboard is an installable progressive web app.
-Under 768px the top bar's links give way to a bottom tab bar, safe-area insets keep it clear of a phone's notch and home indicator, and form controls are at least 44px tall with 16px text, since iOS zooms a page when a smaller field takes focus.
+Under 1024px the top bar's links give way to a bottom tab bar, since eight links no longer fit a tablet.
+Safe-area insets keep it clear of a phone's notch and home indicator, and form controls are at least 44px tall with 16px text, since iOS zooms a page when a smaller field takes focus.
 On a phone the policy assistant is a bottom sheet behind a floating button, and the same component is a sidebar on a wide screen.
 A table on a wide screen is a list of cards on a phone, so the shortlist, positions, and orders never scroll sideways: the page renders both, and CSS shows the one that fits.
 A long list of orders or closed trades shows its ten newest cards and adds ten on each press, so it does not run the page on for screens.
@@ -1161,11 +1162,15 @@ The forward test starts on the morning of the date set in `TRADING_AGENT_FORWARD
 | Arbiter downgrade value | Return of trades the Arbiter blocked, had they been taken | Negative (blocking helped) |
 | Reliability | Runs producing a valid, complete decision set | At least 98% |
 | Risk-gate bypasses | Orders not traced to a gate approval | Zero |
-| Run latency | Preflight to orders submitted | Under 2 hours |
+| Run latency | Preflight to the run's decisions (orders wait for 9:45 a.m. by design, so time to orders measures the clock) | Under 2 hours |
 | Model usage | Free-model requests per run and per day | Within the daily cap |
 
 Results are reported with bootstrap confidence intervals and without cherry-picking windows.
 The final presentation says plainly whether the full system beat each baseline and how confident the team can be.
+
+Each evening review computes these metrics from the graph (`analysis/evaluation.jac`) and stores the latest as an `EvaluationRecord` on the portfolio, which the Results page (`/app/results`) and the final report read.
+To make that possible, the evening scoring also scores every decision over its ten-session window, whatever its action, so a buy the Arbiter blocked is judged as if taken, and scores each run's screen against every other S&P 500 member that day.
+Comparisons with a baseline use a moving-block bootstrap over paired daily returns (blocks of 5 sessions, 2,000 resamples, a fixed seed); the screen's spread resamples runs in the same blocks, since neighboring windows overlap; hit rates use the Wilson interval.
 
 ## 14. Security, compliance, observability, and testing
 

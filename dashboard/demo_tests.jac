@@ -2,6 +2,7 @@
 by the project's own consensus, sizing, gate, baseline, and scoring code."""
 import from datetime { date }
 import from analysis.consensus { abstains }
+import from analysis.evaluation { latest_evaluation }
 import from action.baselines { baselines_of, sim_marks }
 import from action.fixtures { team }
 import from action.reconcile { marks_of }
@@ -38,6 +39,13 @@ test "the demo history is consistent, and every page's view can be built from it
     for b in baselines_of(portfolio).values() {
         assert len(sim_marks(b)) == DEMO_SESSIONS;
     }
+    # The evening review's evaluation covers every session, both baselines, the screens and
+    # decisions whose windows closed, and every run as complete.
+    found = latest_evaluation(portfolio);
+    assert found is not None and found.sessions == DEMO_SESSIONS and [c.baseline for c in found.comparisons] == ["equal_weight", "spy"];
+    assert 0 < found.screen.runs < DEMO_SESSIONS and len(found.specialists) == 5 and found.reliability.share == 1.0;
+    decisions = [d for r in runs for c in [r ->:Covers:->[?:Coverage]] for d in [c ->:Decided:->[?:Decision]]];
+    assert 0 < len([d for d in decisions if d.excess_return is not None]) < len(decisions);
 
     view = portfolio_view(portfolio);
     assert view.started and view.demo and view.sessions == DEMO_SESSIONS and view.closed;

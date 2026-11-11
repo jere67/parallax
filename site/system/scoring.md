@@ -51,7 +51,11 @@ A Technical sample on run date Friday, 2026-10-16, votes BUY with a horizon of 5
 ## When scoring runs
 
 The trading tick runs `score_votes` once per trading day that has a run, 30 minutes after the close, in both auto and insight mode ([The trading day](/system/trading-day#the-trading-tick)).
-It looks at every unscored vote on every run of the portfolio except skipped runs.
+It looks at every unscored vote and decision on every run of the portfolio except skipped runs.
+A decision is scored over the default ten-session horizon whatever its action, so a buy the Arbiter blocked can be judged as if it had been taken.
+
+Right after, `score_screens` scores each finished run's screen once its ten-session window closes: the mean excess return of the names the screen shortlisted, and of every other S&P 500 member that day.
+A run whose members cannot be read from Wikipedia that evening is tried again the next.
 
 A daily bar is final only after 8:15 p.m. New York time, so at 4:30 p.m. today's bar is not yet usable.
 A window that ends today is therefore scored at the next trading day's evening tick.
@@ -66,11 +70,9 @@ The tick logs a line such as `score: 42 votes scored, 0 without prices, 118 stil
 Each `VoteRecord` stores `excess_return` and `scored_at`.
 The [decision trail](/api/get-decision-trail) returns them on every sample, with `hit` computed on read, and the dashboard's panel section shows hit or miss against SPY for each sample.
 
-`records()` also aggregates a specialist's scored directional votes into a hit rate and a mean confidence, the inputs for calibration (does 0.8 confidence win about 80% of the time).
+The Specialists page shows each specialist's hit rate over its recent runs, and the Results page compares each specialist's mean confidence with its hit rate (does 0.8 confidence win about 80% of the time), from the [evaluation](/system/evaluation).
+Each `Decision` stores its own `excess_return`, and each `Run` its screen's `screen_picks_excess` and `screen_rest_excess`, which the evaluation reads.
 
 ::: info Where the code differs from the TDD
-The TDD says the dashboard shows each specialist's hit rate and calibration.
-The per-specialist aggregate (`records()`) exists and is tested, but no endpoint or page uses it yet; the dashboard shows hits only per sample, on the decision trail.
-The TDD's specialist-calibration metric (within 10 percentage points) and track-record weights in the consensus both depend on it.
-See [TDD §7](/design/tdd#scoring-and-calibration) and [TDD §13](/design/tdd#metrics).
+The consensus does not yet weight specialists by their track record (TDD §7); every specialist keeps its fixed weight.
 :::

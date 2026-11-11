@@ -1,6 +1,6 @@
 ---
 title: Reading the dashboard
-description: What the Portfolio, News, Runs, Decision trail, Screener, and stock pages show, and how to follow one decision from research to order.
+description: What the Portfolio, Results, Specialists, News, Runs, Decision trail, Screener, and stock pages show, and how to follow one decision from research to order.
 related:
   - { text: Dashboard internals, link: /system/dashboard }
   - { text: get_decision_trail, link: /api/get-decision-trail }
@@ -20,6 +20,7 @@ On a server in demo mode, every account sees the same demo history.
 | Path | Page |
 | --- | --- |
 | `/app` | Portfolio |
+| `/app/results` | Results, the forward test's scorecard |
 | `/app/news` | News, the research feed |
 | `/app/news/:day/:ticker/:desk/:n` | News, with one note open |
 | `/app/runs` | Runs, showing the newest run |
@@ -30,6 +31,7 @@ On a server in demo mode, every account sees the same demo history.
 | `/app/stocks/:symbol/:tab` | One section of a stock's page |
 | `/app/policy` | [Your policy](/guide/policies) |
 | `/app/reports` | On-demand reports |
+| `/app/specialists` | Specialists, each role's recent votes and hit rate |
 | `/app/settings` | [Your agent](/guide/your-agent): keys, paper trading, and the password |
 
 The old addresses `/news...`, `/runs...`, `/policy`, `/reports`, `/screener`, and `/stocks...` redirect to `/app/...` once you are signed in.
@@ -83,6 +85,25 @@ The open positions table lists each holding with its quantity, entry price, last
 Open a row to read the thesis the position was opened on, with a link to its decision trail.
 
 The Activity panel has two tabs: recent **Orders** with their fills, and **Closed trades** with realized profit and loss.
+
+## Results
+
+The Results page answers: is the agent beating the baselines, and where does the result come from?
+It shows the evaluation the evening review stored after the last close, so it changes once a day.
+Until the first evening review after a run, it says that no results exist yet.
+
+- **Against the baselines.** For SPY and the equal-weight shortlist: your agent's total return minus the baseline's, its 95% interval, and the gap in Sharpe ratios. The verdict reads **Ahead** or **Behind** only when the interval leaves out zero, and **Not clear yet** otherwise, which is normal with a few weeks of data.
+- **Screen.** How the screen's picks did over the next ten sessions against the rest of the S&P 500, both against SPY.
+- **Arbiter.** What the buys the Arbiter blocked would have returned against SPY, beside the buys it confirmed. Blocking helped when the blocked buys lag SPY.
+- **Specialist calibration.** Each specialist's mean confidence and hit rate on its scored directional votes; a gap within 10 points shows in green. **Recent votes** opens the Specialists page.
+- **Reliability.** The share of trading sessions with a complete run, orders outside the risk gate, how long runs take, and free-model requests per run and on the busiest day.
+
+On a phone, the **Results** tab also covers the Specialists page.
+
+## Specialists
+
+The Specialists page shows each of the five specialists' most recent votes, with the stance, confidence, and the start of the rationale, and its hit rate on scored directional votes over the last runs.
+Each vote links to its decision trail, where the full rationale and evidence are.
 
 ## News
 
