@@ -1,0 +1,89 @@
+name: Set up Jac
+description: Install the pinned Jac binary, restore its caches, and install the project's dependencies.
+
+inputs:
+  jac-version:
+    description: The Jac release to install.
+    required: true
+  jac-sha256:
+    description: The sha256 of that release's linux-x86_64 binary.
+    required: true
+  compile-cache:
+    description: Names this job's compiled-module cache, since each job compiles a different part of the project.
+    required: true
+
+outputs:
+  compile-cache-key:
+    description: The key to save the compiled modules under after the job compiles them.
+    value: ${{ steps.compiled.outputs.cache-primary-key }}
+  compile-cache-hit:
+    description: Whether the compiled modules were restored for exactly this source.
+    value: ${{ steps.compiled.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Jac ${{ inputs.jac-version }}
+      shell: bash
+      env:
+        JAC_VERSION: ${{ inputs.jac-version }}
+        JAC_SHA256: ${{ inputs.jac-sha256 }}
+      run: |
+        curl -fsSL -o jac "https://github.com/jaseci-labs/jac/releases/download/v${JAC_VERSION}/jac-${JAC_VERSION}-linux-x86_64"
+        echo "${JAC_SHA256}  jac" | sha256sum --check --strict
+        chmod +x jac
+        mkdir -p "$HOME/.local/bin"
+        mv jac "$HOME/.local/bin/jac"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Show Jac version
+      shell: bash
+      run: jac --version
+
+    # The caches hold native binaries linked against the runner's system libraries, so each
+    # key names the OS release: when ubuntu-latest moves to a new release, a cache saved on
+    # the old one is never restored onto it.
+    - name: Name the runner's OS release for the cache keys
+      shell: bash
+      run: |
+        . /etc/os-release
+        echo "OS_RELEASE=${ID}-${VERSION_ID}" >> "$GITHUB_ENV"
+
+    # Only the embedded Postgres binaries are cached, never its data directory (pg/main):
+    # a cached postmaster.pid names a process from the job that saved the cache, and when a
+    # live process in a later job has that PID, Jac takes Postgres for running, never
+    # starts it, and the first test fails after waiting 60 seconds for its socket (#103).
+    - name: Cache the Jac runtime and embedded Postgres binaries
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.cache/jac/rt
+          ~/.cache/jac/pg/dist
+        key: jac-runtime-pgdist-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ inputs.jac-version }}
+
+    - name: Cache project dependencies
+      uses: actions/cache@v6
+      with:
+        path: |
+          .jac/venv
+          .jac/client/node_modules
+        key: jac-deps-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ inputs.jac-version }}-${{ hashFiles('jac.toml') }}
+
+    # Compiling is most of a cold run: the build alone took 18 to 21 minutes with an empty
+    # cache. Entries are checked against each source file's content hash, so an older cache
+    # restored by the prefix is safe: changed files recompile, the rest load. Each job keeps
+    # its own, since only the first of several jobs saving one key would win. Only restored
+    # here: the job saves it as soon as it has compiled (the `compile-cache-key` output), since
+    # a cache step's own save is skipped when any later step fails or the job is cancelled.
+    - name: Restore compiled modules
+      id: compiled
+      uses: actions/cache/restore@v6
+      with:
+        path: .jac/cache
+        key: jac-compile-${{ inputs.compile-cache }}-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ inputs.jac-version }}-${{ hashFiles('**/*.jac', 'jac.toml') }}
+        restore-keys: |
+          jac-compile-${{ inputs.compile-cache }}-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ inputs.jac-version }}-
+
+    - name: Install dependencies
+      shell: bash
+      run: jac install

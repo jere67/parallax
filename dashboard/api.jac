@@ -80,6 +80,7 @@ import from models.views {
     SpecialistVoteView,
     TrailView
 }
+import from dashboard.live { live_view }
 import from run.guard { TEAM_PORTFOLIO }
 
 glob TRADING_DAYS: int = 252;
@@ -108,13 +109,15 @@ def view_key(team: Portfolio, *parts: str) -> str {
     return ":".join([jid(team)] + list(parts));
 }
 
-"""The caller's portfolio at its last mark, with its positions and its most recently submitted orders."""
+"""The caller's portfolio, with its positions and its most recently submitted orders: at its last
+mark, overlaid with what Alpaca values the account at now when it can be asked (`live_at`,
+dashboard/live.jac)."""
 def:priv get_portfolio -> PortfolioView {
     team = my_portfolio();
     if team is None {
         return PortfolioView(name=AGENT_PORTFOLIO, mode="insight", started=False);
     }
-    return VIEWS.get(view_key(team, "portfolio"), portfolio_view, team);
+    return live_view(view_key(team, "live"), VIEWS.get(view_key(team, "portfolio"), portfolio_view, team), team);
 }
 
 """The team portfolio's daily equity beside both forward-test baselines."""

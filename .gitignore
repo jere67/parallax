@@ -12,4 +12,4 @@ playwright-report/
 test-results/
 
 # The docs site (site/): VitePress cache
-.vitepress/cache/
+site/.vitepress/cache/

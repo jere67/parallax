@@ -16,7 +16,7 @@ import from models.policy { Policy, PolicyScope }
 import from models.research { Stamp }
 import from policy.store { save_policy, team_policy }
 import from run.guard { NEW_YORK }
-import from run.trading { TradingDeps, team_trading_tick, trading_tick }
+import from run.trading { TradingDeps, db_conflict, team_trading_tick, trading_tick }
 import from tests.fakes.broker_server { FakeBroker, FakeOrder, Scripted }
 
 glob DAY: str = "2026-10-21";
@@ -180,6 +180,45 @@ test "reconciliation adopts a position the record lacks, closes one Alpaca lacks
         assert len(mark.bypasses) == 1 and "by-hand" in mark.bypasses[0] and "placed outside the executor" in mark.bypasses[0];
         assert any(l.startswith("bypass: by-hand") for l in lines);
         assert open_positions(portfolio)["ZZZ"].stop_price == 14.0;
+    } finally {
+        fake.stop();
+    }
+}
+
+"""What Postgres raises when a concurrent transaction won: the driver's error dict carries SQLSTATE
+40001, as the PgWireError at the 2026-11-11 9:45 execution did."""
+obj SerializationFailure(Exception) {}
+
+def conflicting_view(_tickers: list[str]) -> MarketView {
+    raise SerializationFailure({"S": "ERROR", "C": "40001", "M": "could not serialize access due to concurrent update"});
+}
+
+test "a conflict is recognized by its SQLSTATE, also when another error wraps it" {
+    assert db_conflict(SerializationFailure({"C": "40001"})) and db_conflict(SerializationFailure({"C": "40P01"}));
+    assert not db_conflict(SerializationFailure({"C": "23505"})) and not db_conflict(RuntimeError("40001"));
+    wrapped = RuntimeError("the tick failed");
+    wrapped.__cause__ = SerializationFailure({"C": "40001"});
+    assert db_conflict(wrapped);
+}
+
+test "a database conflict is left to the runtime to replay, not logged as the run's error" {
+    fake = FakeBroker();
+    try {
+        deps = deps_for(fake);
+        deps.view = conflicting_view;
+        portfolio = team();
+        fake.set_price("AAA", 100.0);
+        run = finished_run(portfolio, DAY, [Call(ticker="AAA", action=TradeAction.BUY)]);
+        fake.now = ny("09:45").isoformat();
+        raised = False;
+        try {
+            team_trading_tick(portfolio, ny("09:45"), deps);
+        } except SerializationFailure {
+            raised = True;
+        }
+        assert raised and not any("error" in line for line in run.action_log);
+        # The runtime rolls the whole attempt back and replays it; nothing here is half-done.
+        assert fake.orders == [];
     } finally {
         fake.stop();
     }

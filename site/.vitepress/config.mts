@@ -172,6 +172,10 @@ const design: DefaultTheme.SidebarItem[] = [
     ]
   },
   {
+    text: 'Evaluation',
+    items: [{ text: 'Screen backtest', link: '/design/eval-screen-backtest' }]
+  },
+  {
     text: 'Exit runs',
     items: [
       { text: 'Research phase', link: '/design/run-research' },
