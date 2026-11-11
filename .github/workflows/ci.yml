@@ -35,6 +35,7 @@ jobs:
         with:
           jac-version: ${{ env.JAC_VERSION }}
           jac-sha256: ${{ env.JAC_SHA256 }}
+          compile-cache: test-${{ matrix.part }}
 
       # Every third test file in sorted order, so a folder of slow tests spreads over all
       # three parts and every file runs exactly once.
@@ -47,10 +48,12 @@ jobs:
           echo "Part $PART runs $(wc -l < "$RUNNER_TEMP/part-tests.txt") of $(wc -l < "$RUNNER_TEMP/all-tests.txt") test files."
           xargs jac test < "$RUNNER_TEMP/part-tests.txt"
 
+  # With its compile cache restored the build takes a few minutes; a cold one (a new Jac
+  # release, or a cache GitHub evicted) takes about 21, so the limit leaves room for that.
   check:
     name: Check, build, boot, end to end
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
@@ -58,6 +61,7 @@ jobs:
         with:
           jac-version: ${{ env.JAC_VERSION }}
           jac-sha256: ${{ env.JAC_SHA256 }}
+          compile-cache: check
 
       - name: Type-check and lint
         run: jac check .

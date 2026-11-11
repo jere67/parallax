@@ -8,6 +8,9 @@ inputs:
   jac-sha256:
     description: The sha256 of that release's linux-x86_64 binary.
     required: true
+  compile-cache:
+    description: Names this job's compiled-module cache, since each job compiles a different part of the project.
+    required: true
 
 runs:
   using: composite
@@ -57,6 +60,18 @@ runs:
           .jac/venv
           .jac/client/node_modules
         key: jac-deps-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ inputs.jac-version }}-${{ hashFiles('jac.toml') }}
+
+    # Compiling is most of a cold run: the build alone took 21 minutes with an empty cache.
+    # Entries are checked against each source file's content hash, so an older cache restored
+    # by the prefix is safe: changed files recompile, the rest load. Each job keeps its own,
+    # since only the first of several jobs saving one key would win.
+    - name: Cache compiled modules
+      uses: actions/cache@v6
+      with:
+        path: .jac/cache
+        key: jac-compile-${{ inputs.compile-cache }}-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ inputs.jac-version }}-${{ hashFiles('**/*.jac', 'jac.toml') }}
+        restore-keys: |
+          jac-compile-${{ inputs.compile-cache }}-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ inputs.jac-version }}-
 
     - name: Install dependencies
       shell: bash
