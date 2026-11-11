@@ -74,6 +74,7 @@ import from models.views {
     SampleView,
     Series,
     SpecialistView,
+    CalibrationBinView,
     SpecialistSummaryView,
     SpecialistVoteView,
     TrailView
@@ -381,6 +382,7 @@ def runs_by_day(portfolio: Portfolio) -> dict[str, Run] {
 
 def specialist_summaries(portfolio: Portfolio) -> list[SpecialistSummaryView] {
     by_role = {s.value: SpecialistSummaryView(specialist=s.value) for s in SPECIALIST_ROLES};
+    calibration = {s.value: [[0.0, 0.0, 0.0] for _ in range(5)] for s in SPECIALIST_ROLES};
     runs = runs_by_day(portfolio);
     for day in sorted(runs, reverse=True)[:SPECIALIST_RUNS] {
         for cov in sorted([c for c in [runs[day] ->:Covers:->[?:Coverage]]], key=lambda (c: Coverage) { c.ticker; }) {
@@ -391,6 +393,10 @@ def specialist_summaries(portfolio: Portfolio) -> list[SpecialistSummaryView] {
                 if result is not None {
                     row.scored += 1;
                     if result { row.hits += 1; }
+                    band = calibration[v.specialist.value][min(4, max(0, int(v.body.confidence * 5)))];
+                    band[0] += 1.0;
+                    band[1] += v.body.confidence;
+                    if result { band[2] += 1.0; }
                 }
                 if len(row.recent) < RECENT_SPECIALIST_VOTES {
                     row.recent.append(SpecialistVoteView(
@@ -404,6 +410,14 @@ def specialist_summaries(portfolio: Portfolio) -> list[SpecialistSummaryView] {
     }
     for row in by_role.values() {
         row.hit_rate = row.hits / row.scored if row.scored else None;
+        for (i, band) in enumerate(calibration[row.specialist]) {
+            if band[0] > 0 {
+                row.calibration.append(CalibrationBinView(
+                    low=i / 5.0, high=(i + 1) / 5.0, count=int(band[0]),
+                    mean_confidence=band[1] / band[0], hit_rate=band[2] / band[0]
+                ));
+            }
+        }
     }
     return [by_role[s.value] for s in SPECIALIST_ROLES];
 }

@@ -246,6 +246,15 @@ obj SpecialistVoteView {
         hit: bool | None = None;
 }
 
+"""Stated confidence beside the actual hit rate for one confidence band."""
+obj CalibrationBinView {
+    has low: float,
+        high: float,
+        count: int,
+        mean_confidence: float,
+        hit_rate: float;
+}
+
 """One role's record over the most recent runs. Only scored directional votes count as hits."""
 obj SpecialistSummaryView {
     has specialist: str;
@@ -253,6 +262,7 @@ obj SpecialistSummaryView {
         scored: int = 0,
         hits: int = 0,
         hit_rate: float | None = None,
+        calibration: list[CalibrationBinView] = [],
         recent: list[SpecialistVoteView] = [];
 }
 

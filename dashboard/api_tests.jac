@@ -89,9 +89,12 @@ test "specialist summaries count scored directional votes and link recent output
         assert len(by_role) == 5;
         technical = by_role["technical"];
         assert (technical.votes, technical.scored, technical.hits, technical.hit_rate) == (2, 2, 2, 1.0);
+        assert len(technical.calibration) == 1;
+        assert (technical.calibration[0].count, technical.calibration[0].mean_confidence, technical.calibration[0].hit_rate) == (2, 0.8, 1.0);
         assert [(v.run_date, v.ticker, v.sample) for v in technical.recent] == [(DAY1, "AAA", 0), (DAY1, "AAA", 1)];
         fundamentals = by_role["fundamentals"];
         assert (fundamentals.votes, fundamentals.scored, fundamentals.hits, fundamentals.hit_rate) == (2, 1, 0, 0.0);
+        assert len(fundamentals.calibration) == 1 and fundamentals.calibration[0].count == 1;
         assert fundamentals.recent[1].hit is None;
         assert by_role["macro"].votes == 0 and by_role["macro"].hit_rate is None;
     } finally {

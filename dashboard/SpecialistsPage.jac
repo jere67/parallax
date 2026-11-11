@@ -3,7 +3,24 @@ import from "@jac/runtime" { Link }
 import from dashboard.ui.rpc { get_specialists }
 import from dashboard.ui.format { count, day_short, pct, title }
 import from dashboard.ui.parts { ActionBadge, Empty, ErrorBox, Loading, Panel }
-import from models.views { SpecialistSummaryView as SummaryData, SpecialistVoteView as VoteData }
+import from models.views { CalibrationBinView as BinData, SpecialistSummaryView as SummaryData, SpecialistVoteView as VoteData }
+
+def CalibrationRow(b: BinData) -> JsxElement {
+    <li className="grid gap-2 border-t border-line/60 px-4 py-2.5 first:border-t-0 sm:grid-cols-[90px_1fr_1fr_52px] sm:items-center">
+        <span className="num text-[12px] text-muted">{pct(b.low, 0) + "–" + pct(b.high, 0)}</span>
+        <div className="flex items-center gap-2">
+            <span className="w-16 text-[11px] text-muted">Confidence</span>
+            <span className="h-1.5 flex-1 rounded-full bg-line"><span className="block h-full rounded-full bg-accent" style={{"width": pct(b.mean_confidence, 0)}}></span></span>
+            <span className="num w-9 text-right text-[11px]">{pct(b.mean_confidence, 0)}</span>
+        </div>
+        <div className="flex items-center gap-2">
+            <span className="w-12 text-[11px] text-muted">Hit rate</span>
+            <span className="h-1.5 flex-1 rounded-full bg-line"><span className="block h-full rounded-full bg-up" style={{"width": pct(b.hit_rate, 0)}}></span></span>
+            <span className="num w-9 text-right text-[11px]">{pct(b.hit_rate, 0)}</span>
+        </div>
+        <span className="num text-[11px] text-faint sm:text-right">{count(b.count, "vote")}</span>
+    </li>
+}
 
 def VoteRow(v: VoteData) -> JsxElement {
     <li className="border-t border-line px-4 py-3 first:border-t-0">
@@ -23,6 +40,15 @@ def RoleCard(s: SummaryData) -> JsxElement {
             <span className="font-medium">{pct(s.hit_rate, 0) if s.hit_rate is not None else "Not enough scored votes"}</span>
             <span className="text-muted">{(" hit rate · " + str(s.hits) + "/" + str(s.scored) + " scored directional votes") if s.scored else " · Awaiting scored directional votes"}</span>
         </div>
+        <details className="border-b border-line">
+            <summary className="cursor-pointer px-4 py-3 text-[13px] font-medium">Calibration · confidence versus hit rate</summary>
+            <p className="px-4 pb-2 text-[12px] text-muted">Scored directional votes only. Each row compares average stated confidence with the share that beat SPY in the predicted direction.</p>
+            {if len(s.calibration) == 0 {
+                <p className="px-4 pb-4 text-[12px] text-muted">No scored votes for calibration yet.</p>
+            } else {
+                <ol className="border-t border-line">{for b in s.calibration { <CalibrationRow key={str(b.low)} b={b}/> }}</ol>
+            }}
+        </details>
         {if len(s.recent) == 0 {
             <p className="px-4 py-4 text-[13px] text-muted">No votes recorded yet.</p>
         } else {
