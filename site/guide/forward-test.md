@@ -74,6 +74,9 @@ Check these before setting the variable:
 The dashboard's Portfolio page shows the team portfolio against both baselines from the start date: equity, return against SPY, drawdown, Sharpe ratio, and volatility.
 The test is measured against SPY (requirement GAP-14 in the [requirements](/design/requirements)).
 
+The Results page (`/app/results`) is the test's scorecard, rebuilt after each close: whether the agent is ahead of each baseline with a 95% interval, how the screen's picks did against the rest of the index, how well each specialist's confidence matched its hit rate, what the Arbiter's downgrades were worth, and how reliably the runs completed.
+See [Evaluation](/system/evaluation) for how each figure is computed.
+
 ::: info The start is one-way
 Nothing in the code switches the team portfolio back to insight mode.
 To stop trading without stopping the server, set `TRADING_AGENT_DISABLE_ORDERS=1`: the executor still sizes and gates each decision and records why nothing was sent.

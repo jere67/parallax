@@ -1161,11 +1161,15 @@ The forward test starts on the morning of the date set in `TRADING_AGENT_FORWARD
 | Arbiter downgrade value | Return of trades the Arbiter blocked, had they been taken | Negative (blocking helped) |
 | Reliability | Runs producing a valid, complete decision set | At least 98% |
 | Risk-gate bypasses | Orders not traced to a gate approval | Zero |
-| Run latency | Preflight to orders submitted | Under 2 hours |
+| Run latency | Preflight to the run's decisions (orders wait for 9:45 a.m. by design, so time to orders measures the clock) | Under 2 hours |
 | Model usage | Free-model requests per run and per day | Within the daily cap |
 
 Results are reported with bootstrap confidence intervals and without cherry-picking windows.
 The final presentation says plainly whether the full system beat each baseline and how confident the team can be.
+
+Each evening review computes these metrics from the graph (`analysis/evaluation.jac`) and stores the latest as an `EvaluationRecord` on the portfolio, which the Results page (`/app/results`) and the final report read.
+To make that possible, the evening scoring also scores every decision over its ten-session window, whatever its action, so a buy the Arbiter blocked is judged as if taken, and scores each run's screen against every other S&P 500 member that day.
+Comparisons with a baseline use a moving-block bootstrap over paired daily returns (blocks of 5 sessions, 2,000 resamples, a fixed seed); the screen's spread resamples runs in the same blocks, since neighboring windows overlap; hit rates use the Wilson interval.
 
 ## 14. Security, compliance, observability, and testing
 
