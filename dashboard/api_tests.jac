@@ -5,7 +5,8 @@ import from datetime { datetime, timezone }
 import from action.executor { execute_run, keep_stops, sync_orders }
 import from action.fixtures { Call, broker_for, finished_run, market, team }
 import from action.reconcile { marks_of, reconcile }
-import from dashboard.api { performance_view, portfolio_view, run_summaries, run_view, series, specialist_summaries, specialist_views, trail_view }
+import from dashboard.api { performance_view, portfolio_view, refresh_specialists, run_summaries, run_view, series, specialist_summaries, specialist_views, trail_view, view_key }
+import from dashboard.cache { VIEWS }
 import from models.agents { Domain, Evidence, ResearchReport, Specialist, Stance, Vote }
 import from models.graph {
     Concluded,
@@ -88,7 +89,7 @@ test "specialist summaries count scored directional votes and link recent output
         by_role = {s.specialist: s for s in specialist_summaries(portfolio)};
         assert len(by_role) == 5;
         technical = by_role["technical"];
-        assert (technical.runs, technical.votes, technical.scored, technical.hits, technical.hit_rate) == (1, 2, 2, 2, 1.0);
+        assert (technical.runs, technical.votes, technical.scored, technical.hits, technical.hit_rate) == (2, 2, 2, 2, 1.0);
         assert [(v.run_date, v.ticker, v.sample) for v in technical.recent] == [(DAY1, "AAA", 0), (DAY1, "AAA", 1)];
         fundamentals = by_role["fundamentals"];
         assert (fundamentals.votes, fundamentals.scored, fundamentals.hits, fundamentals.hit_rate) == (2, 1, 0, 0.0);
@@ -229,4 +230,26 @@ test "a Flow sample that cites only data gaps shows as abstained and leaves Flow
     assert abs(mixed.score - 0.4) < 1e-12 and mixed.weight == 1.0;
     [silent] = specialist_views([record(0, gap), record(1, gap)], {});
     assert silent.score == 0.0 and silent.weight is None and all(x.abstained for x in silent.samples);
+}
+
+test "the refresh job rebuilds the specialists view only when a run finishes or its votes are scored" {
+    fake = FakeBroker();
+    try {
+        (portfolio, first, _) = traded(fake);
+        key = view_key(portfolio, "specialists");
+        refresh_specialists(portfolio);
+        built = VIEWS.entries[key].value;
+        # A vote scored without the run recording it: the signature has not moved, so no rebuild.
+        for v in [coverage_of(first, "AAA") ->:Voted:->[?:VoteRecord]] {
+            v.scored_at = "2026-10-29T20:30:00+00:00";
+            v.excess_return = 0.05;
+        }
+        refresh_specialists(portfolio);
+        assert VIEWS.entries[key].value is built;
+        first.votes_scored_at = "2026-10-29T20:30:00+00:00";
+        refresh_specialists(portfolio);
+        assert VIEWS.entries[key].value is not built;
+    } finally {
+        fake.stop();
+    }
 }

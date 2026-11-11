@@ -171,8 +171,33 @@ def refresh_job {
         VIEWS.put(view_key(team, "performance"), performance_view(team));
         VIEWS.put(view_key(team, "runs"), run_summaries(team));
         VIEWS.put(view_key(team, "run", ""), run_view(team, ""));
-        VIEWS.put(view_key(team, "specialists"), specialist_summaries(team));
+        refresh_specialists(team);
     }
+}
+
+# The runs the specialists view was last built from, by view key (see `refresh_specialists`).
+glob _SPECIALISTS_BUILT_FROM: dict[str, str] = {};
+
+"""What the specialists view depends on: each recent run's date, status, and when its votes were
+scored. Reading it touches only the run nodes."""
+def specialists_signature(portfolio: Portfolio) -> str {
+    runs = runs_by_day(portfolio);
+    return "|".join(f"{d}:{runs[d].status.value}:{runs[d].votes_scored_at}" for d in sorted(runs, reverse=True)[:SPECIALIST_RUNS]);
+}
+
+"""Keep the specialists view fresh, rebuilding it only when a run finishes or its votes are
+scored. The view reads every vote of up to SPECIALIST_RUNS runs, thousands of nodes, so building
+it every minute slowed every other request."""
+def refresh_specialists(team: Portfolio) {
+    key = view_key(team, "specialists");
+    signature = specialists_signature(team);
+    found = VIEWS.entries.get(key);
+    if found is not None and _SPECIALISTS_BUILT_FROM.get(key) == signature {
+        VIEWS.put(key, found.value);
+        return;
+    }
+    VIEWS.put(key, specialist_summaries(team));
+    _SPECIALISTS_BUILT_FROM[key] = signature;
 }
 
 # --- Portfolio --------------------------------------------------------------------------
