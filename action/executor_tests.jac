@@ -4,7 +4,7 @@ fills, adds, trims, exits, and stops that fire or expire."""
 import os;
 import from datetime { date, datetime, timedelta, timezone }
 import from action.gate { GateConfig }
-import from action.executor { ORDERS_OFF_ENV, close_day_orders, execute_run, keep_stops, open_positions, sync_orders }
+import from action.executor { ORDERS_OFF_ENV, close_day_orders, execute_run, keep_stops, open_positions, stop_id_for, sync_orders }
 import from action.fixtures { Call, broker_for, finished_run, market, team }
 import from models.graph {
     CheckedBy,
@@ -94,6 +94,44 @@ test "an approved buy is sent once as a marketable limit, and its fill opens a p
         keep_stops(portfolio, broker, NOW1);
         assert stops_at(fake, "AAA") == [(40, 96.1)] and position.stop_order_id;
         assert keep_stops(portfolio, broker, NOW1) == [] and len(fake.orders) == 2;
+    } finally {
+        fake.stop();
+    }
+}
+
+test "a position dates from its broker fill, not the sync, so a replayed sync names the same stop" {
+    fake = FakeBroker();
+    try {
+        broker = broker_for(fake);
+        portfolio = team();
+        fake.set_price("AAA", 100.0);
+        execute_run(portfolio, finished_run(portfolio, DAY1, [Call(ticker="AAA", action=TradeAction.BUY, conviction=0.5)]), broker, NOW1, market({"AAA": 100.0}, NOW1));
+        fake.now = "2026-10-21T13:45:03+00:00";
+        fake.fill(f"{DAY1}-AAA-entry", 0, 100.0);
+        # The sync runs a minute after the fill, as the next tick would.
+        sync_orders(portfolio, broker, NOW1 + timedelta(minutes=1, seconds=7));
+        position = open_positions(portfolio)["AAA"];
+        assert datetime.fromisoformat(position.opened_at) == datetime.fromisoformat(fake.now);
+        assert stop_id_for(position, 1) == "AAA-20261021134503-stop1";
+    } finally {
+        fake.stop();
+    }
+}
+
+test "a tagged portfolio's orders and stops carry its tag, so another portfolio's never match them" {
+    fake = FakeBroker();
+    try {
+        broker = broker_for(fake);
+        portfolio = team();
+        portfolio.order_tag = "a1b2c3d4";
+        fake.set_price("AAA", 100.0);
+        execute_run(portfolio, finished_run(portfolio, DAY1, [Call(ticker="AAA", action=TradeAction.BUY, conviction=0.5)]), broker, NOW1, market({"AAA": 100.0}, NOW1));
+        assert fake.find(f"{DAY1}-AAA-entry") is None and fake.find(f"a1b2c3d4-{DAY1}-AAA-entry") is not None;
+        fake.now = "2026-10-21T13:45:03+00:00";
+        fake.fill(f"a1b2c3d4-{DAY1}-AAA-entry", 0, 100.0);
+        sync_orders(portfolio, broker, NOW1);
+        keep_stops(portfolio, broker, NOW1);
+        assert [o.client_order_id for o in fake.working_orders("AAA")] == ["a1b2c3d4-AAA-20261021134503-stop1"];
     } finally {
         fake.stop();
     }

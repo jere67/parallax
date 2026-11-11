@@ -149,7 +149,7 @@ def KeysPanel(settings: SettingsData, done: Callable[[SettingsData, str], None])
                 url_label="Get paper keys"
                 required={True}
                 status={key_named(settings, "ALPACA_SECRET_KEY")}
-                problem={problems.get("alpaca", "")}
+                problem={problems.get("alpaca", "") or settings.alpaca_problem}
                 can_remove={True}
                 busy={busy}
                 remove={lambda { disconnect("alpaca"); }}
@@ -262,10 +262,11 @@ def TradingPanel(settings: SettingsData, done: Callable[[SettingsData, str], Non
         }
     }
 
-    <Panel title="Paper trading" aside={<span className={"font-medium " + ("text-accent" if settings.paper_trading else "text-muted")}>{"On" if settings.paper_trading else "Off"}</span>}>
+    paused = settings.paper_trading and bool(settings.alpaca_problem);
+    <Panel title="Paper trading" aside={<span className={"font-medium " + ("text-warn" if paused else ("text-accent" if settings.paper_trading else "text-muted"))}>{"Paused" if paused else ("On" if settings.paper_trading else "Off")}</span>}>
         <div className="flex flex-col gap-3">
             <p className="text-[13px] leading-5 text-muted">
-                {"Your agent places paper orders on your Alpaca account each morning after 9:45 a.m. New York time, within your policy's limits." if settings.paper_trading else "Your agent researches and decides, but places no orders. Turn this on to have it trade your Alpaca paper account."}
+                {"Your agent places no orders until its Alpaca keys open a paper account of its own. It keeps researching and deciding meanwhile." if paused else ("Your agent places paper orders on your Alpaca account each morning after 9:45 a.m. New York time, within your policy's limits." if settings.paper_trading else "Your agent researches and decides, but places no orders. Turn this on to have it trade your Alpaca paper account.")}
             </p>
             {if message { <p className="text-[13px] leading-5 text-text" role="status">{message}</p> }}
             {if settings.paper_trading {
@@ -281,7 +282,7 @@ def TradingPanel(settings: SettingsData, done: Callable[[SettingsData, str], Non
                     </div>
                 </div>
             } else {
-                <button type="button" disabled={not settings.ready or settings.demo} onClick={lambda { confirming = True; message = ""; }} className={TAP_BUTTON + " self-start"}>Turn on paper trading</button>
+                <button type="button" disabled={not settings.ready or settings.demo or bool(settings.alpaca_problem)} onClick={lambda { confirming = True; message = ""; }} className={TAP_BUTTON + " self-start"}>Turn on paper trading</button>
             }}
         </div>
     </Panel>

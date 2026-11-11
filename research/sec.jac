@@ -18,6 +18,7 @@ import re;
 import xml.etree.ElementTree as ET;
 import from datetime { date }
 import from models.research { Stamped }
+import from research.asof { filed_in_time }
 import from research.collector {
     Fetched,
     MissingKey,
@@ -199,7 +200,8 @@ def cik_map(budget: RunBudget, client: SourceClient | None = None) -> dict[str, 
     };
 }
 
-"""The company's recent filings, newest first, from its submissions file, and its name."""
+"""The company's recent filings, newest first, from its submissions file, and its name. In a
+replay, only those filed before the replayed day (research/asof.jac)."""
 def filings(symbol: str, cik: str, budget: RunBudget, client: SourceClient | None = None) -> tuple[str, list[Filing]] {
     padded = padded_cik(cik);
     fetched = (client or sec_data_client()).get(
@@ -213,6 +215,9 @@ def filings(symbol: str, cik: str, budget: RunBudget, client: SourceClient | Non
     recent: dict[str, list[str]] = parsed["filings"]["recent"];
     found: list[Filing] = [];
     for i in range(len(recent["accessionNumber"])) {
+        if not filed_in_time(recent["filingDate"][i]) {
+            continue;
+        }
         accession = recent["accessionNumber"][i];
         found.append(Filing(
             symbol=symbol,
@@ -541,8 +546,10 @@ def exhibit_path(index_html: str) -> str {
 }
 
 """The company's facts for the first of `concepts` with the newest period, deduplicated to
-the newest filing per period. With `widest`, the concept with the largest value wins a tie: contract
-revenue leaves out a landlord's rent and a bank's interest, so it is only part of their top line."""
+the newest filing per period. With `widest`, the concept with the largest value wins a tie:
+contract revenue leaves out a landlord's rent and a bank's interest, so it is only part of
+their top line. In a replay, a fact filed on or after the replayed day is left out, so a later
+restatement never replaces what was reported then (research/asof.jac)."""
 def _series(taxonomy: dict[str, dict], concepts: list[str], unit: str, instant: bool, widest: bool = False) -> list[Fact] {
     best: list[Fact] = [];
     for concept in concepts {
@@ -550,7 +557,7 @@ def _series(taxonomy: dict[str, dict], concepts: list[str], unit: str, instant: 
         latest: dict[tuple[str, str], Fact] = {};
         for row in rows {
             start = str(row.get("start") or "");
-            if (not start) != instant or row.get("val") is None {
+            if (not start) != instant or row.get("val") is None or not filed_in_time(str(row.get("filed") or "")) {
                 continue;
             }
             fact = Fact(

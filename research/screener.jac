@@ -15,6 +15,7 @@ import statistics;
 import from datetime { date, timedelta }
 import from research.alpaca { Asset, assets, daily_bars, market_calendar }
 import from research.alpaca_news { article_counts }
+import from research.asof { as_of_day }
 import from research.collector { RunBudget, SourceClient, SourceError }
 import from research.finnhub { earnings_calendar }
 import from research.indicators { Technicals, summarize }
@@ -234,7 +235,12 @@ def gather(
     }
     gaps: list[str] = [];
     symbols = [m.symbol for m in members];
-    listed = assets(budget, sources.alpaca_trading);
+    # Alpaca lists only today's assets, so a replay (research/asof.jac) takes every member as
+    # tradable rather than drop one delisted since.
+    listed = assets(budget, sources.alpaca_trading) if not as_of_day() else {};
+    if as_of_day() {
+        gaps.append(f"screener: a replay of {run_day} takes every member as tradable, since Alpaca lists only today's assets");
+    }
     year_ago = (date.fromisoformat(before[-1]) - timedelta(days=366)).isoformat();
     (series, bar_gaps) = daily_bars(symbols, year_ago, before[-1], budget, sources.alpaca_data);
     gaps.extend(bar_gaps);
@@ -264,7 +270,7 @@ def gather(
                 name=m.name,
                 company=m.cik,
                 sector=m.sector,
-                tradable=bool(asset and asset.tradable),
+                tradable=bool(asset and asset.tradable) or bool(as_of_day()),
                 momentum_20=t.momentum_20 if t else None,
                 momentum_60=t.momentum_60 if t else None,
                 rvol_5=t.rvol_5 if t else None,

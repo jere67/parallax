@@ -195,6 +195,8 @@ test("news: going back from a story returns to the same place in the feed", asyn
   await page.goto("/app/news");
   const rows = page.locator("a.news-row");
   await expect(rows.nth(20)).toBeAttached();
+  // The feed rises 12px into place as it loads, so scrolling before that ends lands 12px off.
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState === "finished"));
   await rows.nth(20).scrollIntoViewIfNeeded();
   const scrolled = await page.evaluate(() => window.scrollY);
   expect(scrolled).toBeGreaterThan(0);
@@ -295,7 +297,9 @@ test("account: sign up, connect keys, log out, and log back in to where you were
   await connect.click();
   await expect(page.getByRole("alert")).toContainText(/paper/i);
 
-  await alpaca.getByLabel("API key ID").fill("PKE2EGOODKEY0001");
+  // A paper key of this run's own, since no two agents may trade one account.
+  const paperKey = `PKE2EGOOD${Date.now()}`;
+  await alpaca.getByLabel("API key ID").fill(paperKey);
   await openrouter.getByLabel("API key").fill("sk-or-e2e-good-key-1");
   await connect.click();
   await expect(alpaca.getByText(/Connected/)).toBeVisible();
@@ -304,7 +308,7 @@ test("account: sign up, connect keys, log out, and log back in to where you were
   await expect(alpaca.getByLabel("API key ID")).toHaveValue("");
   await page.reload();
   await expect(alpaca.getByText(/Connected/)).toBeVisible();
-  await expect(page.locator("body")).not.toContainText("PKE2EGOODKEY0001");
+  await expect(page.locator("body")).not.toContainText(paperKey);
   await expect(page.locator("body")).not.toContainText("sk-or-e2e-good-key-1");
   await fitsWidth(page);
 
