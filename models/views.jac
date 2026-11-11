@@ -112,7 +112,8 @@ obj PortfolioView {
         drift: int = 0,
         positions: list[PositionView] = [],
         closed: list[PositionView] = [],
-        orders: list[OrderView] = [];
+        orders: list[OrderView] = [],
+        live_at: str = "";
 }
 
 """The macro brief and the market figures the regime filter reads."""
