@@ -49,3 +49,16 @@ Every resample uses the same seed, so the same data always gives the same ranges
 
 A verdict of **Not clear yet** is the expected result for weeks.
 A month of daily returns rarely separates two portfolios that both hold large US stocks; the range narrows roughly with the square root of the number of sessions.
+
+## The final report
+
+[`analysis/final_report.jac`](https://github.com/jere67/parallax/blob/main/analysis/final_report.jac) builds `docs/evaluation/report.md` from three inputs: the stored evaluation and equity curves, read from a running server as the admin, the screen backtest (`docs/evaluation/backtest.json`), and the LLM replay (`docs/evaluation/llm-replay.json`).
+It answers first, then shows each part with its intervals, and draws its figures as SVG files in `docs/evaluation/figures/`.
+
+```sh
+ADMIN_PASSWORD=... PARALLAX_FINAL_REPORT=1 jac run --no-takeover analysis/final_report.jac
+```
+
+`REPORT_URL` names the server (default `http://localhost:8100`).
+The fetched data is saved as `docs/evaluation/forward-test.json`, so `REPORT_OFFLINE=1` rebuilds the report from the saved files without a server.
+A missing input leaves its section saying so rather than failing.
