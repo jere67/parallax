@@ -1,5 +1,11 @@
 """SEC company facts reduced to a company's figures and period tables."""
-import from market.companies { company_record, figures_of, filings_of, wants_facts }
+import os;
+import tempfile;
+import from jaclang.data.storage.storage { Storage }
+import from market.companies { company_facts, company_record, figures_of, filings_of, wants_facts }
+import from research.collector { RawCache, RunBudget, SourceClient, TokenBucket }
+import from research.sources { SOURCES }
+import from tests.fakes.source_server { FakeSource }
 
 def fact(start: str, end: str, value: float, filed: str = "2026-02-01", form: str = "10-K") -> dict[str, any] {
     row: dict[str, any] = {"end": end, "val": value, "filed": filed, "form": form, "accn": "1"};
@@ -103,4 +109,29 @@ test "facts are asked for only when a newer report is out, and the old ones stay
     assert later.values == record.values and later.checked == "2026-03-02";
     newer = submissions_of(["10-Q", "10-K"], ["2026-05-01", "2026-02-01"]);
     assert wants_facts(newer, record);
+}
+
+test "a filer SEC answers with an empty object has no facts, as a 404 does, rather than failing" {
+    fake = FakeSource();
+    env = SOURCES["sec_data"].base_url_env;
+    before = os.environ.get(env);
+    os.environ[env] = fake.start();
+    try {
+        # SEC answers John Hancock Income Securities Trust (JHS), a closed-end fund, with 200 and {}.
+        fake.script.append((200, {"Content-Type": "application/json"}, "{}"));
+        client = SourceClient(
+            source=SOURCES["sec_data"],
+            cache=RawCache(storage=store(base_path=tempfile.mkdtemp()) as Storage),
+            bucket=TokenBucket(per_minute=60000, burst=100),
+            backoff_s=0.0
+        );
+        assert company_facts("0000759866", RunBudget(limits={"sec_data": 5}), client) is None;
+    } finally {
+        fake.stop();
+        if before is None {
+            os.environ.pop(env, None);
+        } else {
+            os.environ[env] = before;
+        }
+    }
 }
