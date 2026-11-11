@@ -10,7 +10,9 @@
 import { createServer } from "node:http";
 
 const PORT = Number(process.env.FAKE_PROVIDERS_PORT || 8399);
-const GOOD_ALPACA = "PKE2EGOODKEY0001";
+// Any key starting so is a good paper key, opening its own account: each device's run of a test
+// connects its own, since no two agents may trade one account.
+const GOOD_ALPACA = "PKE2EGOOD";
 const LIVE_ALPACA = "AKE2ELIVEKEY0001";
 const GOOD_SECRET = "e2e-good-secret-value";
 const GOOD_OPENROUTER = "sk-or-e2e-good-key-1";
@@ -76,9 +78,9 @@ createServer((req, res) => {
       res.end(JSON.stringify(known ? { data: { free_model_daily_requests: { used: 0, limit: 1000, remaining: 1000 } } } : { error: { message: "No auth credentials found" } }));
     } else if (req.url.startsWith("/v2/account")) {
       const key = req.headers["apca-api-key-id"];
-      const known = (key === GOOD_ALPACA || key === LIVE_ALPACA) && req.headers["apca-api-secret-key"] === GOOD_SECRET;
+      const known = (String(key).startsWith(GOOD_ALPACA) || key === LIVE_ALPACA) && req.headers["apca-api-secret-key"] === GOOD_SECRET;
       res.statusCode = known ? 200 : 403;
-      res.end(JSON.stringify(known ? { account_number: key === LIVE_ALPACA ? "LIVE7890" : "PA3E2E7890", status: "ACTIVE", equity: "100000", cash: "100000" } : { message: "forbidden." }));
+      res.end(JSON.stringify(known ? { account_number: key === LIVE_ALPACA ? "LIVE7890" : `PA3${key.slice(GOOD_ALPACA.length)}7890`, status: "ACTIVE", equity: "100000", cash: "100000" } : { message: "forbidden." }));
     } else if (req.url.startsWith("/v2/positions") || req.url.startsWith("/v2/orders")) {
       res.end("[]");
     } else if (req.url.includes("/quote")) {

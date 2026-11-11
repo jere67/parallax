@@ -1,8 +1,8 @@
 """Start today's morning run by hand (TDD §4, daily schedule; TDD §14, unauthorized run
 triggers).
 
-The 7:30 a.m. job fires only between 7:30 and 7:45 New York time (run/jobs.jac), so a server
-that is down or asleep then has no run that day. `start_morning_run` lets the platform admin
+The morning job starts a run only between 7:30 and 9:15 New York time (run/jobs.jac), so a
+server that is down or asleep for that whole window has no run that day. `start_morning_run` lets the platform admin
 ask for it later, and `manual_run_job`, a static job that checks every minute, runs it.
 
 The request is a row in the server's app token store (`jaclang.server.identity.app_tokens`),

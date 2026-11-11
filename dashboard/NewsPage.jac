@@ -443,6 +443,18 @@ def:pub NewsPage -> JsxElement {
         };
     }, []);
 
+    # The feed stays where it is under a story's sheet, so going back needs no scrolling at all.
+    # The browser's own restoration moved it, by a few rows, to wherever it last saved for the
+    # entry, so the page turns it off while it is open.
+    useEffect(lambda {
+        history: any = window.history;
+        before: str = history.scrollRestoration;
+        history.scrollRestoration = "manual";
+        return lambda {
+            history.scrollRestoration = before;
+        };
+    }, []);
+
     useEffect(lambda {
         media: any = window.matchMedia(WIDE);
         def changed {
