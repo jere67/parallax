@@ -289,10 +289,11 @@ def execute_run(
     return report_;
 }
 
-"""The client order ID for a run's order: run date, ticker, and purpose, so a second firing
-finds the first order instead of placing another (TDD §8, idempotency)."""
-def order_id_for(run_day: str, ticker: str, purpose: OrderPurpose) -> str {
-    return f"{run_day}-{ticker}-{purpose.value}";
+"""The client order ID for a run's order: the portfolio's `tag`, run date, ticker, and purpose, so
+a second firing finds the first order instead of placing another (TDD §8, idempotency)."""
+def order_id_for(run_day: str, ticker: str, purpose: OrderPurpose, tag: str = "") -> str {
+    found = f"{run_day}-{ticker}-{purpose.value}";
+    return f"{tag}-{found}" if tag else found;
 }
 
 def limit_price(side: OrderSide, price: float) -> float {
@@ -330,7 +331,7 @@ def submit(portfolio: Portfolio, rc: RiskCheck, broker: Broker, now: datetime, r
         qty=qty,
         order_type="limit",
         time_in_force="day",
-        client_order_id=order_id_for(run_day, rc.ticker, rc.purpose),
+        client_order_id=order_id_for(run_day, rc.ticker, rc.purpose, portfolio.order_tag),
         limit_price=limit_price(rc.side, rc.price)
     );
     order = Order(
@@ -358,7 +359,7 @@ def submit(portfolio: Portfolio, rc: RiskCheck, broker: Broker, now: datetime, r
 
 def _refused(portfolio: Portfolio, rc: RiskCheck, now: datetime, run_day: str, qty: int, reason: str) -> str {
     order = Order(
-        client_order_id=order_id_for(run_day, rc.ticker, rc.purpose or OrderPurpose.ENTRY),
+        client_order_id=order_id_for(run_day, rc.ticker, rc.purpose or OrderPurpose.ENTRY, portfolio.order_tag),
         purpose=rc.purpose or OrderPurpose.ENTRY,
         side=rc.side or OrderSide.BUY,
         qty=qty,
@@ -395,10 +396,11 @@ def sync_orders(portfolio: Portfolio, broker: Broker, now: datetime) -> list[str
         if added > 0 and seen.filled_avg_price is not None {
             # Alpaca reports the cumulative fill; the new shares' price follows from the averages.
             price = (seen.filled_avg_price * seen.filled_qty - order.filled_avg_price * order.filled_qty) / added;
-            public(order +>:FilledBy():+> Fill(qty=added, price=price, filled_at=seen.filled_at or now.isoformat()));
+            filled_at = seen.filled_at or now.isoformat();
+            public(order +>:FilledBy():+> Fill(qty=added, price=price, filled_at=filled_at));
             order.filled_qty = seen.filled_qty;
             order.filled_avg_price = seen.filled_avg_price;
-            changes.append(_apply_fill(portfolio, order, added, price, now));
+            changes.append(_apply_fill(portfolio, order, added, price, now, filled_at));
         }
         if seen.status != order.status {
             changes.append(f"{order.client_order_id}: {order.status} -> {seen.status}");
@@ -408,8 +410,10 @@ def sync_orders(portfolio: Portfolio, broker: Broker, now: datetime) -> list[str
     return changes;
 }
 
-"""Move the portfolio's position in `order`'s stock by a fill of `qty` at `price`."""
-def _apply_fill(portfolio: Portfolio, order: Order, qty: int, price: float, now: datetime) -> str {
+"""Move the portfolio's position in `order`'s stock by a fill of `qty` at `price`. A new position
+dates from the broker's `filled_at`, not from this sync, so a sync the runtime replays after a
+database conflict names the same stop (`stop_id_for`) and finds the stop it placed."""
+def _apply_fill(portfolio: Portfolio, order: Order, qty: int, price: float, now: datetime, filled_at: str) -> str {
     position = open_positions(portfolio).get(order.ticker);
     if order.side == OrderSide.BUY {
         found = [rc for rc in [order <-:Placed:<-[?:RiskCheck]]];
@@ -422,7 +426,7 @@ def _apply_fill(portfolio: Portfolio, order: Order, qty: int, price: float, now:
                 sector=covered[0].sector if covered else "",
                 qty=qty,
                 avg_entry_price=price,
-                opened_at=now.isoformat(),
+                opened_at=filled_at,
                 stop_price=round(price - distance, 2) if distance > 0 else 0.0,
                 last_price=price,
                 priced_at=now.isoformat()
@@ -454,11 +458,12 @@ def _apply_fill(portfolio: Portfolio, order: Order, qty: int, price: float, now:
     return f"{order.ticker}: sold {qty} @ {price:.2f} ({order.purpose.value}), {position.qty} left";
 }
 
-"""The client order ID for a position's `n`th stop: the stock, when the position opened, and
-the count, so a re-placed stop never reuses an ID."""
-def stop_id_for(position: Position, n: int) -> str {
+"""The client order ID for a position's `n`th stop: the portfolio's `tag`, the stock, when the
+position opened, and the count, so a re-placed stop never reuses an ID."""
+def stop_id_for(position: Position, n: int, tag: str = "") -> str {
     opened = "".join(ch for ch in position.opened_at[:19] if ch.isdigit());
-    return f"{position.ticker}-{opened}-stop{n}";
+    found = f"{position.ticker}-{opened}-stop{n}";
+    return f"{tag}-{found}" if tag else found;
 }
 
 """Give every open position exactly one working GTC stop sell for all its shares at its stop
@@ -513,7 +518,7 @@ def keep_stops(portfolio: Portfolio, broker: Broker, now: datetime, prices: dict
             qty=at_broker.qty,
             order_type="limit" if stop_out else "stop",
             time_in_force="day" if stop_out else "gtc",
-            client_order_id=stop_id_for(position, position.stops_placed),
+            client_order_id=stop_id_for(position, position.stops_placed, portfolio.order_tag),
             limit_price=limit_price(OrderSide.SELL, last) if stop_out else None,
             stop_price=None if stop_out else position.stop_price
         );

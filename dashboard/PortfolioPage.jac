@@ -1,7 +1,9 @@
-"""The Portfolio page (TDD §10): the agent's portfolio at its last mark, its equity curve against
-both baselines, the open positions with their stops and theses, and the recent orders and
-closed trades. Every ticker links to the decision trail behind it."""
+"""The Portfolio page (TDD §10): the agent's portfolio as Alpaca values it now (or at its last
+mark when Alpaca cannot be asked), its equity curve against both baselines, the open positions
+with their stops and theses, and the recent orders and closed trades. Every ticker links to the
+decision trail behind it."""
 import from "@jac/runtime" { Link }
+import from "react" { useEffect }
 import from "lucide-react" { ChevronRight }
 import from dashboard.ui.rpc { get_performance, get_portfolio }
 import from dashboard.ui.AgentSetup { AgentSetup }
@@ -19,9 +21,14 @@ import from dashboard.ui.format {
     signed_money,
     signed_pct,
     stamp_et,
+    time_et,
     title,
     tone
 }
+
+# How often an open page asks for the account's value again; the server reads Alpaca at most
+# once a minute per portfolio (dashboard/live.jac).
+glob LIVE_POLL_MS: int = 60000;
 import from dashboard.ui.parts {
     CARD,
     CARD_LIST,
@@ -103,7 +110,7 @@ def Hero(view: PortfolioData) -> JsxElement {
             <span className="display text-[40px] leading-[44px] text-text">{money(view.equity)}</span>
             <Delta text={signed_pct(view.day_return)} value={view.day_return}/>
             <span className={"num text-[13px] font-medium " + tone(view.day_pnl)}>{signed_money(view.day_pnl)}</span>
-            <span className="text-[11px] text-muted">{"on " + day_short(view.last_day)}</span>
+            <span className="text-[11px] text-muted">{"since the close" if view.live_at else "on " + day_short(view.last_day)}</span>
         </div>
     </div>
 }
@@ -571,14 +578,31 @@ def:pub PortfolioPage -> JsxElement {
         perf: PerformanceData | None = None,
         error: str = "";
 
-    async can with entry {
-        try {
-            view = await get_portfolio();
-            perf = await get_performance();
-        } except Exception as e {
-            error = str(e);
+    useEffect(lambda {
+        active = True;
+        async def load {
+            try {
+                fresh = await get_portfolio();
+                if active { view = fresh; }
+                found = await get_performance();
+                if active { perf = found; }
+            } except Exception as e {
+                if active { error = str(e); }
+            }
         }
-    }
+        # Only the portfolio moves between closes; a hidden tab waits until it is looked at.
+        async def refresh {
+            page: any = document;
+            if page.visibilityState != "visible" { return; }
+            try {
+                fresh = await get_portfolio();
+                if active { view = fresh; }
+            } except Exception { }
+        }
+        load();
+        timer = setInterval(refresh, LIVE_POLL_MS);
+        return lambda { active = False; clearInterval(timer); };
+    }, []);
 
     if error {
         return <ErrorBox message={error}/>;
@@ -592,7 +616,7 @@ def:pub PortfolioPage -> JsxElement {
 
     <div className="rise flex flex-col gap-6">
         <header className="flex flex-col gap-2">
-            <Overline className="num">{"Paper account · " + day_long(view.last_day) + " close"}</Overline>
+            <Overline className="num">{("Paper account · live at " + time_et(view.live_at)) if view.live_at else ("Paper account · " + day_long(view.last_day) + " close")}</Overline>
             <h1 className="display text-[36px] leading-10 text-text">Your portfolio</h1>
             <p className="max-w-[600px] text-[13px] leading-5 text-muted">
                 Five specialists research each stock, the Arbiter decides, and the risk gate sizes every order.
