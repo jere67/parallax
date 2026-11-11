@@ -12,6 +12,14 @@ inputs:
     description: Names this job's compiled-module cache, since each job compiles a different part of the project.
     required: true
 
+outputs:
+  compile-cache-key:
+    description: The key to save the compiled modules under after the job compiles them.
+    value: ${{ steps.compiled.outputs.cache-primary-key }}
+  compile-cache-hit:
+    description: Whether the compiled modules were restored for exactly this source.
+    value: ${{ steps.compiled.outputs.cache-hit }}
+
 runs:
   using: composite
   steps:
@@ -61,12 +69,15 @@ runs:
           .jac/client/node_modules
         key: jac-deps-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ inputs.jac-version }}-${{ hashFiles('jac.toml') }}
 
-    # Compiling is most of a cold run: the build alone took 21 minutes with an empty cache.
-    # Entries are checked against each source file's content hash, so an older cache restored
-    # by the prefix is safe: changed files recompile, the rest load. Each job keeps its own,
-    # since only the first of several jobs saving one key would win.
-    - name: Cache compiled modules
-      uses: actions/cache@v6
+    # Compiling is most of a cold run: the build alone took 18 to 21 minutes with an empty
+    # cache. Entries are checked against each source file's content hash, so an older cache
+    # restored by the prefix is safe: changed files recompile, the rest load. Each job keeps
+    # its own, since only the first of several jobs saving one key would win. Only restored
+    # here: the job saves it as soon as it has compiled (the `compile-cache-key` output), since
+    # a cache step's own save is skipped when any later step fails or the job is cancelled.
+    - name: Restore compiled modules
+      id: compiled
+      uses: actions/cache/restore@v6
       with:
         path: .jac/cache
         key: jac-compile-${{ inputs.compile-cache }}-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ inputs.jac-version }}-${{ hashFiles('**/*.jac', 'jac.toml') }}

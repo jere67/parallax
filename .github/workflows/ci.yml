@@ -31,7 +31,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: ./.github/actions/setup-jac
+      - id: setup
+        uses: ./.github/actions/setup-jac
         with:
           jac-version: ${{ env.JAC_VERSION }}
           jac-sha256: ${{ env.JAC_SHA256 }}
@@ -48,6 +49,13 @@ jobs:
           echo "Part $PART runs $(wc -l < "$RUNNER_TEMP/part-tests.txt") of $(wc -l < "$RUNNER_TEMP/all-tests.txt") test files."
           xargs jac test < "$RUNNER_TEMP/part-tests.txt"
 
+      - name: Keep the compiled modules
+        if: always() && steps.setup.outputs.compile-cache-key != '' && steps.setup.outputs.compile-cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .jac/cache
+          key: ${{ steps.setup.outputs.compile-cache-key }}
+
   # With its compile cache restored the build takes a few minutes; a cold one (a new Jac
   # release, or a cache GitHub evicted) takes about 21, so the limit leaves room for that.
   check:
@@ -57,7 +65,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: ./.github/actions/setup-jac
+      - id: setup
+        uses: ./.github/actions/setup-jac
         with:
           jac-version: ${{ env.JAC_VERSION }}
           jac-sha256: ${{ env.JAC_SHA256 }}
@@ -68,6 +77,13 @@ jobs:
 
       - name: Build
         run: jac build
+
+      - name: Keep the compiled modules
+        if: always() && steps.setup.outputs.compile-cache-key != '' && steps.setup.outputs.compile-cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .jac/cache
+          key: ${{ steps.setup.outputs.compile-cache-key }}
 
       # The demo history gives the end-to-end check pages with data. This server is this job's
       # alone; TRADING_AGENT_DEMO is never set on a deployed one. The fake providers let the
