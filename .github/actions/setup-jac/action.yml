@@ -1,0 +1,63 @@
+name: Set up Jac
+description: Install the pinned Jac binary, restore its caches, and install the project's dependencies.
+
+inputs:
+  jac-version:
+    description: The Jac release to install.
+    required: true
+  jac-sha256:
+    description: The sha256 of that release's linux-x86_64 binary.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install Jac ${{ inputs.jac-version }}
+      shell: bash
+      env:
+        JAC_VERSION: ${{ inputs.jac-version }}
+        JAC_SHA256: ${{ inputs.jac-sha256 }}
+      run: |
+        curl -fsSL -o jac "https://github.com/jaseci-labs/jac/releases/download/v${JAC_VERSION}/jac-${JAC_VERSION}-linux-x86_64"
+        echo "${JAC_SHA256}  jac" | sha256sum --check --strict
+        chmod +x jac
+        mkdir -p "$HOME/.local/bin"
+        mv jac "$HOME/.local/bin/jac"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Show Jac version
+      shell: bash
+      run: jac --version
+
+    # The caches hold native binaries linked against the runner's system libraries, so each
+    # key names the OS release: when ubuntu-latest moves to a new release, a cache saved on
+    # the old one is never restored onto it.
+    - name: Name the runner's OS release for the cache keys
+      shell: bash
+      run: |
+        . /etc/os-release
+        echo "OS_RELEASE=${ID}-${VERSION_ID}" >> "$GITHUB_ENV"
+
+    # Only the embedded Postgres binaries are cached, never its data directory (pg/main):
+    # a cached postmaster.pid names a process from the job that saved the cache, and when a
+    # live process in a later job has that PID, Jac takes Postgres for running, never
+    # starts it, and the first test fails after waiting 60 seconds for its socket (#103).
+    - name: Cache the Jac runtime and embedded Postgres binaries
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.cache/jac/rt
+          ~/.cache/jac/pg/dist
+        key: jac-runtime-pgdist-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ inputs.jac-version }}
+
+    - name: Cache project dependencies
+      uses: actions/cache@v6
+      with:
+        path: |
+          .jac/venv
+          .jac/client/node_modules
+        key: jac-deps-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ inputs.jac-version }}-${{ hashFiles('jac.toml') }}
+
+    - name: Install dependencies
+      shell: bash
+      run: jac install
