@@ -9,6 +9,7 @@ import json;
 import from datetime { date, datetime, timedelta, timezone }
 import from models.research { Stamped }
 import from research.alpaca_news { Article, MAX_CONTENT_CHARS, MAX_HEADLINE_CHARS, MAX_SUMMARY_CHARS }
+import from research.asof { as_of_day, open_month }
 import from research.collector { Fetched, RunBudget, SourceClient, env_key }
 import from research.sources { DATASETS, SOURCES }
 import from research.text { cap, html_to_text }
@@ -171,7 +172,8 @@ def unique_releases(releases: list[EarningsDate]) -> list[EarningsDate] {
     return kept;
 }
 
-"""Monthly analyst rating counts for `symbol`, newest first."""
+"""Monthly analyst rating counts for `symbol`, newest first. In a replay the decision's own month
+is left out, since its counts kept changing after the decision (research/asof.jac)."""
 def recommendation_trends(symbol: str, budget: RunBudget, client: SourceClient | None = None) -> list[RecommendationTrend] {
     fetched = _get(client, "finnhub.recommendations", "/stock/recommendation", budget, {"symbol": symbol}, symbol, _check_list);
     trends = [
@@ -187,6 +189,9 @@ def recommendation_trends(symbol: str, budget: RunBudget, client: SourceClient |
         )
         for row in json.loads(fetched.body)
     ];
+    if open_month() {
+        trends = [t for t in trends if t.period < open_month()];
+    }
     return sorted(trends, key=lambda (t: RecommendationTrend) { t.period; }, reverse=True);
 }
 
@@ -274,13 +279,19 @@ def _releases(rows: list[dict[str, str | int | float | None]], fetched: Fetched)
             quarter=int(row.get("quarter") or 0),
             year=int(row.get("year") or 0),
             eps_estimate=_number(row.get("epsEstimate")),
-            eps_actual=_number(row.get("epsActual")),
+            eps_actual=_number(row.get("epsActual")) if _reported(str(row["date"])) else None,
             revenue_estimate=_number(row.get("revenueEstimate")),
-            revenue_actual=_number(row.get("revenueActual")),
+            revenue_actual=_number(row.get("revenueActual")) if _reported(str(row["date"])) else None,
             stamp=fetched.stamp(fetched.fetched_at)
         )
         for row in rows
     ]);
+}
+
+"""Whether a release on `day` had reported its figures at the decision: always for a live run, and
+in a replay only for a release before the replayed day (research/asof.jac)."""
+def _reported(day: str) -> bool {
+    return not as_of_day() or day < as_of_day();
 }
 
 def _number(value: str | int | float | None) -> float | None {

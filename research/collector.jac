@@ -31,6 +31,7 @@ import from urllib.parse { urlencode }
 import httpx;
 import from jaclang.data.storage.storage { Storage }
 import from models.research { Stamp, Stamped }
+import from research.asof { published_in_time }
 import from research.credentials { ALPACA_KEY, FINNHUB_KEY, current_credentials, key_fingerprint, user_key }
 import from research.sources { Dataset, SOURCES, Source }
 
@@ -444,7 +445,8 @@ def _record(
 
 """Keep the items young enough for `dataset`, and describe each dropped one for data_gaps.
 
-Freshness is measured from each datum's publish time, not its fetch time (GAP-15).
+Freshness is measured from each datum's publish time, not its fetch time (GAP-15). In a replay
+(research/asof.jac), an item published at or after the decision time is dropped too.
 """
 def split_fresh[T: Stamped](items: list[T], dataset: Dataset, now: datetime | None = None) -> tuple[list[T], list[str]] {
     as_of = now or utc_now();
@@ -461,7 +463,11 @@ def split_fresh[T: Stamped](items: list[T], dataset: Dataset, now: datetime | No
             );
             continue;
         }
-        if as_of - published > limit {
+        if not published_in_time(published) {
+            gaps.append(
+                f"{dataset.name}: {stamp.source_url} was published {stamp.published_at}, after the replayed decision time, so it was excluded"
+            );
+        } elif as_of - published > limit {
             gaps.append(
                 f"{dataset.name}: {stamp.source_url} was published {stamp.published_at}, older than the {dataset.max_age_hours:g}-hour limit, so it was excluded"
             );
