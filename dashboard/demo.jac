@@ -23,7 +23,7 @@ import threading;
 import from datetime { date, datetime, time, timedelta, timezone }
 import from action.baselines { SimDay, baselines_of, simulate_equal_weight, simulate_spy }
 import from action.executor { limit_price, order_id_for, run_regime, stop_id_for }
-import from action.gate { Book, BookPosition, GATE_VERSION, GateConfig, GateResult, Instrument, Proposal, check_orders }
+import from action.gate { Book, BookPosition, GATE_VERSION, GateConfig, GateResult, Instrument, Proposal, breaker_peak, check_orders }
 import from action.insights { publish_card }
 import from action.sizing { SizingCandidate, size_positions }
 import from agents.models { FALLBACK_MODEL, PRIMARY_MODEL }
@@ -244,6 +244,7 @@ obj DemoSim {
         bias: dict[str, float] = {},
         cash: float = STARTING_CASH,
         peak: float = STARTING_CASH,
+        closes: list[float] = [],
         decisions: int = 0,
         orders: int = 0,
         macro_body: MacroReport | None = None;
@@ -595,8 +596,9 @@ obj DemoSim {
             t: Instrument(ticker=t, price=prices[t], sector=c.sector, tradable=True, trade_age_minutes=0.2, atr_14=c.atr_14, volume_20=c.volume_20, sessions_to_earnings=c.sessions_to_earnings)
             for (t, (c, d)) in decided.items()
         };
-        book = Book(equity=equity, peak_equity=max(self.peak, equity), positions={t: BookPosition(ticker=t, qty=p.qty, price=prices[t], sector=p.sector) for (t, p) in held.items()});
-        results = check_orders(proposals, book, instruments, run_regime(run), GateConfig());
+        gate = GateConfig();
+        book = Book(equity=equity, peak_equity=max(breaker_peak(STARTING_CASH, self.closes, gate.drawdown_window), equity), positions={t: BookPosition(ticker=t, qty=p.qty, price=prices[t], sector=p.sector) for (t, p) in held.items()});
+        results = check_orders(proposals, book, instruments, run_regime(run), gate);
         approved = 0;
         sells = [r for r in results if r.side == OrderSide.SELL];
         for r in sells + [r for r in results if r.side == OrderSide.BUY] {
@@ -768,6 +770,7 @@ obj DemoSim {
         value = self.positions_value(day);
         equity = self.cash + value;
         self.peak = max(self.peak, equity);
+        self.closes.append(equity);
         self.portfolio.peak_equity = self.peak;
         drawdown = 1.0 - equity / self.peak;
         public(self.portfolio +>:Marked():+> DailyMark(day=day, equity=equity, cash=self.cash, positions_value=value, peak_equity=self.peak, marked_at=marked, drawdown=drawdown, open_positions=len(self.held())));

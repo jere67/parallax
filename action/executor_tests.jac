@@ -2,17 +2,20 @@
 orders, fills move positions, and every position keeps one stop through entries, partial
 fills, adds, trims, exits, and stops that fire or expire."""
 import os;
-import from datetime { datetime, timezone }
+import from datetime { date, datetime, timedelta, timezone }
+import from action.gate { GateConfig }
 import from action.executor { ORDERS_OFF_ENV, close_day_orders, execute_run, keep_stops, open_positions, sync_orders }
 import from action.fixtures { Call, broker_for, finished_run, market, team }
 import from models.graph {
     CheckedBy,
     Coverage,
     Covers,
+    DailyMark,
     Decided,
     Decision,
     FilledBy,
     Fill,
+    Marked,
     Order,
     OrderPurpose,
     Placed,
@@ -127,6 +130,48 @@ test "a gate rejection is recorded with its rule and sends nothing" {
         rc = checks_of(run)["AAA"];
         assert rc.outcome == RiskOutcome.REJECTED and [r.rule for r in rc.rules if not r.passed] == ["earnings blackout"];
         assert fake.orders == [] and done.refused == ["AAA buy 40: earnings blackout"];
+    } finally {
+        fake.stop();
+    }
+}
+
+"""A portfolio started on 2026-06-01 with 100,000 that closed once at 120,000, then `after`
+sessions at 100,000, the fake account's equity."""
+def peaked(after: int) -> Portfolio {
+    portfolio = team();
+    portfolio.opened_at = "2026-06-01T13:30:00+00:00";
+    closes = [120000.0] + [100000.0] * after;
+    for (i, equity) in enumerate(closes) {
+        day = (date(2026, 6, 1) + timedelta(days=i)).isoformat();
+        portfolio +>:Marked():+> DailyMark(day=day, equity=equity, cash=equity, positions_value=0.0, peak_equity=120000.0, marked_at=f"{day}T20:30:00+00:00");
+    }
+    portfolio.peak_equity = 120000.0;
+    return portfolio;
+}
+
+test "the drawdown breaker measures from the highest close of the last 63 sessions, so an old peak ages out" {
+    fake = FakeBroker();
+    try {
+        broker = broker_for(fake);
+        def check(portfolio: Portfolio, gate: GateConfig = GateConfig()) -> RiskCheck {
+            run = finished_run(portfolio, DAY1, [Call(ticker="AAA", action=TradeAction.BUY, conviction=0.5)]);
+            execute_run(portfolio, run, broker, NOW1, market({"AAA": 100.0}, NOW1), gate=gate);
+            return checks_of(run)["AAA"];
+        }
+        os.environ[ORDERS_OFF_ENV] = "1";
+        try {
+            # The 120,000 close is one of the last 63, so 100,000 is 16.7% below it.
+            held = check(peaked(62));
+            assert held.outcome == RiskOutcome.REJECTED and [r.rule for r in held.rules if not r.passed] == ["drawdown breaker"];
+            assert "below the highest close of the last 63 sessions, 120,000" in [r.detail for r in held.rules if not r.passed][0];
+            # One session later it has aged out.
+            assert check(peaked(63)).outcome == RiskOutcome.APPROVED;
+            # Measured from the all-time peak, the breaker never lets go.
+            assert check(peaked(63), GateConfig(drawdown_window=0)).outcome == RiskOutcome.REJECTED;
+        } finally {
+            del os.environ[ORDERS_OFF_ENV];
+        }
+        assert fake.orders == [];
     } finally {
         fake.stop();
     }

@@ -11,7 +11,7 @@ is never cut short, so risk can always come off. Buys then pass, in order:
 1. instrument checks: active, tradable, priced above the floor, and traded recently (a stock
    with no recent trade may be halted);
 2. the earnings blackout;
-3. the drawdown breaker;
+3. the drawdown breaker, measured from the highest close of the last three months;
 4. the protective stop: a buy needs an ATR, so its stop at entry minus 2 ATR can be placed;
 5. the per-position cap;
 6. liquidity: no more than 1% of the 20-day average daily volume;
@@ -28,10 +28,15 @@ import from models.graph { OrderPurpose, OrderSide, RiskOutcome, RuleResult, Tra
 import from models.research { RegimeInputs }
 
 # Bump with any change to the rules or their defaults, so each check records what judged it.
-glob GATE_VERSION: str = "2026-10-20.1";
+glob GATE_VERSION: str = "2026-11-11.1";
 
 glob UNKNOWN_SECTOR: str = "unknown sector";
 
+"""The gate's limits. The drawdown breaker halts new buys once equity is `drawdown_halt` below
+the highest close of the last `drawdown_window` sessions (0: of every session). Measured from the
+all-time peak, the first backtest showed it latching: a portfolio 10% down and in cash never
+buys again, so never recovers to release it. A rolling peak ages a bad stretch out after three
+months (docs/evaluation/screen-backtest.md)."""
 obj GateConfig {
     has max_position_weight: float = 0.10,
         sector_cap: float = 0.30,
@@ -39,6 +44,7 @@ obj GateConfig {
         new_positions_per_day: int = 3,
         turnover_limit: float = 0.25,
         drawdown_halt: float = 0.10,
+        drawdown_window: int = 63,
         regime_gross_limit: float = 0.50,
         regime_vol: float = 0.30,
         earnings_blackout_sessions: int = 2,
@@ -71,7 +77,16 @@ obj BookPosition {
     has sector: str = "";
 }
 
-"""The portfolio at the moment of the check. `new_positions_today` and `turnover_today`
+"""The equity the drawdown breaker measures from: the highest of `start`, the starting equity,
+and `closes`, the closes since, oldest first, over the last `window` of them (0: all of them).
+Until `window` sessions have closed, the starting equity counts as the close before the first."""
+def breaker_peak(start: float, closes: list[float], window: int) -> float {
+    series = [start] + closes;
+    return max(series[-window:] if window > 0 else series);
+}
+
+"""The portfolio at the moment of the check. `peak_equity` is what the drawdown breaker measures
+from (`breaker_peak`). `new_positions_today` and `turnover_today`
 (dollars traded so far today) count what earlier orders today already used."""
 obj Book {
     has equity: float,
@@ -245,7 +260,8 @@ def check_orders(
         }
         r.apply("earnings blackout", r.approved_qty, f"no earnings within {config.earnings_blackout_sessions} sessions");
         if drawn_down {
-            r.apply("drawdown breaker", 0, f"equity {equity:,.0f} is {1 - equity / book.peak_equity:.1%} below the peak {book.peak_equity:,.0f}; new buys halt");
+            since = f"the highest close of the last {config.drawdown_window} sessions" if config.drawdown_window > 0 else "the peak";
+            r.apply("drawdown breaker", 0, f"equity {equity:,.0f} is {1 - equity / book.peak_equity:.1%} below {since}, {book.peak_equity:,.0f}; new buys halt");
             continue;
         }
         r.apply("drawdown breaker", r.approved_qty, "");
