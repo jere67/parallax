@@ -88,7 +88,7 @@ glob AUDIT: list[dict[str, str]] = [
 ];
 
 def say(text: str) {
-    sys.stdout.write(f"{datetime.now(NEW_YORK):%m-%d %H:%M} {text}\n");
+    sys.stdout.write(f"{datetime.now(NEW_YORK).strftime('%m-%d %H:%M')} {text}\n");
     sys.stdout.flush();
 }
 
@@ -141,18 +141,18 @@ def wait_for_quiet_sources {
     }
 }
 
-"""Wait until spending one ticker's ceiling still leaves the live runs their share."""
-def wait_for_budget {
+"""Wait until spending `tickers` tickers' ceiling still leaves the live runs their share."""
+def wait_for_budget(tickers: int = 1) {
     while True {
         wait_for_quiet_sources();
         now = datetime.now(timezone.utc);
         keep = KEEP_MORNING if live_morning(now) else KEEP_OTHER;
         left = free_requests_left();
-        if left is not None and left - PER_TICKER_CEILING >= keep {
+        if left is not None and left - PER_TICKER_CEILING * tickers >= keep {
             return;
         }
         # Before a weekday's 10:00 the morning share frees up at 10:00; otherwise at the reset.
-        say(f"{left} free requests left, keeping {keep}; waiting");
+        say(f"{left} free requests left, keeping {keep} and needing {PER_TICKER_CEILING * tickers}; waiting");
         time.sleep(600);
     }
 }
@@ -223,7 +223,7 @@ def research_row(r: ResearchResult) -> dict {
 }
 
 """One ticker's decision on `day` as a JSON row, scored later."""
-def decision_row(day: str, a: TickerAnalysis, reports: dict[Domain, ResearchResult], macro_late: list[str], fetch_errors: list[str], requests: int, seconds: float) -> dict {
+def decision_row(day: str, a: TickerAnalysis, reports: dict[Domain, ResearchResult], macro_late: list[str], fetch_errors: list[str], requests: float, seconds: float) -> dict {
     c = a.consensus;
     at = decision_time(day);
     late_evidence = list(macro_late);
@@ -291,7 +291,7 @@ def replay(state: dict) {
         if not todo {
             continue;
         }
-        wait_for_budget();
+        wait_for_budget(len(todo));
         clock = time.monotonic();
         collection = collect_day(day, tickers);
         before = limiter_now().sent;
@@ -299,28 +299,34 @@ def replay(state: dict) {
         state["requests"] += limiter_now().sent - before;
         macro_late = late(macro.body.evidence, decision_time(day), "macro");
         say(f"{day}: collected in {time.monotonic() - clock:.0f}s, macro by {macro.model}");
+        # As a morning run does: every ticker's research at once, then one panel pass over all of
+        # them (`analyze` draws the votes in parallel).
+        clock = time.monotonic();
+        before = limiter_now().sent;
+        running: dict[str, dict[Domain, Future[ResearchResult]]] = {};
         for t in todo {
-            wait_for_budget();
-            clock = time.monotonic();
-            before = limiter_now().sent;
             inputs = collection.inputs_for(t["symbol"]);
             if inputs is None {
-                state["pairs"][f"{day}:{t['symbol']}"] = {"day": day, "ticker": t["symbol"], "action": "", "errors": ["not collected"], "votes": [], "late_evidence": []};
-                save_state(state);
-                continue;
+                state["pairs"][f"{day}:{t['symbol']}"] = {"day": day, "ticker": t["symbol"], "action": "", "draft_action": "", "errors": ["not collected"], "votes": [], "research": [], "late_evidence": []};
+            } else {
+                running[t["symbol"]] = {d: NETWORK.submit(research, b) for (d, b) in briefs_for(day, inputs).items()};
             }
-            running: dict[Domain, Future[ResearchResult]] = {d: NETWORK.submit(research, b) for (d, b) in briefs_for(day, inputs).items()};
-            reports = {d: f.result() for (d, f) in running.items()};
-            found = analyze(day, {t["symbol"]: reports}, macro.body if macro.complete() else None, {}, collection.sessions, rule);
-            spent = limiter_now().sent - before;
-            seconds = time.monotonic() - clock;
-            state["pairs"][f"{day}:{t['symbol']}"] = decision_row(day, found[0], reports, macro_late, inputs.fetch_errors, spent, seconds);
-            state["requests"] += spent;
-            state["seconds"] += seconds;
-            save_state(state);
-            row = state["pairs"][f"{day}:{t['symbol']}"];
-            say(f"{day} {t['symbol']}: {row['action']} (draft {row['draft_action']}, C {row['score']}), {spent} requests, {seconds:.0f}s");
         }
+        reports = {s: {d: f.result() for (d, f) in found.items()} for (s, found) in running.items()};
+        decided = analyze(day, reports, macro.body if macro.complete() else None, {}, collection.sessions, rule) if reports else [];
+        spent = limiter_now().sent - before;
+        seconds = time.monotonic() - clock;
+        for found in decided {
+            inputs = collection.inputs_for(found.ticker);
+            errors = inputs.fetch_errors if inputs is not None else [];
+            row = decision_row(day, found, reports[found.ticker], macro_late, errors, round(spent / len(decided), 1), round(seconds, 1));
+            state["pairs"][f"{day}:{found.ticker}"] = row;
+            say(f"{day} {found.ticker}: {row['action']} (draft {row['draft_action']}, C {row['score']})");
+        }
+        state["requests"] += spent;
+        state["seconds"] += seconds;
+        save_state(state);
+        say(f"{day}: {len(decided)} decisions, {spent} requests, {seconds:.0f}s");
     }
 }
 
