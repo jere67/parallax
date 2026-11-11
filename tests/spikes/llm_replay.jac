@@ -301,6 +301,7 @@ def replay(state: dict) {
         macro = macro_research(macro_brief(day, collection.macro_inputs));
         state["requests"] += limiter_now().sent - before;
         macro_late = late(macro.body.evidence, decision_time(day), "macro");
+        state["seconds"] += time.monotonic() - clock;
         say(f"{day}: collected in {time.monotonic() - clock:.0f}s, macro by {macro.model}");
         # As a morning run does: every ticker's research at once, then one panel pass over all of
         # them (`analyze` draws the votes in parallel).
@@ -417,6 +418,7 @@ def score(state: dict) -> dict {
             "buy_mean_excess": round(sum(buy_excess) / len(buy_excess), 5) if buy_excess else None,
             "late_evidence_count": sum(len(r["late_evidence"]) for r in rows),
             "screen_gaps": state.get("screen_gaps", [])[:20],
+            "discarded": state.get("discarded", {}),
             "notes": notes
         }
     };
