@@ -255,7 +255,7 @@ def key_metrics(symbol: str, budget: RunBudget, client: SourceClient | None = No
     if not values {
         return None;
     }
-    return KeyMetrics(symbol=symbol, values=values, stamp=fetched.stamp(fetched.fetched_at));
+    return KeyMetrics(symbol=symbol, values=values, stamp=fetched.snapshot());
 }
 
 def _get(
@@ -282,7 +282,7 @@ def _releases(rows: list[dict[str, str | int | float | None]], fetched: Fetched)
             eps_actual=_number(row.get("epsActual")) if _reported(str(row["date"])) else None,
             revenue_estimate=_number(row.get("revenueEstimate")),
             revenue_actual=_number(row.get("revenueActual")) if _reported(str(row["date"])) else None,
-            stamp=fetched.stamp(fetched.fetched_at)
+            stamp=fetched.snapshot()
         )
         for row in rows
     ]);

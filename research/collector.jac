@@ -31,7 +31,7 @@ import from urllib.parse { urlencode }
 import httpx;
 import from jaclang.data.storage.storage { Storage }
 import from models.research { Stamp, Stamped }
-import from research.asof { published_in_time }
+import from research.asof { as_of_time, published_in_time }
 import from research.credentials { ALPACA_KEY, FINNHUB_KEY, current_credentials, key_fingerprint, user_key }
 import from research.sources { Dataset, SOURCES, Source }
 
@@ -253,6 +253,15 @@ obj Fetched {
             published_at=published_at,
             fetched_at=self.fetched_at
         );
+    }
+
+    """Provenance for a snapshot, a datum with no publish time of its own (a calendar, a list
+    of assets or index members): dated when it was read, or in a replay one second before the
+    decision, since the replay serves it as it was known then rather than as read today."""
+    def snapshot(source_url: str = "") -> Stamp {
+        at = as_of_time();
+        read = (at - timedelta(seconds=1)).isoformat() if at is not None else self.fetched_at;
+        return self.stamp(read, source_url=source_url);
     }
 }
 

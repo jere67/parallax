@@ -140,12 +140,13 @@ test "XBRL facts filed on or after the replayed day are left out, so a later res
     replaying("2026-10-15", check);
 }
 
-test "an earnings calendar keeps actual figures only for releases before the replayed day" {
+test "an earnings calendar keeps actual figures only for releases before the replayed day, and reads as of the decision" {
     def check {
         finnhub.reset();
         (releases, _) = earnings_calendar("2026-10-08", "2026-10-09", budget(), client("finnhub", {"X-Finnhub-Token": "t"}));
         pep = [r for r in releases if r.symbol == "PEP"][0];
         assert pep.eps_actual is None and pep.revenue_actual is None and pep.eps_estimate is not None;
+        assert pep.stamp.published_at == "2026-10-08T11:29:59+00:00";
     }
     replaying("2026-10-08", check);
     def later {
@@ -154,6 +155,9 @@ test "an earnings calendar keeps actual figures only for releases before the rep
         assert [r for r in releases if r.symbol == "PEP"][0].eps_actual == 2.34;
     }
     replaying("2026-10-09", later);
+    finnhub.reset();
+    (live, _) = earnings_calendar("2026-10-08", "2026-10-09", budget(), client("finnhub", {"X-Finnhub-Token": "t"}));
+    assert all(r.stamp.published_at == r.stamp.fetched_at for r in live);
 }
 
 test "the decision's own month of analyst counts is left out" {
