@@ -154,7 +154,7 @@ test "the bootstrap interval is the same on every run and brackets the mean" {
     (_, again) = mean_interval(values);
     assert first == again and first is not None;
     assert first[0] < mean < first[1];
-    assert block_interval(1, lambda (idx: list[int]) { 0.0; }) is None;
+    assert block_interval(1, lambda (idx: list[int]) { float(len(idx)); }) is None;
 }
 
 test "the screen's new options default to today's screen" {

@@ -13,6 +13,13 @@ The tuning was fixed before any result was seen (TDD §13; GAP-02 to GAP-05):
   today's setting by point estimate (spread for the screen, Sharpe for the stop, under the
   chosen screen).
 
+The first full run showed the drawdown breaker latching: it measures from the all-time peak,
+so once a portfolio is 10% down and in cash it never buys again, and a Sharpe gap between two
+stops mostly says when each latched. So, fixed before those figures were seen, a new stop is
+also adopted only if, on validation, it is at least as good as 2 ATR under today's screen (the
+setting that would ship when the screen is not adopted), both with the breaker as it is and
+with the breaker off. Those runs are under "diagnostics".
+
     TRADING_AGENT_RUN_BACKTEST=1 BACKTEST_CACHE=/path/to/cache BACKTEST_OUT=docs/evaluation/backtest.json \
         jac run --no-takeover tests/backtest/evaluate.jac
 
@@ -66,6 +73,9 @@ glob LOGGED: list[str] = ["news_3", "rvol_5"];
 glob CURRENT_STOP: float = 2.0;
 glob STOPS: list[float] = [1.5, 2.0, 3.0];
 glob CURVE_EVERY: int = 5;
+glob BREAKER: float = GateConfig().drawdown_halt;
+# A drawdown halt no equity can reach: the breaker off.
+glob NO_BREAKER: float = 1.0;
 
 """The pre-registered screen variants, by name, with what each changes."""
 def screen_variants -> dict[str, tuple[ScreenConfig, dict[str, any]]] {
@@ -104,11 +114,29 @@ def hit_summary(track: Track, period: tuple[str, str]) -> dict[str, any] {
     };
 }
 
+"""The share of sessions whose close left equity at or below the drawdown breaker's line, so
+the next morning's buys halted."""
+def breaker_share(points: list[tuple[str, float]]) -> float | None {
+    if not points {
+        return None;
+    }
+    peak = 0.0;
+    shut = 0;
+    for (_, equity) in points {
+        peak = max(peak, equity);
+        if equity <= peak * (1.0 - BREAKER) {
+            shut += 1;
+        }
+    }
+    return shut / len(points);
+}
+
 """The portfolio figures of `points` with the interval of its Sharpe minus SPY's."""
 def portfolio_summary(points: list[tuple[str, float]], spy: list[tuple[str, float]]) -> dict[str, any] {
     found: dict[str, any] = dict(performance(points));
     interval = sharpe_gap_interval(daily_returns(points), daily_returns(spy));
     found["sharpe_ci_vs_spy"] = list(interval) if interval else None;
+    found["breaker_share"] = breaker_share(points);
     return found;
 }
 
@@ -203,9 +231,9 @@ with entry {
         periods = {"train": TRAIN, "validation": VALIDATION};
         sim_days = {p: [d for d in all_sessions if in_period(d, span) and d <= through] for (p, span) in periods.items()};
         spy = {p: simulate_benchmark(sim_days[p], all_sessions, prices) for p in periods};
-        def run_sim(name: str, stop: float, period: str) -> list[tuple[str, float]] {
-            points = simulate_shortlist(sim_days[period], tracks[name].runs, all_sessions, prices, GateConfig(stop_atr_multiple=stop));
-            holdings[f"{name}:{stop}:{period}"] = dict(LAST_HOLDINGS[0]);
+        def run_sim(name: str, stop: float, period: str, halt: float = BREAKER) -> list[tuple[str, float]] {
+            points = simulate_shortlist(sim_days[period], tracks[name].runs, all_sessions, prices, GateConfig(stop_atr_multiple=stop, drawdown_halt=halt));
+            holdings[f"{name}:{stop}:{period}" + ("" if halt == BREAKER else f":{halt}")] = dict(LAST_HOLDINGS[0]);
             return points;
         }
         holdings: dict[str, dict[str, float]] = {};
@@ -246,7 +274,40 @@ with entry {
         adopt_screen = chosen_screen != "V0" and chosen_spread is not None and current_spread is not None and chosen_spread >= current_spread;
         current_sharpe = gate_rows[CURRENT_STOP]["validation"]["portfolio"]["sharpe"];
         chosen_sharpe = gate_rows[chosen_stop]["validation"]["portfolio"]["sharpe"];
-        adopt_stop = chosen_stop != CURRENT_STOP and chosen_sharpe is not None and current_sharpe is not None and chosen_sharpe >= current_sharpe;
+        stop_passes = chosen_stop != CURRENT_STOP and chosen_sharpe is not None and current_sharpe is not None and chosen_sharpe >= current_sharpe;
+        # The diagnostics: today's screen and the chosen one at every stop with the breaker off,
+        # and today's screen at the chosen stop with it on.
+        diagnostics: list[dict[str, any]] = [];
+        def diagnostic(name: str, stop: float, halt: float) -> dict[str, any] {
+            row: dict[str, any] = {"screen": name, "stop_atr_multiple": stop, "breaker": halt < NO_BREAKER};
+            for (period, span) in periods.items() {
+                key = f"{name}:{stop}:{period}" + ("" if halt == BREAKER else f":{halt}");
+                points = curves.get(key) or run_sim(name, stop, period, halt);
+                curves[key] = points;
+                row[period] = {**portfolio_summary(points, spy[period]), **holdings.get(key, {})};
+            }
+            diagnostics.append(row);
+            return row;
+        }
+        def validation_sharpe(row: dict[str, any]) -> float | None {
+            return row["validation"]["sharpe"];
+        }
+        for name in sorted({"V0", chosen_screen}) {
+            for stop in STOPS {
+                diagnostic(name, stop, NO_BREAKER);
+            }
+        }
+        shipped_now = diagnostic("V0", CURRENT_STOP, BREAKER);
+        shipped_new = shipped_now if chosen_stop == CURRENT_STOP else diagnostic("V0", chosen_stop, BREAKER);
+        open_now = [r for r in diagnostics if r["screen"] == "V0" and r["stop_atr_multiple"] == CURRENT_STOP and not r["breaker"]][0];
+        open_new = [r for r in diagnostics if r["screen"] == "V0" and r["stop_atr_multiple"] == chosen_stop and not r["breaker"]][0];
+        def at_least(new: dict[str, any], now: dict[str, any]) -> bool {
+            (a, b) = (validation_sharpe(new), validation_sharpe(now));
+            return a is not None and b is not None and a >= b;
+        }
+        holds_shipped = at_least(shipped_new, shipped_now);
+        holds_open = at_least(open_new, open_now);
+        adopt_stop = stop_passes and holds_shipped and holds_open;
         reasons: list[str] = [];
         if chosen_screen == "V0" {
             reasons.append("Today's screen (V0) had the highest train spread, so there is nothing to adopt.");
@@ -256,7 +317,10 @@ with entry {
         if chosen_stop == CURRENT_STOP {
             reasons.append(f"With {chosen_screen}, the 2 ATR stop had the highest train Sharpe, so the stop stays.");
         } else {
-            reasons.append(f"With {chosen_screen}, a {chosen_stop} ATR stop had the highest train Sharpe; on validation its Sharpe was {shown(chosen_sharpe)} against {shown(current_sharpe)} at 2 ATR, so it is {'adopted' if adopt_stop else 'not adopted'}.");
+            reasons.append(f"With {chosen_screen}, a {chosen_stop} ATR stop had the highest train Sharpe; on validation its Sharpe was {shown(chosen_sharpe)} against {shown(current_sharpe)} at 2 ATR, so it {'passes' if stop_passes else 'fails'} the rule.");
+            if stop_passes {
+                reasons.append(f"Under today's screen on validation, {chosen_stop} ATR had a Sharpe of {shown(validation_sharpe(shipped_new))} against {shown(validation_sharpe(shipped_now))} at 2 ATR with the breaker on, and {shown(validation_sharpe(open_new))} against {shown(validation_sharpe(open_now))} with it off, so it is {'adopted' if adopt_stop else 'not adopted'}.");
+            }
         }
         coverage = with_bars / member_days if member_days else 0.0;
         out = {
@@ -287,6 +351,7 @@ with entry {
             "chosen": {"screen": chosen_screen, "stop_atr_multiple": chosen_stop},
             "adopted": {"screen": adopt_screen, "stop_atr_multiple": adopt_stop},
             "reason": " ".join(reasons),
+            "diagnostics": diagnostics,
             "curves": {
                 "validation": {
                     "current": thin(curves[f"V0:{CURRENT_STOP}:validation"]),
