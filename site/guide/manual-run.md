@@ -1,14 +1,14 @@
 ---
 title: Starting a run by hand
-description: Start the team agent's morning run later than 7:30 a.m., as the admin, after a server was down at the scheduled time.
+description: Start the team agent's morning run after 9:15 a.m., as the admin, when the server was down for the whole morning window.
 related:
   - { text: start_morning_run, link: /api/start-morning-run }
   - { text: Authentication, link: /api/authentication }
   - { text: Run Guard, link: /system/run-guard }
 ---
 
-The team agent's morning run starts by itself only between 7:30 and 7:45 a.m. New York time.
-A server that was down then has no team run that day.
+The team agent's morning run starts by itself at 7:30 a.m. New York time, or at the first minute after that the server is up and awake, until 9:15.
+A server that was down or asleep for that whole window has no team run that day.
 The admin account can start it later with one request.
 
 This page is about the admin's team agent.
