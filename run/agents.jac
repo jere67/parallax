@@ -18,7 +18,8 @@ import logging;
 import threading;
 import from datetime { datetime, timezone }
 import from jaclang { JacRuntime as Jac }
-import from accounts.store { all_accounts, credentials_of, demo_mode, has_required_keys, own_portfolio }
+import from accounts.sharing { account_of, sharing_problem }
+import from accounts.store { all_accounts, credentials_of, demo_mode, has_required_keys, order_tag_for, own_portfolio }
 import from action.baselines { baselines_of }
 import from models.accounts { AgentAccount }
 import from models.graph { PortfolioMode, Run }
@@ -155,20 +156,26 @@ def run_next_agent(now: datetime) -> str {
 }
 
 """Everything due for the agent now: its owner's choice reaches the portfolio, then the day's
-trading steps. Must run as the owner."""
+trading steps. Must run as the owner. An agent whose keys open an account another agent trades
+places no orders (accounts/sharing.jac); its settings page says why."""
 def agent_tick(account: AgentAccount, now: datetime) -> list[str] {
     portfolio = own_portfolio();
     if portfolio is None {
         return [];
     }
+    if not portfolio.order_tag {
+        # A portfolio made before order tags existed gets its owner's now.
+        portfolio.order_tag = order_tag_for(account.owner_root);
+    }
+    trading = account.paper_trading and not sharing_problem(account_of(account), account.owner_root);
     if baselines_of(portfolio) {
-        wanted = PortfolioMode.AUTO if account.paper_trading else PortfolioMode.INSIGHT;
+        wanted = PortfolioMode.AUTO if trading else PortfolioMode.INSIGHT;
         if portfolio.mode != wanted {
             portfolio.mode = wanted;
         }
     }
     # Made fresh for each agent: a client holds its owner's keys.
-    return guarded_tick(portfolio, now, TradingDeps(start_day=account.trading_start_day if account.paper_trading else ""));
+    return guarded_tick(portfolio, now, TradingDeps(start_day=account.trading_start_day if trading else ""));
 }
 
 """One minute's trading steps for every agent. An agent mid-run waits: its run holds the

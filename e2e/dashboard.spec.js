@@ -297,7 +297,9 @@ test("account: sign up, connect keys, log out, and log back in to where you were
   await connect.click();
   await expect(page.getByRole("alert")).toContainText(/paper/i);
 
-  await alpaca.getByLabel("API key ID").fill("PKE2EGOODKEY0001");
+  // A paper key of this run's own, since no two agents may trade one account.
+  const paperKey = `PKE2EGOOD${Date.now()}`;
+  await alpaca.getByLabel("API key ID").fill(paperKey);
   await openrouter.getByLabel("API key").fill("sk-or-e2e-good-key-1");
   await connect.click();
   await expect(alpaca.getByText(/Connected/)).toBeVisible();
@@ -306,7 +308,7 @@ test("account: sign up, connect keys, log out, and log back in to where you were
   await expect(alpaca.getByLabel("API key ID")).toHaveValue("");
   await page.reload();
   await expect(alpaca.getByText(/Connected/)).toBeVisible();
-  await expect(page.locator("body")).not.toContainText("PKE2EGOODKEY0001");
+  await expect(page.locator("body")).not.toContainText(paperKey);
   await expect(page.locator("body")).not.toContainText("sk-or-e2e-good-key-1");
   await fitsWidth(page);
 

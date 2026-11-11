@@ -7,11 +7,13 @@ import from datetime { datetime, timedelta, timezone }
 import from pathlib { Path }
 import from jaclang.testing.testing { JacTestClient }
 import from accounts.vault { SECRET_ENV }
-import from tests.fakes.providers { FakeProviders, GOOD_ALPACA, GOOD_FINNHUB, GOOD_OPENROUTER, GOOD_SECRET, LIVE_ALPACA, SMALL_OPENROUTER }
+import from tests.fakes.providers { FakeProviders, GOOD_ALPACA, GOOD_FINNHUB, GOOD_OPENROUTER, GOOD_SECRET, LIVE_ALPACA, OTHER_ALPACA, SMALL_OPENROUTER }
 
 glob APP: str = str(Path(__file__).resolve().parent / "fixtures" / "accounts_app.jac");
 glob PASSWORD: str = "test-password-1";
 glob FULL_KEYS: dict[str, str] = {"alpaca_key": GOOD_ALPACA, "alpaca_secret": GOOD_SECRET, "openrouter_key": GOOD_OPENROUTER};
+# A second user's keys: their own Alpaca paper account, since no two agents may share one.
+glob OTHER_KEYS: dict[str, str] = {**FULL_KEYS, "alpaca_key": OTHER_ALPACA};
 
 glob fake: FakeProviders = FakeProviders();
 glob BASE: str = fake.start();
@@ -217,7 +219,7 @@ test "one user's account is invisible to another, and a job sees them all" {
         first = call(c, "owner_id");
         c.clear_auth();
         c.register_user("second", PASSWORD);
-        call(c, "save_agent_keys", FULL_KEYS);
+        call(c, "save_agent_keys", OTHER_KEYS);
         second = call(c, "owner_id");
         assert call(c, "accounts_seen") == [second];
         seen = call(c, "job_work_as_owners");
@@ -250,7 +252,7 @@ test "a member's report runs on that member's keys, not another member's or the 
         call(c, "save_agent_keys", FULL_KEYS);
         c.clear_auth();
         c.register_user("second", PASSWORD);
-        call(c, "save_agent_keys", {**FULL_KEYS, "openrouter_key": SMALL_OPENROUTER});
+        call(c, "save_agent_keys", {**OTHER_KEYS, "openrouter_key": SMALL_OPENROUTER});
         call(c, "open_reports");
         assert call(c, "request_report", {"ticker": "AAPL"})["accepted"];
         seen: list[str] = [];
@@ -301,11 +303,13 @@ test "an owner's choice reaches their agent at the next tick, on their keys alon
         call(c, "job_tick", {"iso_now": now});
         assert call(c, "my_portfolio_state") == {"mode": "insight", "cash": 0.0, "baselines": 0};
         assert call(c, "set_paper_trading", {"on": True})["ok"];
-        fake.alpaca_seen = [];
+        fake.alpaca_paths = [];
         call(c, "job_tick", {"iso_now": now});
         started = call(c, "my_portfolio_state");
         assert started == {"mode": "auto", "cash": 100000.0, "baselines": 2}, started;
-        assert set(fake.alpaca_seen) == {GOOD_ALPACA};
+        # The server's keys only read the team agent's account, to tell it apart from the owner's.
+        assert {key for (key, _) in fake.alpaca_paths if key != "SERVER-KEY-NEVER-USED"} == {GOOD_ALPACA};
+        assert {path for (key, path) in fake.alpaca_paths if key == "SERVER-KEY-NEVER-USED"} <= {"/v2/account"};
         assert call(c, "get_agent_settings")["trading_started"];
         assert call(c, "set_paper_trading", {"on": False})["ok"];
         call(c, "job_tick", {"iso_now": now});
@@ -327,5 +331,58 @@ test "an agent with no keys left does not trade, and a job never fails over it" 
         fake.alpaca_seen = [];
         call(c, "job_tick", {"iso_now": next_morning()});
         assert fake.alpaca_seen == [];
+    } finally { c.close(); }
+}
+
+test "keys that open another agent's paper account are refused, and the owner hears why" {
+    c = server();
+    try {
+        c.register_user("first", PASSWORD);
+        assert call(c, "save_agent_keys", FULL_KEYS)["saved"];
+        assert call(c, "raw_account")["alpaca_account"];
+        c.clear_auth();
+        c.register_user("second", PASSWORD);
+        refused = call(c, "save_agent_keys", FULL_KEYS);
+        assert not refused["saved"] and "another agent already trades" in refused["problems"]["alpaca"];
+        assert not named(refused["settings"], "ALPACA_API_KEY")["connected"];
+        assert call(c, "save_agent_keys", OTHER_KEYS)["saved"];
+    } finally { c.close(); }
+}
+
+test "an agent on the team's paper account keeps researching but places no orders" {
+    c = server();
+    try {
+        c.register_user("owner", PASSWORD);
+        assert call(c, "save_agent_keys", FULL_KEYS)["saved"];
+        assert call(c, "set_paper_trading", {"on": True})["ok"];
+        now = next_morning();
+        call(c, "job_tick", {"iso_now": now});
+        assert call(c, "my_portfolio_state")["mode"] == "auto";
+        # The server's own keys turn out to open the same account, as on 2026-11-11, and this
+        # agent was connected before its account was stored.
+        os.environ["ALPACA_API_KEY"] = GOOD_ALPACA;
+        os.environ["ALPACA_SECRET_KEY"] = GOOD_SECRET;
+        call(c, "forget_alpaca_account");
+        call(c, "job_tick", {"iso_now": now});
+        assert call(c, "my_portfolio_state")["mode"] == "insight";
+        settings = call(c, "get_agent_settings");
+        assert "team agent's Alpaca paper account" in settings["alpaca_problem"];
+        assert call(c, "set_paper_trading", {"on": False})["ok"];
+        again = call(c, "set_paper_trading", {"on": True});
+        assert not again["ok"] and "team agent's" in again["message"];
+        assert call(c, "raw_account")["alpaca_account"];
+    } finally {
+        os.environ.pop("ALPACA_API_KEY", None);
+        os.environ.pop("ALPACA_SECRET_KEY", None);
+        c.close();
+    }
+}
+
+test "an agent on its own paper account shows no sharing problem" {
+    c = server();
+    try {
+        c.register_user("owner", PASSWORD);
+        call(c, "save_agent_keys", FULL_KEYS);
+        assert call(c, "get_agent_settings")["alpaca_problem"] == "";
     } finally { c.close(); }
 }
