@@ -395,10 +395,11 @@ def sync_orders(portfolio: Portfolio, broker: Broker, now: datetime) -> list[str
         if added > 0 and seen.filled_avg_price is not None {
             # Alpaca reports the cumulative fill; the new shares' price follows from the averages.
             price = (seen.filled_avg_price * seen.filled_qty - order.filled_avg_price * order.filled_qty) / added;
-            public(order +>:FilledBy():+> Fill(qty=added, price=price, filled_at=seen.filled_at or now.isoformat()));
+            filled_at = seen.filled_at or now.isoformat();
+            public(order +>:FilledBy():+> Fill(qty=added, price=price, filled_at=filled_at));
             order.filled_qty = seen.filled_qty;
             order.filled_avg_price = seen.filled_avg_price;
-            changes.append(_apply_fill(portfolio, order, added, price, now));
+            changes.append(_apply_fill(portfolio, order, added, price, now, filled_at));
         }
         if seen.status != order.status {
             changes.append(f"{order.client_order_id}: {order.status} -> {seen.status}");
@@ -408,8 +409,10 @@ def sync_orders(portfolio: Portfolio, broker: Broker, now: datetime) -> list[str
     return changes;
 }
 
-"""Move the portfolio's position in `order`'s stock by a fill of `qty` at `price`."""
-def _apply_fill(portfolio: Portfolio, order: Order, qty: int, price: float, now: datetime) -> str {
+"""Move the portfolio's position in `order`'s stock by a fill of `qty` at `price`. A new position
+dates from the broker's `filled_at`, not from this sync, so a sync the runtime replays after a
+database conflict names the same stop (`stop_id_for`) and finds the stop it placed."""
+def _apply_fill(portfolio: Portfolio, order: Order, qty: int, price: float, now: datetime, filled_at: str) -> str {
     position = open_positions(portfolio).get(order.ticker);
     if order.side == OrderSide.BUY {
         found = [rc for rc in [order <-:Placed:<-[?:RiskCheck]]];
@@ -422,7 +425,7 @@ def _apply_fill(portfolio: Portfolio, order: Order, qty: int, price: float, now:
                 sector=covered[0].sector if covered else "",
                 qty=qty,
                 avg_entry_price=price,
-                opened_at=now.isoformat(),
+                opened_at=filled_at,
                 stop_price=round(price - distance, 2) if distance > 0 else 0.0,
                 last_price=price,
                 priced_at=now.isoformat()

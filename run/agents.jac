@@ -26,7 +26,7 @@ import from policy.store { personal_versions, current_of }
 import from research.credentials { enter_credentials, leave_credentials }
 import from run.guard { NEW_YORK, RunLimits, RunOutcome, daily_run }
 import from run.orchestration { orchestrate }
-import from run.trading { TradingDeps, guarded_tick, run_for }
+import from run.trading { TradingDeps, db_conflict, guarded_tick, run_for }
 
 glob LOG: logging.Logger = logging.getLogger("trading_agent.agents");
 glob _LOCK: threading.Lock = threading.Lock();
@@ -184,6 +184,10 @@ def tick_agents(now: datetime) {
         try {
             as_agent(account, lambda { agent_tick(account, now); });
         } except Exception as e {
+            # A database conflict replays the whole firing (`db_conflict`), so it is not swallowed.
+            if db_conflict(e) {
+                raise;
+            }
             LOG.warning("an agent's trading tick was skipped: %s", type(e).__name__);
         }
     }
