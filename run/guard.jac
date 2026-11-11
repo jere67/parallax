@@ -59,6 +59,11 @@ import from run.workers { NETWORK }
 glob NEW_YORK: ZoneInfo = ZoneInfo("America/New_York");
 glob TICKER_DOMAINS: list[Domain] = [Domain.MARKET, Domain.FUNDAMENTALS, Domain.NEWS];
 glob TEAM_PORTFOLIO: str = "team";
+# The weekday morning window, in minutes after midnight New York time, in which a scheduled run
+# may start: from 7:30, and until 9:15 so a run that starts late still finishes before the orders
+# go out at 9:45 (run/trading.jac). A server that was asleep or down at 7:30 still runs the day.
+glob MORNING_START: int = 7 * 60 + 30;
+glob MORNING_END: int = 9 * 60 + 15;
 
 # Tool results and stored text are capped (TDD §3, rule 12).
 glob MAX_QUESTION_CHARS: int = 500;
@@ -742,6 +747,13 @@ def find_team_portfolio -> Portfolio | None {
         }
     }
     return None;
+}
+
+"""True during a weekday's morning window (`MORNING_START` to `MORNING_END`) at `local`, a New York
+time. Holidays are left to preflight, which reads the market calendar."""
+def morning_window(local: datetime) -> bool {
+    minute = local.hour * 60 + local.minute;
+    return local.weekday() < 5 and MORNING_START <= minute < MORNING_END;
 }
 
 """Today's date in New York, the trading date a morning run decides."""

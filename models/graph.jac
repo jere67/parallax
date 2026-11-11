@@ -84,15 +84,18 @@ enum OrderPurpose: str {
     STOP = "stop"
 }
 
-"""The team portfolio (or a test's). `demo` marks one filled by the local demo history
-(dashboard/demo.jac), so the dashboard can say its numbers are made up."""
+"""The team portfolio, a user's agent's (accounts/store.jac), or a test's. `demo` marks one filled
+by the local demo history (dashboard/demo.jac), so the dashboard can say its numbers are made up.
+`order_tag` starts every client order ID the portfolio sends, so no two portfolios' orders can be
+taken for each other; the team's is empty, so its IDs read as they always have."""
 node Portfolio {
     has name: str,
         mode: PortfolioMode,
         starting_cash: float,
         opened_at: str;
     has peak_equity: float = 0.0,
-        demo: bool = False;
+        demo: bool = False,
+        order_tag: str = "";
 }
 
 """A position the team portfolio holds or held. `stop_price` is where its protective stop
