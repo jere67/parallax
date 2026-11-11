@@ -10,9 +10,12 @@ This is layer 1 of the evaluation plan (TDD §13), in its smallest form: 10 cons
 
 ## Answer
 
-**In progress.**
-The replay shares the team's free-model allowance, so it runs in the hours the live morning runs do not need, and this section is filled in when the last day is scored.
-The first replayed day ran end to end: all 5 tickers reached the Arbiter, all 25 votes parsed, and no report cited anything dated after the decision.
+**In progress: 5 of 50 pairs are done.**
+The replay shares the team's free-model allowance, so it runs in the hours the live morning runs do not need, and this section is final when the last day is scored.
+5 of 5 day and ticker pairs reached the Arbiter, and 25 of 25 votes parsed.
+Votes that took a side were right 42% of the time (8 of 19), with a 95% interval of 23% to 64%: not distinguishable from a coin flip.
+The pipeline bought 2 times, with a mean 10-session excess return over SPY of -0.31%.
+No report cited anything dated after its decision.
 
 ## Method
 
@@ -63,11 +66,56 @@ The tests in `research/asof_tests.jac` check each treatment on recorded response
 
 ## Results
 
-Filled in when the last day is scored.
+Each cell is the action, the consensus score C, and the ticker's 10-session excess return over SPY from that day.
+"Vetoed" means the consensus rule drafted a buy and the Arbiter downgraded it; "none" means no action.
+
+| Day | MRNA | MDT | META | MSFT | NVDA |
+| --- | --- | --- | --- | --- | --- |
+| 10-15 | vetoed, C +0.18, -5.7% | **buy**, C +0.30, +0.2% | none, C -0.06, -17.3% | **buy**, C +0.28, -0.9% | none, C +0.13, -3.0% |
+| 10-16 |  |  |  |  |  |
+| 10-19 |  |  |  |  |  |
+| 10-20 |  |  |  |  |  |
+| 10-21 |  |  |  |  |  |
+| 10-22 |  |  |  |  |  |
+| 10-23 |  |  |  |  |  |
+| 10-26 |  |  |  |  |  |
+| 10-27 |  |  |  |  |  |
+| 10-28 |  |  |  |  |  |
+
+The consensus rule drafted 3 buys, and the Arbiter confirmed 2 and vetoed 1.
+The confirmed buys were MDT on 10-15 (+0.2%), MSFT on 10-15 (-0.9%).
+The vetoed drafts were MRNA on 10-15 (-5.7%).
+
+How often each specialist's votes that took a side matched the sign of the excess return:
+
+| Specialist | Votes that took a side | Right | Hit rate |
+| --- | --- | --- | --- |
+| flow | 5 | 3 | 60% |
+| fundamentals | 3 | 1 | 33% |
+| macro | 5 | 2 | 40% |
+| news | 3 | 1 | 33% |
+| technical | 3 | 1 | 33% |
+
+A vote's horizon can be longer than 10 sessions, so this scores every vote on the same short window.
+
+### Repeatability
+
+A first pass of October 15 was discarded because of the dated snapshot, but its votes show how much one sample per specialist moves between two runs on the same data.
+8 of its 25 votes took a different stance in the rerun.
+The draft changed for 3 of the 5 tickers: MRNA and MSFT went from no action to a draft buy, and NVDA went from a draft buy to no action with almost the same score (0.136 and 0.133), because the low end of its interval sat right at zero.
+The final action changed for one: the Arbiter confirmed MSFT in the rerun, so that morning bought MDT and MSFT instead of MDT alone.
+That is the noise K = 1 accepts; more samples per specialist would average some of it out, at that many times the requests.
 
 ## Sanity checks
 
-Filled in when the last day is scored.
+- **Completion:** 5 of 5 pairs reached a consensus and the Arbiter; 0 were held for missing research, and 0 had any error.
+- **Parsed votes:** 25 of 25.
+- **Stances:** 16 buy, 6 hold, 3 sell.
+- **Confidence:** from 0.35 to 0.80.
+- **Late evidence:** 0 items dated at or after the decision. A first pass of three days found 10, all of them the next-earnings snapshot dated when it was read rather than as of the decision; that was fixed and the days rerun.
+- **Requests:** 58 free requests, about 12 per pair.
+- **Wall time:** 9 minutes of running, spread over the hours the allowance allowed.
+- **Models:** nvidia/nemotron-3.5-super-vl:free answered 40.
 
 ## Limits
 
