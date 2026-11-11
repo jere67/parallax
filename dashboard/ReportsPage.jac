@@ -47,6 +47,7 @@ def ReportCard(item: ReportData) -> JsxElement {
                     <div className="flex items-baseline gap-1.5"><span className="num text-[25px] font-medium leading-7">{pct(card.conviction, 0)}</span><span className="text-[12px] text-muted">conviction</span></div>
                     {if card.time_stop { <span className="text-[12px] text-faint sm:ml-auto">{"Through " + day_long(card.time_stop)}</span> }}
                 </div>
+                <p className="text-[12px] text-muted">Conviction measures panel strength: the absolute weighted vote score times agreement. It is not a chance of profit.</p>
                 if item.my_policy is not None {
                     <p className="text-[13px] text-muted" data-testid="report-my-policy">{"Your policy (v" + str(item.my_policy_version) + "): " + (item.my_policy.action if item.my_policy.action != "NO_ACTION" else "no action") + (". " + " ".join(item.my_policy.notes) if len(item.my_policy.notes) > 0 else ".")}</p>
                 }
