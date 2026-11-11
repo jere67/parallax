@@ -12,12 +12,12 @@ vote is then scored on its ten-session excess return over SPY (analysis/scoring.
 The days must fall after the models' training data: Nemotron 3.5 Super VL's foundation data
 was collected through December 2025, and it was released on October 15, 2026.
 
-It shares the team's free-model allowance with the live morning runs, so before every ticker it
-reads OpenRouter's remaining free requests and waits while fewer than KEEP_MORNING are left
-before 10:00 a.m. New York on a weekday (fewer than KEEP_OTHER otherwise), resuming after the
-next UTC reset. It also slows Alpaca to 120 requests a minute and makes no data calls from
+It shares the team's free-model allowance with the live morning runs, so before every day it
+reads OpenRouter's remaining free requests and waits unless the day's ceiling still leaves
+KEEP_MORNING while the allowance has a weekday morning run ahead of it (from the UTC reset to
+10:00 a.m. New York), or KEEP_OTHER after that morning's runs. It also slows Alpaca to 120 requests a minute and makes no data calls from
 7:15 to 10:00 a.m. New York on weekdays, when the live runs collect. Progress is saved after
-every ticker to REPLAY_STATE, so a stopped replay resumes where it left off.
+every day to REPLAY_STATE, so a stopped replay resumes where it left off.
 
     set -a && source .env && set +a
     TRADING_AGENT_RUN_LLM_REPLAY=1 REPLAY_STATE=/path/state.json \
@@ -31,7 +31,7 @@ import os;
 import sys;
 import time;
 import from concurrent.futures { Future }
-import from datetime { date, datetime, timedelta, timezone }
+import from datetime { date, datetime, time as time_of_day, timedelta, timezone }
 import from pathlib { Path }
 import from zoneinfo { ZoneInfo }
 import httpx;
@@ -123,9 +123,12 @@ def free_requests_left -> int | None {
     }
 }
 
+"""True while the free allowance `now` draws from still has a weekday morning run to serve. The
+allowance resets at midnight UTC (7 or 8 p.m. New York), so from then until 10:00 a.m. the next
+weekday morning's runs draw on it too."""
 def live_morning(now: datetime) -> bool {
-    local = now.astimezone(NEW_YORK);
-    return local.weekday() < 5 and local.hour < 10;
+    day = now.astimezone(timezone.utc).date();
+    return day.weekday() < 5 and now < datetime.combine(day, time_of_day(10, 0), NEW_YORK);
 }
 
 """Sleep while the live runs collect (7:15 to 10:00 a.m. New York on weekdays)."""
