@@ -1,7 +1,7 @@
 """The frame around every page of the app: the top bar with navigation, the portfolio's status,
 the theme switch, settings, and logging out; a banner when the graph holds demo history; and the disclaimer (TDD §9)."""
 import from "@jac/runtime" { Link, Outlet, jacLogout, useLocation, useNavigate }
-import from "lucide-react" { BookOpen, ChartCandlestick, FileText, History, Newspaper, Settings, SlidersHorizontal, UsersRound }
+import from "lucide-react" { BookOpen, ChartCandlestick, FileText, History, Newspaper, Settings, SlidersHorizontal, Target }
 import from dashboard.ui.brand { DISCLAIMER, REPO_URL, ThemeSwitch, Wordmark }
 import from dashboard.ui.rpc { get_portfolio }
 import from models.views { PortfolioView as Portfolio }
@@ -58,6 +58,7 @@ def:pub Layout -> JsxElement {
                 <Wordmark to="/app"/>
                 <nav className="hidden shrink-0 items-center gap-4 md:flex lg:gap-6">
                     <NavLink to="/app" active={path == "/app"}>Portfolio</NavLink>
+                    <NavLink to="/app/results" active={path.startsWith("/app/results")}>Results</NavLink>
                     <NavLink to="/app/screener" active={path.startsWith("/app/screener") or path.startsWith("/app/stocks")}>Screener</NavLink>
                     <NavLink to="/app/news" active={path.startsWith("/app/news")}>News</NavLink>
                     <NavLink to="/app/runs" active={path.startsWith("/app/runs")}>Runs</NavLink>
@@ -118,7 +119,7 @@ def:pub Layout -> JsxElement {
             <TabLink to="/app/runs" label="Runs" active={path.startsWith("/app/runs")}><History size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/app/policy" label="Policy" active={path.startsWith("/app/policy")}><SlidersHorizontal size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
             <TabLink to="/app/reports" label="Reports" active={path.startsWith("/app/reports")}><FileText size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
-            <TabLink to="/app/specialists" label="Panel" active={path.startsWith("/app/specialists")}><UsersRound size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app/results" label="Results" active={path.startsWith("/app/results") or path.startsWith("/app/specialists")}><Target size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
         </nav>
     </div>
 }

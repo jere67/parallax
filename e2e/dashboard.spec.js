@@ -96,6 +96,21 @@ test("specialists: five roles show recent votes and scoring context", async ({ p
   await fitsWidth(page);
 });
 
+test("results: the forward test against both baselines, and where the result came from", async ({ page }) => {
+  await logIn(page, "results");
+  await page.goto("/app/results");
+  await expect(page.getByRole("heading", { level: 1, name: "Results" })).toBeVisible();
+  await expect(page.getByText("Against Equal-weight shortlist")).toBeVisible();
+  await expect(page.getByText("Against SPY buy-and-hold")).toBeVisible();
+  for (const name of ["Against the baselines", "Screen", "Arbiter", "Specialist calibration", "Reliability"]) {
+    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  }
+  await expect(page.getByText(/The shortlist beat the rest in \d+ of \d+ runs?\./)).toBeVisible();
+  await fitsWidth(page);
+  await page.getByRole("link", { name: "Recent votes" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Specialists" })).toBeVisible();
+});
+
 test("news: the feed filters by address, and a story opens beside it or over it", async ({ page }) => {
   await logIn(page, "news");
   await page.goto("/app/news");
