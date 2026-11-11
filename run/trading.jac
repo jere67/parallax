@@ -226,7 +226,7 @@ def evaluation_line(portfolio: Portfolio, now: datetime, day: str, history: Hist
     start = start_of(portfolio, runs) or day;
     body = evaluate(portfolio, history.read_sessions(start, day), now);
     record_evaluation(portfolio, body);
-    return f"{body.sessions} sessions from {body.start_day or day}, {len(body.comparisons)} baselines compared, {body.screen.runs} screens and {sum(s.votes for s in body.specialists)} votes scored";
+    return f"{body.sessions} session{'' if body.sessions == 1 else 's'} from {body.start_day or day}, {len(body.comparisons)} baselines compared, {body.screen.runs} screens and {sum(s.votes for s in body.specialists)} votes scored";
 }
 
 """The scheduled tick on the team portfolio. Never raises: a failure is logged and recorded
