@@ -21,6 +21,7 @@ import from accounts.store {
 }
 import from accounts.vault { VaultError, seal, vault_ready }
 import from action.baselines { baselines_of }
+import from accounts.sharing { account_of, sharing_problem }
 import from action.broker { Broker, BrokerError }
 import from models.accounts { AgentAccount, AgentReply, AgentSettings, KeyStatus, KeysReply, RunState }
 import from research.collector { utc_now }
@@ -115,7 +116,8 @@ def settings_view -> AgentSettings {
         keys=rows,
         run=run_state(account, admin),
         requests_note=account.requests_note if account is not None else "",
-        trading_started=portfolio is not None and bool(baselines_of(portfolio))
+        trading_started=portfolio is not None and bool(baselines_of(portfolio)),
+        alpaca_problem=sharing_problem(account_of(account), account.owner_root) if account is not None and not admin and ALPACA_KEY in account.sealed else ""
     );
 }
 
@@ -129,21 +131,26 @@ def plausible_key(value: str) -> bool {
     return len(text) <= MAX_KEY_CHARS and not any(c.isspace() for c in text);
 }
 
-"""The checks for the keys sent: what to store by name, each refused field's words, and the note
-on the OpenRouter key's allowance, or None if it was not sent."""
-def check_sent(alpaca_key: str, alpaca_secret: str, openrouter_key: str, finnhub_key: str) -> tuple[dict[str, str], dict[str, str], dict[str, str], str | None] {
+"""The checks for the keys sent for `owner`'s agent: what to store by name, each refused field's
+words, the note on the OpenRouter key's allowance (or None if it was not sent), and the
+fingerprint of the Alpaca account the keys open (or "" if none were sent). Alpaca keys that open
+an account another agent trades are refused (accounts/sharing.jac)."""
+def check_sent(alpaca_key: str, alpaca_secret: str, openrouter_key: str, finnhub_key: str, owner: str) -> tuple[dict[str, str], dict[str, str], dict[str, str], str | None, str] {
     keep: dict[str, str] = {};
     hints: dict[str, str] = {};
     problems: dict[str, str] = {};
     note: str | None = None;
+    account = "";
     if alpaca_key or alpaca_secret {
         if not alpaca_key or not alpaca_secret {
             problems["alpaca"] = "Enter both the key ID and the secret: Alpaca issues them as a pair.";
         } else {
             found = check_alpaca(alpaca_key, alpaca_secret);
-            if found.problem {
-                problems["alpaca"] = found.problem;
+            shared = "" if found.problem else sharing_problem(found.account, owner);
+            if found.problem or shared {
+                problems["alpaca"] = found.problem or shared;
             } else {
+                account = found.account;
                 keep[ALPACA_KEY] = alpaca_key;
                 keep[ALPACA_SECRET] = alpaca_secret;
                 hints[ALPACA_KEY] = tail_of(alpaca_key);
@@ -170,7 +177,7 @@ def check_sent(alpaca_key: str, alpaca_secret: str, openrouter_key: str, finnhub
             hints[FINNHUB_KEY] = found.hint;
         }
     }
-    return (keep, hints, problems, note);
+    return (keep, hints, problems, note, account);
 }
 
 """Why the caller cannot change their keys, or "" when they can."""
@@ -200,7 +207,8 @@ def:priv save_agent_keys(alpaca_key: str = "", alpaca_secret: str = "", openrout
     if not all(plausible_key(k) for k in [alpaca_key, alpaca_secret, openrouter_key, finnhub_key]) {
         return KeysReply(saved=False, settings=settings_view(), message="One of those does not look like an API key. Copy it again, with no spaces.");
     }
-    (keep, hints, problems, note) = check_sent(alpaca_key.strip(), alpaca_secret.strip(), openrouter_key.strip(), finnhub_key.strip());
+    owner = account.owner_root if account is not None else str(jid(root));
+    (keep, hints, problems, note, alpaca_account) = check_sent(alpaca_key.strip(), alpaca_secret.strip(), openrouter_key.strip(), finnhub_key.strip(), owner);
     if problems {
         return KeysReply(saved=False, settings=settings_view(), message="Nothing was saved. Fix the keys marked below.", problems=problems);
     }
@@ -218,6 +226,9 @@ def:priv save_agent_keys(alpaca_key: str = "", alpaca_secret: str = "", openrout
     account.checked_at = {**account.checked_at, **{name: now for name in keep}};
     if note is not None {
         account.requests_note = note;
+    }
+    if alpaca_account {
+        account.alpaca_account = alpaca_account;
     }
     LOG.info("an agent connected %s", ", ".join(sorted(keep)));
     return KeysReply(saved=True, settings=settings_view(), message="Connected. Each key was checked with its provider.");
@@ -239,6 +250,9 @@ def:priv remove_agent_keys(provider: str) -> AgentReply {
     account.checked_at = {k: v for (k, v) in account.checked_at.items() if k not in names};
     if provider == "openrouter" {
         account.requests_note = "";
+    }
+    if provider == "alpaca" {
+        account.alpaca_account = "";
     }
     stopped = not has_required_keys(account);
     if stopped {
@@ -282,6 +296,14 @@ def:priv set_paper_trading(on: bool) -> AgentReply {
     if not on {
         account.paper_trading = False;
         return AgentReply(ok=True, message="Paper trading is off. Your agent keeps researching, and open positions stay on Alpaca with their stops.", settings=settings_view());
+    }
+    found = account_of(account);
+    if found and not account.alpaca_account {
+        account.alpaca_account = found;
+    }
+    shared = sharing_problem(found, account.owner_root);
+    if shared {
+        return AgentReply(ok=False, message=shared, settings=settings_view());
     }
     portfolio = my_portfolio();
     if portfolio is None or not baselines_of(portfolio) {

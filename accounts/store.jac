@@ -5,6 +5,7 @@ which take no argument from the client: a request can only ever reach its caller
 The admin's agent is the team portfolio on root.shared, which runs on the server's own keys.
 A server in demo mode shows every user the made-up history, since it runs nothing.
 """
+import hashlib;
 import os;
 import time;
 import from jaclang { JacRuntime as Jac }
@@ -131,7 +132,12 @@ def ensure_own_portfolio -> Portfolio {
     if found is not None {
         return found;
     }
-    return root ++> Portfolio(name=AGENT_PORTFOLIO, mode=PortfolioMode.INSIGHT, starting_cash=0.0, opened_at=utc_now().isoformat());
+    return root ++> Portfolio(name=AGENT_PORTFOLIO, mode=PortfolioMode.INSIGHT, starting_cash=0.0, opened_at=utc_now().isoformat(), order_tag=order_tag_for(str(jid(root))));
+}
+
+"""The prefix of an agent's client order IDs (`Portfolio.order_tag`): short, and its owner's alone."""
+def order_tag_for(owner: str) -> str {
+    return "a" + hashlib.sha256(owner.encode()).hexdigest()[:8];
 }
 
 """True when `account` has every key a run needs."""

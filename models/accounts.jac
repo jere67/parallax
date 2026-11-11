@@ -18,7 +18,8 @@ This module's path is frozen for the same reason as models/graph.jac.
 account's). `paper_trading` is the owner's choice and `trading_start_day` the New York date
 their forward test starts: the trading job turns these into the portfolio's mode, because a
 morning run holds the portfolio for its whole transaction, and a write here must not conflict
-with it. `run_requested_day` is a run asked for by hand."""
+with it. `run_requested_day` is a run asked for by hand. `alpaca_account` is the fingerprint of
+the paper account the Alpaca keys open (accounts/sharing.jac), so no two agents trade one account."""
 node AgentAccount {
     has owner_root: str,
         created_at: str;
@@ -28,7 +29,8 @@ node AgentAccount {
         requests_note: str = "",
         paper_trading: bool = False,
         trading_start_day: str = "",
-        run_requested_day: str = "";
+        run_requested_day: str = "",
+        alpaca_account: str = "";
 }
 
 """One key on the settings page, without its value."""
@@ -63,7 +65,8 @@ obj AgentSettings {
         keys: list[KeyStatus],
         run: RunState;
     has requests_note: str = "",
-        trading_started: bool = False;
+        trading_started: bool = False,
+        alpaca_problem: str = "";
 }
 
 """What a save did: the page as it now is, and why each refused field was refused, by the

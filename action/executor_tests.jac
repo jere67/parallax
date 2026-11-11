@@ -115,6 +115,25 @@ test "a position dates from its broker fill, not the sync, so a replayed sync na
     }
 }
 
+test "a tagged portfolio's orders and stops carry its tag, so another portfolio's never match them" {
+    fake = FakeBroker();
+    try {
+        broker = broker_for(fake);
+        portfolio = team();
+        portfolio.order_tag = "a1b2c3d4";
+        fake.set_price("AAA", 100.0);
+        execute_run(portfolio, finished_run(portfolio, DAY1, [Call(ticker="AAA", action=TradeAction.BUY, conviction=0.5)]), broker, NOW1, market({"AAA": 100.0}, NOW1));
+        assert fake.find(f"{DAY1}-AAA-entry") is None and fake.find(f"a1b2c3d4-{DAY1}-AAA-entry") is not None;
+        fake.now = "2026-10-21T13:45:03+00:00";
+        fake.fill(f"a1b2c3d4-{DAY1}-AAA-entry", 0, 100.0);
+        sync_orders(portfolio, broker, NOW1);
+        keep_stops(portfolio, broker, NOW1);
+        assert [o.client_order_id for o in fake.working_orders("AAA")] == ["a1b2c3d4-AAA-20261021134503-stop1"];
+    } finally {
+        fake.stop();
+    }
+}
+
 test "insight mode, a skipped run, and the kill switch send nothing" {
     fake = FakeBroker();
     try {
