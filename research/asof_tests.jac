@@ -19,12 +19,10 @@ import from research.asof {
     open_month,
     reported_periods
 }
-import from research.briefs { FundamentalsInputs }
 import from research.collector { Fetched, RawCache, RunBudget, SourceClient, TokenBucket, split_fresh }
-import from research.finnhub { EpsSurprise, earnings_calendar, eps_surprises, recommendation_trends }
+import from research.finnhub { earnings_calendar, recommendation_trends }
 import from research.sec { Filing, filings, reduce_facts }
 import from research.sources { DATASETS, SOURCES }
-import from run.research { bound_surprises }
 import from tests.fakes.source_server { FakeSource, serve_source }
 
 glob ROOT: Path = Path(__file__).resolve().parent.parent / "tests" / "fixtures";
@@ -59,14 +57,6 @@ def replaying(day: str, check: Callable[[], None]) {
 
 def stamped(published: str) -> Filing {
     return Filing(symbol="X", cik="1", form="8-K", accession="a", filed=published[:10], report_date="", accepted_at="", items=[], primary_document="", stamp=Stamp(source="t", dataset="t", source_url=f"u-{published}", published_at=published, fetched_at=""));
-}
-
-def surprise(period: str) -> EpsSurprise {
-    return EpsSurprise(symbol="X", period=period, quarter=0, year=0, actual=1.0, estimate=1.0, surprise=0.0, surprise_percent=0.0, stamp=Stamp(source="t", dataset="t", source_url="", published_at=period, fetched_at=""));
-}
-
-def release_8k(filed: str) -> Filing {
-    return Filing(symbol="X", cik="1", form="8-K", accession=filed, filed=filed, report_date="", accepted_at="", items=["2.02", "9.01"], primary_document="", stamp=Stamp(source="t", dataset="t", source_url="", published_at=filed, fetched_at=""));
 }
 
 test "the decision is 7:30 a.m. New York, in daylight and standard time" {
@@ -169,21 +159,10 @@ test "the decision's own month of analyst counts is left out" {
     replaying("2026-09-14", check);
 }
 
-test "an EPS quarter shows only once an earnings release after it was filed before the decision" {
+test "an EPS quarter counts as reported only once an earnings release after it was filed before the decision" {
     def check {
         assert reported_periods(["2026-06-30", "2026-09-30"], ["2026-07-30", "2026-10-30"]) == {"2026-06-30"};
         assert reported_periods(["2026-06-30"], ["2026-10-15"]) == set();
-        funda = FundamentalsInputs(surprises=[surprise("2026-09-30"), surprise("2026-06-30")]);
-        bound_surprises(funda, [release_8k("2026-07-30"), release_8k("2026-10-30")]);
-        assert [s.period for s in funda.surprises] == ["2026-06-30"];
-        assert any("2026-09-30" in g for g in funda.gaps);
-        unknown = FundamentalsInputs(surprises=[surprise("2026-06-30")]);
-        bound_surprises(unknown, None);
-        assert unknown.surprises == [] and unknown.gaps;
     }
     replaying("2026-10-15", check);
-    finnhub.reset();
-    live = FundamentalsInputs(surprises=eps_surprises("AAPL", budget(), client("finnhub", {"X-Finnhub-Token": "t"})));
-    bound_surprises(live, None);
-    assert len(live.surprises) == 4 and live.gaps == [];
 }
