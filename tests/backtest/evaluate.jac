@@ -20,6 +20,13 @@ also adopted only if, on validation, it is at least as good as 2 ATR under today
 setting that would ship when the screen is not adopted), both with the breaker as it is and
 with the breaker off. Those runs are under "diagnostics".
 
+All of the above measure the breaker from the all-time peak, as it was when they were fixed.
+Then, before any rolling run was seen, the breaker's release was registered: measure from the
+highest close of the last 63 sessions (about three months) instead, with the same 10% halt.
+It is adopted if, under the settings that ship (the adopted screen and stop, else today's), its
+validation Sharpe is at least the all-time breaker's. Those runs are under "breaker", beside
+the same settings with the breaker off.
+
     TRADING_AGENT_RUN_BACKTEST=1 BACKTEST_CACHE=/path/to/cache BACKTEST_OUT=docs/evaluation/backtest.json \
         jac run --no-takeover tests/backtest/evaluate.jac
 
@@ -29,7 +36,7 @@ import json;
 import os;
 import from datetime { datetime, timezone }
 import from pathlib { Path }
-import from action.gate { GateConfig }
+import from action.gate { GateConfig, breaker_peak }
 import from models.graph { Run }
 import from research.screener { SCREEN_VERSION, ScreenConfig, Shortlist, screen }
 import from tests.backtest.data {
@@ -49,6 +56,7 @@ import from tests.backtest.harness {
     BENCHMARK,
     DayHit,
     LAST_HOLDINGS,
+    STARTING_CASH,
     Morning,
     Universe,
     daily_returns,
@@ -76,6 +84,10 @@ glob CURVE_EVERY: int = 5;
 glob BREAKER: float = GateConfig().drawdown_halt;
 # A drawdown halt no equity can reach: the breaker off.
 glob NO_BREAKER: float = 1.0;
+# The breaker's peak over every session, as the registered rows measure it, and the rolling
+# window this run decides on.
+glob ALL_TIME: int = 0;
+glob ROLLING: int = 63;
 
 """The pre-registered screen variants, by name, with what each changes."""
 def screen_variants -> dict[str, tuple[ScreenConfig, dict[str, any]]] {
@@ -114,17 +126,17 @@ def hit_summary(track: Track, period: tuple[str, str]) -> dict[str, any] {
     };
 }
 
-"""The share of sessions whose close left equity at or below the drawdown breaker's line, so
-the next morning's buys halted."""
-def breaker_share(points: list[tuple[str, float]]) -> float | None {
+"""The share of sessions whose close left equity at or below the drawdown breaker's line, with
+its peak over `window` sessions (0: all of them), so the next morning's buys halted."""
+def breaker_share(points: list[tuple[str, float]], window: int = ALL_TIME) -> float | None {
     if not points {
         return None;
     }
-    peak = 0.0;
+    closes: list[float] = [];
     shut = 0;
     for (_, equity) in points {
-        peak = max(peak, equity);
-        if equity <= peak * (1.0 - BREAKER) {
+        closes.append(equity);
+        if equity <= breaker_peak(STARTING_CASH, closes, window) * (1.0 - BREAKER) {
             shut += 1;
         }
     }
@@ -132,11 +144,11 @@ def breaker_share(points: list[tuple[str, float]]) -> float | None {
 }
 
 """The portfolio figures of `points` with the interval of its Sharpe minus SPY's."""
-def portfolio_summary(points: list[tuple[str, float]], spy: list[tuple[str, float]]) -> dict[str, any] {
+def portfolio_summary(points: list[tuple[str, float]], spy: list[tuple[str, float]], window: int = ALL_TIME) -> dict[str, any] {
     found: dict[str, any] = dict(performance(points));
     interval = sharpe_gap_interval(daily_returns(points), daily_returns(spy));
     found["sharpe_ci_vs_spy"] = list(interval) if interval else None;
-    found["breaker_share"] = breaker_share(points);
+    found["breaker_share"] = breaker_share(points, window);
     return found;
 }
 
@@ -231,9 +243,12 @@ with entry {
         periods = {"train": TRAIN, "validation": VALIDATION};
         sim_days = {p: [d for d in all_sessions if in_period(d, span) and d <= through] for (p, span) in periods.items()};
         spy = {p: simulate_benchmark(sim_days[p], all_sessions, prices) for p in periods};
-        def run_sim(name: str, stop: float, period: str, halt: float = BREAKER) -> list[tuple[str, float]] {
-            points = simulate_shortlist(sim_days[period], tracks[name].runs, all_sessions, prices, GateConfig(stop_atr_multiple=stop, drawdown_halt=halt));
-            holdings[f"{name}:{stop}:{period}" + ("" if halt == BREAKER else f":{halt}")] = dict(LAST_HOLDINGS[0]);
+        def sim_key(name: str, stop: float, period: str, halt: float = BREAKER, window: int = ALL_TIME) -> str {
+            return f"{name}:{stop}:{period}" + ("" if halt == BREAKER else f":{halt}") + ("" if window == ALL_TIME else f":w{window}");
+        }
+        def run_sim(name: str, stop: float, period: str, halt: float = BREAKER, window: int = ALL_TIME) -> list[tuple[str, float]] {
+            points = simulate_shortlist(sim_days[period], tracks[name].runs, all_sessions, prices, GateConfig(stop_atr_multiple=stop, drawdown_halt=halt, drawdown_window=window));
+            holdings[sim_key(name, stop, period, halt, window)] = dict(LAST_HOLDINGS[0]);
             return points;
         }
         holdings: dict[str, dict[str, float]] = {};
@@ -281,7 +296,7 @@ with entry {
         def diagnostic(name: str, stop: float, halt: float) -> dict[str, any] {
             row: dict[str, any] = {"screen": name, "stop_atr_multiple": stop, "breaker": halt < NO_BREAKER};
             for (period, span) in periods.items() {
-                key = f"{name}:{stop}:{period}" + ("" if halt == BREAKER else f":{halt}");
+                key = sim_key(name, stop, period, halt);
                 points = curves.get(key) or run_sim(name, stop, period, halt);
                 curves[key] = points;
                 row[period] = {**portfolio_summary(points, spy[period]), **holdings.get(key, {})};
@@ -322,6 +337,25 @@ with entry {
                 reasons.append(f"Under today's screen on validation, {chosen_stop} ATR had a Sharpe of {shown(validation_sharpe(shipped_new))} against {shown(validation_sharpe(shipped_now))} at 2 ATR with the breaker on, and {shown(validation_sharpe(open_new))} against {shown(validation_sharpe(open_now))} with it off, so it is {'adopted' if adopt_stop else 'not adopted'}.");
             }
         }
+        # The breaker's release, under the settings that ship.
+        ship_screen = chosen_screen if adopt_screen else "V0";
+        ship_stop = chosen_stop if adopt_stop else CURRENT_STOP;
+        breaker_rows: list[dict[str, object]] = [];
+        for (label, halt, window) in [("all-time peak", BREAKER, ALL_TIME), (f"highest close of the last {ROLLING} sessions", BREAKER, ROLLING), ("off", NO_BREAKER, ALL_TIME)] {
+            on = halt < NO_BREAKER;
+            row: dict[str, object] = {"breaker": label, "drawdown_halt": halt if on else None, "drawdown_window": window if on else None};
+            for (period, _) in periods.items() {
+                key = sim_key(ship_screen, ship_stop, period, halt, window);
+                points = curves.get(key) or run_sim(ship_screen, ship_stop, period, halt, window);
+                curves[key] = points;
+                row[period] = {**portfolio_summary(points, spy[period], window), **holdings.get(key, {})};
+            }
+            breaker_rows.append(row);
+        }
+        (all_time_sharpe, rolling_sharpe) = (breaker_rows[0]["validation"]["sharpe"], breaker_rows[1]["validation"]["sharpe"]);
+        adopt_rolling = rolling_sharpe is not None and all_time_sharpe is not None and rolling_sharpe >= all_time_sharpe;
+        breaker_reason = f"Under {ship_screen} at a {ship_stop} ATR stop on validation, the breaker measured from the highest close of the last {ROLLING} sessions had a Sharpe of {shown(rolling_sharpe)} against {shown(all_time_sharpe)} from the all-time peak, so it is {'adopted' if adopt_rolling else 'not adopted'}.";
+        say(breaker_reason);
         coverage = with_bars / member_days if member_days else 0.0;
         out = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -352,9 +386,17 @@ with entry {
             "adopted": {"screen": adopt_screen, "stop_atr_multiple": adopt_stop},
             "reason": " ".join(reasons),
             "diagnostics": diagnostics,
+            "breaker": {
+                "screen": ship_screen,
+                "stop_atr_multiple": ship_stop,
+                "rows": breaker_rows,
+                "adopted": {"drawdown_window": ROLLING if adopt_rolling else ALL_TIME},
+                "reason": breaker_reason
+            },
             "curves": {
                 "validation": {
                     "current": thin(curves[f"V0:{CURRENT_STOP}:validation"]),
+                    "rolling_breaker": thin(curves[sim_key(ship_screen, ship_stop, "validation", BREAKER, ROLLING)]),
                     "chosen": thin(curves.get(f"{chosen_screen}:{chosen_stop}:validation") or []),
                     "spy": thin(spy["validation"])
                 }

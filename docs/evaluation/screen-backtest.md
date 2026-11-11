@@ -20,10 +20,10 @@ A 3 ATR stop passed the rule's literal test, but under today's screen with the d
 Over 10 sessions, today's picks trailed the rest of the index by 0.17% on train and led it by 0.19% on validation.
 Both 95% intervals include zero, and every variant's do too.
 
-**The drawdown breaker latches.**
-It measures from the all-time peak, so once a portfolio is 10% down and has sold out, it can never buy again.
+**The drawdown breaker latched, so it now measures from a rolling peak.**
+Measured from the all-time peak, once a portfolio is 10% down and has sold out, it can never buy again.
 Under today's settings, the equal-weight shortlist was halted for 79% of validation: from late October 2023 on, and wholly in cash from November 24, 2023.
-This is in the live gate too, so a follow-up should decide how the breaker releases.
+Measured from the highest close of the last 63 sessions instead (issue #215), it was halted for 0.1% of validation, and its validation Sharpe rose from 0.43 to 1.09, so the rolling peak is adopted in the live gate.
 
 ## Method
 
@@ -65,6 +65,12 @@ The first full run showed the breaker latch, so a Sharpe gap between two stops m
 Before running anything more, the stop rule gained a second condition: a new stop must also be at least as good as 2 ATR under today's screen on validation, both with the breaker as it is and with it off.
 Today's screen is what would ship, since the screen was not adopted.
 These runs are under `diagnostics` in the JSON.
+
+**The breaker's release (pre-registered).**
+Every run above measures the breaker from the all-time peak, as when the tuning was fixed.
+Then, before any rolling run was seen, issue #215 registered a release: measure from the highest close of the last 63 sessions (about three months), with the same 10% halt.
+It is adopted if, under the settings that ship (today's screen and stop, since neither change was adopted), its validation Sharpe is at least the all-time breaker's.
+These runs are under `breaker` in the JSON, beside the same settings with the breaker off.
 
 ## Results
 
@@ -112,14 +118,26 @@ So the stop stays at 2 ATR.
 With the breaker off, today's screen and stop returned 12.9% a year on validation at a Sharpe of 1.09, against SPY's 20.8% and 1.35.
 No setting's Sharpe beat SPY's on validation; every interval of the gap is mostly or wholly below zero.
 
+Today's screen at a 2 ATR stop, by how the breaker measures its peak (halted is the share of sessions that ended at or below the breaker's line):
+
+| Breaker | Train Sharpe | Train a year | Train max drawdown | Train halted | Validation Sharpe | Validation a year | Validation max drawdown | Validation halted |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| All-time peak | 0.64 | 3.7% | 11.8% | 41% | 0.43 | 2.7% | 11.3% | 79% |
+| Last 63 sessions | 0.67 | 5.9% | 17.4% | 6% | 1.09 | 12.9% | 11.7% | 0.1% |
+| Off | 0.71 | 6.5% | 14.7% | 6% | 1.09 | 12.9% | 11.7% | 0.6% |
+
+On validation the rolling breaker never bound long enough to change a trade, so it matched the breaker off.
+On train it halted 6% of sessions, and its maximum drawdown was deeper than with the breaker off: it paused buying near lows, missed part of the rebounds, and later losses started from lower equity.
+In this history the breaker, rolling or not, never cut risk beyond what the stops already do; the rolling peak keeps it from ending a portfolio's trading for good.
+
 ## What this means
 
 - The screen narrows 500 names to 15 with no measurable edge over the rest at a 10-session horizon.
   The agents' job is to add the edge; the screen keeps them to liquid, active names.
   The forward test's equal-weight baseline will show the same.
-- The breaker turns any 10% drawdown into a permanent halt, in the live team portfolio as well as the baselines.
-  It should release on some rule, for example a peak that resets after a set number of sessions in cash.
-  That is a gate change and belongs in its own issue.
+- Measured from the all-time peak, the breaker turned any 10% drawdown into a permanent halt, in the live portfolios as well as the baselines.
+  The gate now measures from the highest close of the last 63 sessions (`GateConfig.drawdown_window`, `breaker_peak` in `action/gate.jac`), so a bad stretch ages out after about three months.
+  The breaker earned no risk reduction in this history, so it stays a backstop, not a source of return.
 - The screen gained two options, `z_clip` and `log_terms` (`research/screener.jac`), off by default, so today's screen and `SCREEN_VERSION` are unchanged.
 
 ## Limits
@@ -149,4 +167,4 @@ TRADING_AGENT_RUN_BACKTEST=1 BACKTEST_OFFLINE=1 BACKTEST_CACHE=/path/to/cache ja
 
 The fetch needs Alpaca keys and `SEC_USER_AGENT`, holds Alpaca to 120 requests a minute and SEC to 8 a second, and pauses from 7:15 to 10:00 a.m. New York time on weekdays, so it never competes with a morning run.
 It took about two hours, most of it the news archive (716,558 articles).
-The evaluation then takes about 45 minutes and 2.2 GB of memory from the cache.
+The evaluation then takes 15 to 45 minutes and about 2.2 GB of memory from the cache.

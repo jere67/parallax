@@ -33,7 +33,7 @@ Rules 1 to 4 reject an order outright; rules 5 to 10 resize it, and a resize to 
 | --- | --- | --- | --- |
 | 1 | Instrument checks | Active and tradable on Alpaca, price above $5, and a trade in the last 15 minutes | Reject; no recent trade may mean the stock is halted |
 | 2 | Earnings blackout | No earnings release within 2 trading sessions (0 means today) | Reject; logged as insight only |
-| 3 | Drawdown breaker | Equity more than 10% below its peak | Reject every new buy; exits and stops still run |
+| 3 | Drawdown breaker | Equity 10% or more below its highest close of the last 63 sessions | Reject every new buy; exits and stops still run |
 | 4 | Protective stop | A usable ATR(14), with the price minus 2 × ATR above 0 | Reject; no stop could be set |
 | 5 | Per-position cap | At most 10% of equity in the stock after the buy | Resize down |
 | 6 | Liquidity | At most 1% of the 20-day average daily volume, in shares | Resize down |
@@ -74,14 +74,14 @@ The figures come from the research pass's SPY bars, computed in code, not from t
 
 ## A worked example
 
-The book has $100,000 of equity, a peak of $102,000, and $70,000 invested, of which $27,000 is in Information Technology.
+The book has $100,000 of equity, a highest close of $102,000 over the last 63 sessions, and $70,000 invested, of which $27,000 is in Information Technology.
 The run proposes buying 30 shares of a new Information Technology stock at $200.00, with ATR(14) of $4.00, 1,500,000 shares of 20-day average volume, and no earnings in the next 2 sessions.
 
 | Rule | Shares before | Shares after | Detail |
 | --- | --- | --- | --- |
 | Instrument checks | 30 | 30 | active, tradable, last trade 200.00 |
 | Earnings blackout | 30 | 30 | no earnings within 2 sessions |
-| Drawdown breaker | 30 | 30 | 2.0% below the peak |
+| Drawdown breaker | 30 | 30 | 2.0% below the highest close |
 | Protective stop | 30 | 30 | stop 8.00 below the fill |
 | Per-position cap | 30 | 30 | at most 50 shares |
 | Liquidity | 30 | 30 | at most 15,000 shares |

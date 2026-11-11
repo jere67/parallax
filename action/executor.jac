@@ -26,11 +26,12 @@ import math;
 import os;
 import from datetime { datetime }
 import from action.broker { Broker, BrokerError, BrokerOrder, BrokerPosition, OrderRequest }
-import from action.gate { GATE_VERSION, Book, BookPosition, GateConfig, GateResult, Instrument, Proposal, check_orders }
+import from action.gate { GATE_VERSION, Book, BookPosition, GateConfig, GateResult, Instrument, Proposal, breaker_peak, check_orders }
 import from action.sizing { SizingCandidate, SizingConfig, size_positions }
 import from models.graph {
     CheckedBy,
     Coverage,
+    DailyMark,
     Covers,
     Decided,
     Decision,
@@ -39,6 +40,7 @@ import from models.graph {
     HasMacro,
     Holds,
     MacroRecord,
+    Marked,
     OpenedBy,
     Order,
     OrderPurpose,
@@ -147,6 +149,14 @@ def open_positions(portfolio: Portfolio) -> dict[str, Position] {
     return {p.ticker: p for p in [portfolio ->:Holds:->[?:Position]] if p.open()};
 }
 
+"""The equity the drawdown breaker measures `portfolio` from under `gate`: its highest close
+since it started, within the gate's window."""
+def breaker_peak_of(portfolio: Portfolio, gate: GateConfig) -> float {
+    since = portfolio.opened_at[:10];
+    marks = sorted([m for m in [portfolio ->:Marked:->[?:DailyMark]] if m.day >= since and m.equity > 0.0], key=lambda (m: DailyMark) { m.day; });
+    return breaker_peak(portfolio.starting_cash, [m.equity for m in marks], gate.drawdown_window);
+}
+
 """Every order the portfolio sent that may still change."""
 def working_orders(portfolio: Portfolio) -> list[Order] {
     return [o for o in [portfolio ->:Sent:->[?:Order]] if o.status not in FINISHED_STATUSES and o.alpaca_order_id];
@@ -238,7 +248,7 @@ def execute_run(
     }
     book = Book(
         equity=account.equity,
-        peak_equity=max(portfolio.peak_equity, account.equity),
+        peak_equity=max(breaker_peak_of(portfolio, gate), account.equity),
         positions={t: BookPosition(ticker=t, qty=p.qty, price=instruments[t].price or p.current_price, sector=sector_of(t)) for (t, p) in held.items()}
     );
     results = check_orders(proposals, book, instruments, run_regime(run), gate);

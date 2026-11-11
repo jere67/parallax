@@ -765,7 +765,7 @@ The MVP is long only: SELL means exit or trim, never short.
 | Gross exposure | 90% (10% cash floor) | Scale all buys down |
 | New positions per day | 3 | Keep the highest-conviction 3 |
 | Daily turnover | 25% of portfolio value | Scale down, exits first |
-| Drawdown breaker | Halt new buys after a 10% drawdown from peak | Exits and stops still run |
+| Drawdown breaker | Halt new buys once equity is 10% below its highest close of the last 63 sessions (about three months) | Exits and stops still run |
 | Regime filter | If SPY is below its 200-day average and its 20-day realized volatility, annualized, is above 30%, gross exposure is capped at 50%; if either figure is missing, the cap applies too | Scale buys down |
 | Earnings blackout | No new entry within 2 trading days before earnings | Reject the entry; log it as insight only |
 | Liquidity | Order no larger than 1% of 20-day average daily volume | Resize down |

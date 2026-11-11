@@ -11,6 +11,7 @@ import from action.gate {
     GateResult,
     Instrument,
     Proposal,
+    breaker_peak,
     check_orders,
     regime_on
 }
@@ -73,6 +74,15 @@ test "the drawdown breaker halts buys, and exits still run" {
     results = check_orders([buy("AAA", 10), sell("OUT", 10)], held, {"AAA": stock("AAA"), "OUT": stock("OUT")}, CALM);
     assert one(results, "AAA").rejected_by() == "drawdown breaker";
     assert one(results, "OUT").outcome() == RiskOutcome.APPROVED and one(results, "OUT").purpose == OrderPurpose.EXIT;
+}
+
+test "the breaker measures from the highest close of its window, counting the start until the window fills" {
+    assert breaker_peak(100.0, [], 63) == 100.0;
+    assert breaker_peak(100.0, [95.0, 90.0], 63) == 100.0;
+    assert breaker_peak(100.0, [120.0] + [100.0] * 62, 63) == 120.0;
+    # 63 closes later the 120 close and the start have aged out.
+    assert breaker_peak(100.0, [120.0] + [100.0] * 63, 63) == 100.0;
+    assert breaker_peak(100.0, [120.0] + [100.0] * 63, 0) == 120.0;
 }
 
 test "a buy without a usable ATR is rejected, since it could not get a stop" {

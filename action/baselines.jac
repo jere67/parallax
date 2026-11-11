@@ -24,7 +24,7 @@ import os;
 import from datetime { date, datetime, timedelta }
 import from action.broker { Broker }
 import from action.executor { run_regime }
-import from action.gate { Book, BookPosition, GateConfig, Instrument, Proposal, check_orders }
+import from action.gate { Book, BookPosition, GateConfig, Instrument, Proposal, breaker_peak, check_orders }
 import from action.sizing { SizingCandidate, SizingConfig, size_positions }
 import from analysis.history { History }
 import from analysis.scoring { BENCHMARK }
@@ -255,7 +255,7 @@ def simulate_equal_weight(baseline: Baseline, at: SimDay, run: Run | None, sizin
         };
         book = Book(
             equity=equity,
-            peak_equity=max(baseline.peak_equity, equity),
+            peak_equity=max(breaker_peak(baseline.starting_cash, [m.equity for (_, m) in sorted(sim_marks(baseline).items())], gate.drawdown_window), equity),
             positions={c.ticker: BookPosition(ticker=c.ticker, qty=c.current_qty, price=c.price, sector=sector_of(c.ticker)) for c in candidates if c.current_qty > 0}
         );
         results = check_orders(proposals, book, instruments, run_regime(run) if run is not None else None, gate);
