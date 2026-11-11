@@ -195,6 +195,8 @@ test("news: going back from a story returns to the same place in the feed", asyn
   await page.goto("/app/news");
   const rows = page.locator("a.news-row");
   await expect(rows.nth(20)).toBeAttached();
+  // The feed rises 12px into place as it loads, so scrolling before that ends lands 12px off.
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState === "finished"));
   await rows.nth(20).scrollIntoViewIfNeeded();
   const scrolled = await page.evaluate(() => window.scrollY);
   expect(scrolled).toBeGreaterThan(0);

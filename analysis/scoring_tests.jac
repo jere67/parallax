@@ -3,7 +3,7 @@ scoring once, after the window's last close is final."""
 import from datetime { datetime }
 import from action.fixtures { Call, finished_run, team }
 import from analysis.history { History, bar }
-import from analysis.scoring { excess_return, hit, records, score_votes, vote_window }
+import from analysis.scoring { excess_return, hit, records, score_votes, tally_votes, vote_window }
 import from research.alpaca { Bar }
 import from models.agents { Specialist, Stance, Vote }
 import from models.graph { Coverage, Covers, Run, TradeAction, VoteRecord, Voted }
@@ -66,6 +66,8 @@ test "votes are scored once their window's close is final, and HOLD votes are ne
     assert right.excess_return is not None and abs(right.excess_return - 0.04) < 1e-12 and wrong.excess_return == right.excess_return;
     assert (hit(right), hit(wrong), hit(neutral), hit(unpriced)) == (True, False, None, None);
     assert unpriced.scored_at and later.scored_at == "" and later.excess_return is None;
+    # The run's stored tally counts every vote, and only scored directional ones as scored.
+    assert run.specialist_tallies == {"technical": [3, 2, 1], "macro": [1, 0, 0], "news": [1, 0, 0]};
     tally = records([right, wrong, neutral, later, unpriced]);
     assert list(tally) == ["technical"] and tally["technical"].scored == 2 and tally["technical"].hit_rate() == 0.5;
     # A second pass has nothing new to score and fetches nothing.
@@ -74,4 +76,5 @@ test "votes are scored once their window's close is final, and HOLD votes are ne
     # Friday: Thursday's close settles the two-session vote, a miss.
     last = score_votes(portfolio, ny("2026-10-23T16:30:00"), sources(closes, asked));
     assert (last.scored, last.waiting) == (1, 0) and later.excess_return is not None and abs(later.excess_return + 0.02) < 1e-12 and hit(later) is False;
+    assert run.specialist_tallies["news"] == [1, 1, 0] and run.specialist_tallies == tally_votes([right, wrong, neutral, later, unpriced]);
 }

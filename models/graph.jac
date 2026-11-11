@@ -130,6 +130,7 @@ node Run {
         day_orders_closed_at: str = "",
         reconciled_at: str = "",
         votes_scored_at: str = "",
+        specialist_tallies: dict[str, list[int]] = {},
         baselines_at: str = "",
         action_log: list[str] = [],
         summary: str = "",
