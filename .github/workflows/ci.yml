@@ -18,65 +18,72 @@ env:
   JAC_SHA256: 078e0b51556cef698faa43bc080cfeb52e0e316fa7b0771afa1cf8990911712a
 
 jobs:
-  check:
-    name: Check, test, build, boot
+  # The unit and property tests take about 30 minutes in one job, so three jobs share them
+  # while a fourth checks, builds, and runs the end-to-end suite.
+  test:
+    name: Test (part ${{ matrix.part }} of 3)
     runs-on: ubuntu-latest
-    # A run takes about 30 minutes, and longer when several stacked PRs run at once.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: setup
+        uses: ./.github/actions/setup-jac
+        with:
+          jac-version: ${{ env.JAC_VERSION }}
+          jac-sha256: ${{ env.JAC_SHA256 }}
+          compile-cache: test-${{ matrix.part }}
+
+      # Every third test file in sorted order, so a folder of slow tests spreads over all
+      # three parts and every file runs exactly once.
+      - name: Test
+        env:
+          PART: ${{ matrix.part }}
+        run: |
+          jac test --collect_only | grep '\.jac$' | sort > "$RUNNER_TEMP/all-tests.txt"
+          awk -v part="$PART" 'NR % 3 == part % 3' "$RUNNER_TEMP/all-tests.txt" > "$RUNNER_TEMP/part-tests.txt"
+          echo "Part $PART runs $(wc -l < "$RUNNER_TEMP/part-tests.txt") of $(wc -l < "$RUNNER_TEMP/all-tests.txt") test files."
+          xargs jac test < "$RUNNER_TEMP/part-tests.txt"
+
+      - name: Keep the compiled modules
+        if: always() && steps.setup.outputs.compile-cache-key != '' && steps.setup.outputs.compile-cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .jac/cache
+          key: ${{ steps.setup.outputs.compile-cache-key }}
+
+  # With its compile cache restored the build takes a few minutes; a cold one (a new Jac
+  # release, or a cache GitHub evicted) takes about 21, so the limit leaves room for that.
+  check:
+    name: Check, build, boot, end to end
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Jac ${{ env.JAC_VERSION }}
-        run: |
-          curl -fsSL -o jac "https://github.com/jaseci-labs/jac/releases/download/v${JAC_VERSION}/jac-${JAC_VERSION}-linux-x86_64"
-          echo "${JAC_SHA256}  jac" | sha256sum --check --strict
-          chmod +x jac
-          mkdir -p "$HOME/.local/bin"
-          mv jac "$HOME/.local/bin/jac"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Show Jac version
-        run: jac --version
-
-      # The caches hold native binaries linked against the runner's system libraries, so each
-      # key names the OS release: when ubuntu-latest moves to a new release, a cache saved on
-      # the old one is never restored onto it.
-      - name: Name the runner's OS release for the cache keys
-        run: |
-          . /etc/os-release
-          echo "OS_RELEASE=${ID}-${VERSION_ID}" >> "$GITHUB_ENV"
-
-      # Only the embedded Postgres binaries are cached, never its data directory (pg/main):
-      # a cached postmaster.pid names a process from the job that saved the cache, and when a
-      # live process in a later job has that PID, Jac takes Postgres for running, never
-      # starts it, and the first test fails after waiting 60 seconds for its socket (#103).
-      - name: Cache the Jac runtime and embedded Postgres binaries
-        uses: actions/cache@v6
+      - id: setup
+        uses: ./.github/actions/setup-jac
         with:
-          path: |
-            ~/.cache/jac/rt
-            ~/.cache/jac/pg/dist
-          key: jac-runtime-pgdist-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ env.JAC_VERSION }}
-
-      - name: Cache project dependencies
-        uses: actions/cache@v6
-        with:
-          path: |
-            .jac/venv
-            .jac/client/node_modules
-          key: jac-deps-${{ runner.os }}-${{ env.OS_RELEASE }}-${{ env.JAC_VERSION }}-${{ hashFiles('jac.toml') }}
-
-      - name: Install dependencies
-        run: jac install
+          jac-version: ${{ env.JAC_VERSION }}
+          jac-sha256: ${{ env.JAC_SHA256 }}
+          compile-cache: check
 
       - name: Type-check and lint
         run: jac check .
 
-      - name: Test
-        run: jac test
-
       - name: Build
         run: jac build
+
+      - name: Keep the compiled modules
+        if: always() && steps.setup.outputs.compile-cache-key != '' && steps.setup.outputs.compile-cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .jac/cache
+          key: ${{ steps.setup.outputs.compile-cache-key }}
 
       # The demo history gives the end-to-end check pages with data. This server is this job's
       # alone; TRADING_AGENT_DEMO is never set on a deployed one. The fake providers let the

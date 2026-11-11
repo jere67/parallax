@@ -122,6 +122,7 @@ def Fact(label: str, value: str, sub: str = "") -> JsxElement {
 
 def Facts(run: RunData) -> JsxElement {
     screened = len([r for r in run.rows if r.reason == "screen"]);
+    # Only the demo history records tokens; a real run counts its calls alone.
     tokens = run.prompt_tokens + run.completion_tokens;
     <section className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-3 lg:grid-cols-6" aria-label="Run">
         <Fact label="Covered" value={count(len(run.rows), "ticker")} sub={str(screened) + " from the screen"}/>
@@ -129,7 +130,7 @@ def Facts(run: RunData) -> JsxElement {
         <Fact label="Analysis" value={time_range_et(run.started_at, run.finished_at)}/>
         <Fact label="Executed" value={time_et(run.executed_at)}/>
         <Fact label="Reconciled" value={time_et(run.reconciled_at)}/>
-        <Fact label="Model" value={count(run.model_requests, "call")} sub={compact(float(tokens)) + " tokens"}/>
+        <Fact label="Model" value={count(run.model_requests, "call")} sub={(compact(float(tokens)) + " tokens") if tokens > 0 else ""}/>
     </section>
 }
 

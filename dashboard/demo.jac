@@ -32,7 +32,7 @@ import from analysis.consensus { CONSENSUS_VERSION, consensus, draft_action }
 import from analysis.history { bar }
 import from research.indicators { momentum, range_position, relative_strength, rsi, sma }
 import from dashboard.ui.format { count }
-import from analysis.scoring { BENCHMARK, excess_return, vote_window }
+import from analysis.scoring { BENCHMARK, excess_return, tally_run, vote_window }
 import from models.agents { Domain, Evidence, MacroReport, ResearchReport, RiskRegime, Specialist, Stance, Vote }
 import from models.graph {
     Baseline,
@@ -799,6 +799,7 @@ obj DemoSim {
                     }
                 }
             }
+            tally_run(run);
         }
     }
 }
