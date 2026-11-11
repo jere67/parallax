@@ -10,6 +10,7 @@ with z the cross-sectional z-score over the liquid universe. A missing feature s
 the universe mean. Weights start equal (GAP-03) and the $50M liquidity floor is a proposal
 (GAP-02); both are versioned in SCREEN_VERSION, and the harness tunes them before launch.
 """
+import math;
 import statistics;
 import from datetime { date, timedelta }
 import from research.alpaca { Asset, assets, daily_bars, market_calendar }
@@ -29,6 +30,10 @@ obj ScreenConfig {
         max_wildcards: int = 3,
         earnings_sessions: int = 5,
         news_sessions: int = 3,
+        # Terms taken as log(1 + x) before their z-score, which tames counts with long tails
+        # (news_3, rvol_5), and the bound every z-score is clipped to; None leaves z unbounded.
+        log_terms: list[str] = [],
+        z_clip: float | None = None,
         weights: dict[str, float] = {
             "momentum_20": 1.0,
             "momentum_60": 1.0,
@@ -119,7 +124,7 @@ def screen(candidates: list[Candidate], open_positions: list[str], config: Scree
         "news_3": [float(c.news_3) for c in liquid],
         "vol_20": [c.vol_20 for c in liquid]
     };
-    z = {name: zscores(values) for (name, values) in features.items()};
+    z = {name: zscores([_logged(v) for v in values] if name in config.log_terms else values, config.z_clip) for (name, values) in features.items()};
     rows: list[ScoreRow] = [];
     for (i, c) in enumerate(liquid) {
         terms = {name: config.weights[name] * z[name][i] for name in features};
@@ -180,8 +185,8 @@ def add_wildcards(shortlist: Shortlist, wildcards: list[Wildcard], config: Scree
 }
 
 """Cross-sectional z-scores with the population deviation; a missing value, or a feature
-with no spread, scores 0."""
-def zscores(values: list[float | None]) -> list[float] {
+with no spread, scores 0. With `clip`, each is bounded to plus or minus it."""
+def zscores(values: list[float | None], clip: float | None = None) -> list[float] {
     present = [v for v in values if v is not None];
     if len(present) < 2 {
         return [0.0 for _ in values];
@@ -191,7 +196,13 @@ def zscores(values: list[float | None]) -> list[float] {
     if spread == 0 {
         return [0.0 for _ in values];
     }
-    return [(v - mean) / spread if v is not None else 0.0 for v in values];
+    found = [(v - mean) / spread if v is not None else 0.0 for v in values];
+    return [max(-clip, min(clip, v)) for v in found] if clip is not None else found;
+}
+
+"""log(1 + x) for a count or ratio, keeping a missing value missing."""
+def _logged(value: float | None) -> float | None {
+    return math.log1p(max(value, 0.0)) if value is not None else None;
 }
 
 """Clients for each source `gather` reads; None uses the default client."""

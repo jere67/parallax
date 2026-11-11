@@ -13,15 +13,21 @@ def VoteRow(v: VoteData) -> JsxElement {
             <span className="text-muted">{pct(v.confidence, 0) + " confidence · sample " + str(v.sample + 1)}</span>
             <span className="ml-auto text-muted">{("Hit" if v.hit else "Miss") if v.hit is not None else ("Awaiting score" if not v.scored_at else "No price to score")}</span>
         </div>
-        <p className="mt-1 text-[13px] leading-relaxed text-muted">{v.rationale}</p>
+        <p className="mt-1 line-clamp-3 text-[13px] leading-relaxed text-muted">{v.rationale}</p>
     </li>
 }
 
 def RoleCard(s: SummaryData) -> JsxElement {
-    <Panel title={title(s.specialist)} aside={count(s.votes, "vote") + " across up to 60 recent runs"} pad={False}>
+    <Panel title={title(s.specialist)} aside={count(s.votes, "vote") + " in the last " + count(s.runs, "run")} pad={False}>
         <div className="border-b border-line px-4 py-3 text-[13px]">
-            <span className="font-medium">{pct(s.hit_rate, 0) if s.hit_rate is not None else "Not enough scored votes"}</span>
-            <span className="text-muted">{(" hit rate · " + str(s.hits) + "/" + str(s.scored) + " scored directional votes") if s.scored else " · Awaiting scored directional votes"}</span>
+            {if s.scored {
+                <p>
+                    <span className="font-medium">{pct(s.hit_rate, 0) + " hit rate"}</span>
+                    <span className="text-muted">{" · " + str(s.hits) + " of " + count(s.scored, "scored directional vote") + " right"}</span>
+                </p>
+            } else {
+                <p className="text-muted">No hit rate yet. Votes are scored when their window closes, usually ten sessions after the run.</p>
+            }}
         </div>
         {if len(s.recent) == 0 {
             <p className="px-4 py-4 text-[13px] text-muted">No votes recorded yet.</p>

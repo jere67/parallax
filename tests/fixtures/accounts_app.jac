@@ -67,7 +67,17 @@ def:priv owner_id -> str { return str(jid(root)); }
 """What the raw account holds, as the owner may read it, to prove what is stored."""
 def:priv raw_account -> dict[str, object] {
     found = my_account();
-    return {"sealed": found.sealed, "hints": found.hints, "requested": found.run_requested_day, "trading": found.paper_trading} if found is not None else {};
+    return {"sealed": found.sealed, "hints": found.hints, "requested": found.run_requested_day, "trading": found.paper_trading, "alpaca_account": found.alpaca_account} if found is not None else {};
+}
+
+"""Forget which Alpaca account the caller's keys open, as for an agent connected before that was
+stored (accounts/sharing.jac)."""
+def:priv forget_alpaca_account -> str {
+    found = my_account();
+    if found is not None {
+        found.alpaca_account = "";
+    }
+    return "ok";
 }
 
 """Every account a request by this caller can see."""

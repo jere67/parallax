@@ -21,7 +21,7 @@ import from action.reconcile { marks_of }
 import from agents.specialists { packet }
 import from dashboard.cache { VIEWS }
 import from analysis.consensus { abstains, signed_score }
-import from analysis.scoring { hit }
+import from analysis.scoring { hit, tally_votes }
 import from models.agents { Domain, Evidence, ResearchReport, Specialist }
 import from models.graph {
     BaselineKind,
@@ -78,6 +78,7 @@ import from models.views {
     SpecialistVoteView,
     TrailView
 }
+import from dashboard.live { live_view }
 import from run.guard { TEAM_PORTFOLIO }
 
 glob TRADING_DAYS: int = 252;
@@ -106,13 +107,15 @@ def view_key(team: Portfolio, *parts: str) -> str {
     return ":".join([jid(team)] + list(parts));
 }
 
-"""The caller's portfolio at its last mark, with its positions and its most recently submitted orders."""
+"""The caller's portfolio, with its positions and its most recently submitted orders: at its last
+mark, overlaid with what Alpaca values the account at now when it can be asked (`live_at`,
+dashboard/live.jac)."""
 def:priv get_portfolio -> PortfolioView {
     team = my_portfolio();
     if team is None {
         return PortfolioView(name=AGENT_PORTFOLIO, mode="insight", started=False);
     }
-    return VIEWS.get(view_key(team, "portfolio"), portfolio_view, team);
+    return live_view(view_key(team, "live"), VIEWS.get(view_key(team, "portfolio"), portfolio_view, team), team);
 }
 
 """The team portfolio's daily equity beside both forward-test baselines."""
@@ -171,8 +174,32 @@ def refresh_job {
         VIEWS.put(view_key(team, "performance"), performance_view(team));
         VIEWS.put(view_key(team, "runs"), run_summaries(team));
         VIEWS.put(view_key(team, "run", ""), run_view(team, ""));
-        VIEWS.put(view_key(team, "specialists"), specialist_summaries(team));
+        refresh_specialists(team);
     }
+}
+
+# The runs the specialists view was last built from, by view key (see `refresh_specialists`).
+glob _SPECIALISTS_BUILT_FROM: dict[str, str] = {};
+
+"""What the specialists view depends on: each recent run's date, status, and when its votes were
+scored. Reading it touches only the run nodes."""
+def specialists_signature(portfolio: Portfolio) -> str {
+    runs = runs_by_day(portfolio);
+    return "|".join(f"{d}:{runs[d].status.value}:{runs[d].votes_scored_at}" for d in sorted(runs, reverse=True)[:SPECIALIST_RUNS]);
+}
+
+"""Keep the specialists view fresh, rebuilding it only when a run finishes or its votes are
+scored, so the job does not reread the newest votes every minute."""
+def refresh_specialists(team: Portfolio) {
+    key = view_key(team, "specialists");
+    signature = specialists_signature(team);
+    found = VIEWS.entries.get(key);
+    if found is not None and _SPECIALISTS_BUILT_FROM.get(key) == signature {
+        VIEWS.put(key, found.value);
+        return;
+    }
+    VIEWS.put(key, specialist_summaries(team));
+    _SPECIALISTS_BUILT_FROM[key] = signature;
 }
 
 # --- Portfolio --------------------------------------------------------------------------
@@ -379,26 +406,31 @@ def runs_by_day(portfolio: Portfolio) -> dict[str, Run] {
     return {r.run_date: r for r in [portfolio ->:Ran:->[?:Run]]};
 }
 
+"""Each role's votes and hit rate over the last SPECIALIST_RUNS runs, and its most recent votes.
+Counts come from each run's stored tally (analysis/scoring.jac `tally_run`); a run's votes are
+read only while a role it has votes from still lacks recent ones, or when it has no tally yet
+(today's run before the evening review). Reading every vote, thousands of nodes, held up every
+other request for seconds."""
 def specialist_summaries(portfolio: Portfolio) -> list[SpecialistSummaryView] {
     by_role = {s.value: SpecialistSummaryView(specialist=s.value) for s in SPECIALIST_ROLES};
     runs = runs_by_day(portfolio);
-    for day in sorted(runs, reverse=True)[:SPECIALIST_RUNS] {
-        for cov in sorted([c for c in [runs[day] ->:Covers:->[?:Coverage]]], key=lambda (c: Coverage) { c.ticker; }) {
-            for v in sorted([v for v in [cov ->:Voted:->[?:VoteRecord]]], key=lambda (v: VoteRecord) { (v.specialist.value, v.sample); }) {
-                row = by_role[v.specialist.value];
-                row.votes += 1;
-                result = hit(v);
-                if result is not None {
-                    row.scored += 1;
-                    if result { row.hits += 1; }
-                }
-                if len(row.recent) < RECENT_SPECIALIST_VOTES {
-                    row.recent.append(SpecialistVoteView(
-                        run_date=day, ticker=cov.ticker, sample=v.sample,
-                        stance=v.body.stance.value, confidence=v.body.confidence,
-                        rationale=v.body.rationale, scored_at=v.scored_at, hit=result
-                    ));
-                }
+    recent_days = sorted(runs, reverse=True)[:SPECIALIST_RUNS];
+    for row in by_role.values() {
+        row.runs = len(recent_days);
+    }
+    for day in recent_days {
+        tally = runs[day].specialist_tallies;
+        short = [s for (s, row) in by_role.items() if len(row.recent) < RECENT_SPECIALIST_VOTES];
+        if not tally or any(tally.get(s, [0])[0] > 0 for s in short) {
+            votes = recent_votes(by_role, day, runs[day]);
+            tally = tally or tally_votes(votes);
+        }
+        for (s, counts) in tally.items() {
+            row = by_role.get(s);
+            if row is not None and len(counts) == 3 {
+                row.votes += counts[0];
+                row.scored += counts[1];
+                row.hits += counts[2];
             }
         }
     }
@@ -406,6 +438,26 @@ def specialist_summaries(portfolio: Portfolio) -> list[SpecialistSummaryView] {
         row.hit_rate = row.hits / row.scored if row.scored else None;
     }
     return [by_role[s.value] for s in SPECIALIST_ROLES];
+}
+
+"""Read `run`'s votes in page order (by ticker, then role and sample), adding each to its role's
+recent votes until the role has RECENT_SPECIALIST_VOTES. Returns every vote read."""
+def recent_votes(by_role: dict[str, SpecialistSummaryView], day: str, run: Run) -> list[VoteRecord] {
+    read: list[VoteRecord] = [];
+    for cov in sorted([c for c in [run ->:Covers:->[?:Coverage]]], key=lambda (c: Coverage) { c.ticker; }) {
+        for v in sorted([v for v in [cov ->:Voted:->[?:VoteRecord]]], key=lambda (v: VoteRecord) { (v.specialist.value, v.sample); }) {
+            read.append(v);
+            row = by_role.get(v.specialist.value);
+            if row is not None and len(row.recent) < RECENT_SPECIALIST_VOTES {
+                row.recent.append(SpecialistVoteView(
+                    run_date=day, ticker=cov.ticker, sample=v.sample,
+                    stance=v.body.stance.value, confidence=v.body.confidence,
+                    rationale=v.body.rationale, scored_at=v.scored_at, hit=hit(v)
+                ));
+            }
+        }
+    }
+    return read;
 }
 
 def first_of[T](items: list[T]) -> T | None {

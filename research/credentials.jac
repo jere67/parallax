@@ -41,6 +41,11 @@ def enter_credentials(found: Credentials) -> Token {
     return _SCOPE.set(found);
 }
 
+"""Work on the server's own keys, even inside an owner's scope, until `leave_credentials`."""
+def enter_server_keys -> Token {
+    return _SCOPE.set(None);
+}
+
 def leave_credentials(token: Token) {
     _SCOPE.reset(token);
 }
