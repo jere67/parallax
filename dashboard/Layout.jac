@@ -1,5 +1,6 @@
 """The frame around every page of the app: the top bar with navigation, the portfolio's status,
 the theme switch, settings, and logging out; a banner when the graph holds demo history; and the disclaimer (TDD §9)."""
+import from "react" { useEffect }
 import from "@jac/runtime" { Link, Outlet, jacLogout, useLocation, useNavigate }
 import from "lucide-react" { BookOpen, ChartCandlestick, FileText, History, Newspaper, Settings, SlidersHorizontal, Target }
 import from dashboard.ui.brand { DISCLAIMER, REPO_URL, ThemeSwitch, Wordmark }
@@ -10,6 +11,19 @@ import from dashboard.ui.parts { StatusBadge }
 import from dashboard.ui.pwa { InstallHint, OfflineBanner, register_worker }
 
 glob CHARTS_URL: str = "https://www.tradingview.com/lightweight-charts/";
+
+"""The page an address shows, so moving between pages starts each at its top while moving within
+one keeps its place: a news story opens over the feed, and a stock's tabs share its header."""
+def:pub page_of(path: str) -> str {
+    parts = path.split("/");
+    if len(parts) > 2 and parts[2] == "news" {
+        return "/app/news";
+    }
+    if len(parts) > 3 and parts[2] == "stocks" {
+        return "/app/stocks/" + parts[3];
+    }
+    return path;
+}
 
 def NavLink(to: str, active: bool, children: any = None) -> JsxElement {
     tone = "text-text after:bg-accent" if active else "text-muted hover:text-text after:bg-transparent";
@@ -42,10 +56,20 @@ def:pub Layout -> JsxElement {
         } except Exception { }
     }
 
-    path = useLocation().pathname;
+    path: str = useLocation().pathname;
     nav = useNavigate();
+    # A link inside the app keeps the old page's scroll, so a new page would open part way down.
+    # A one-line effect compiles to an arrow that returns its value, which React would later call
+    # as the effect's cleanup, so the scroll is a function that returns nothing.
+    page = page_of(path);
+    def to_top {
+        window.scrollTo(0, 0);
+    }
+    useEffect(lambda {
+        to_top();
+    }, [page]);
     # The screener's table has more columns than the other pages have room for.
-    width = "max-w-[1560px]" if path.startsWith("/app/screener") else "max-w-[1200px]";
+    width = "max-w-[1560px]" if path.startswith("/app/screener") else "max-w-[1200px]";
 
     def leave {
         jacLogout();
@@ -58,13 +82,13 @@ def:pub Layout -> JsxElement {
                 <Wordmark to="/app"/>
                 <nav className="hidden shrink-0 items-center gap-4 lg:flex xl:gap-6">
                     <NavLink to="/app" active={path == "/app"}>Portfolio</NavLink>
-                    <NavLink to="/app/results" active={path.startsWith("/app/results")}>Results</NavLink>
-                    <NavLink to="/app/screener" active={path.startsWith("/app/screener") or path.startsWith("/app/stocks")}>Screener</NavLink>
-                    <NavLink to="/app/news" active={path.startsWith("/app/news")}>News</NavLink>
-                    <NavLink to="/app/runs" active={path.startsWith("/app/runs")}>Runs</NavLink>
-                    <NavLink to="/app/policy" active={path.startsWith("/app/policy")}>Policy</NavLink>
-                    <NavLink to="/app/reports" active={path.startsWith("/app/reports")}>Reports</NavLink>
-                    <NavLink to="/app/specialists" active={path.startsWith("/app/specialists")}>Specialists</NavLink>
+                    <NavLink to="/app/results" active={path.startswith("/app/results")}>Results</NavLink>
+                    <NavLink to="/app/screener" active={path.startswith("/app/screener") or path.startswith("/app/stocks")}>Screener</NavLink>
+                    <NavLink to="/app/news" active={path.startswith("/app/news")}>News</NavLink>
+                    <NavLink to="/app/runs" active={path.startswith("/app/runs")}>Runs</NavLink>
+                    <NavLink to="/app/policy" active={path.startswith("/app/policy")}>Policy</NavLink>
+                    <NavLink to="/app/reports" active={path.startswith("/app/reports")}>Reports</NavLink>
+                    <NavLink to="/app/specialists" active={path.startswith("/app/specialists")}>Specialists</NavLink>
                 </nav>
                 <div className="ml-auto flex items-center gap-3">
                     {if info is not None and info.started {
@@ -80,7 +104,7 @@ def:pub Layout -> JsxElement {
                         </span>
                     }}
                     <ThemeSwitch/>
-                    <Link to="/app/settings" aria-label="Settings" title="Settings" className={"press grid size-11 place-items-center rounded-md hover:bg-hover hover:text-text lg:size-8 " + ("text-accent" if path.startsWith("/app/settings") else "text-muted")}>
+                    <Link to="/app/settings" aria-label="Settings" title="Settings" className={"press grid size-11 place-items-center rounded-md hover:bg-hover hover:text-text lg:size-8 " + ("text-accent" if path.startswith("/app/settings") else "text-muted")}>
                         <Settings size={16} strokeWidth={1.75} aria-hidden="true"/>
                     </Link>
                     <button type="button" onClick={leave} className="press hidden h-8 rounded-md px-2 text-[12px] font-medium text-muted hover:bg-hover hover:text-text lg:block">Log out</button>
@@ -114,12 +138,12 @@ def:pub Layout -> JsxElement {
         </footer>
         <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
             <TabLink to="/app" label="Portfolio" active={path == "/app"}><BookOpen size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
-            <TabLink to="/app/screener" label="Screener" active={path.startsWith("/app/screener") or path.startsWith("/app/stocks")}><ChartCandlestick size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
-            <TabLink to="/app/news" label="News" active={path.startsWith("/app/news")}><Newspaper size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
-            <TabLink to="/app/runs" label="Runs" active={path.startsWith("/app/runs")}><History size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
-            <TabLink to="/app/policy" label="Policy" active={path.startsWith("/app/policy")}><SlidersHorizontal size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
-            <TabLink to="/app/reports" label="Reports" active={path.startsWith("/app/reports")}><FileText size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
-            <TabLink to="/app/results" label="Results" active={path.startsWith("/app/results") or path.startsWith("/app/specialists")}><Target size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app/screener" label="Screener" active={path.startswith("/app/screener") or path.startswith("/app/stocks")}><ChartCandlestick size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app/news" label="News" active={path.startswith("/app/news")}><Newspaper size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app/runs" label="Runs" active={path.startswith("/app/runs")}><History size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app/policy" label="Policy" active={path.startswith("/app/policy")}><SlidersHorizontal size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app/reports" label="Reports" active={path.startswith("/app/reports")}><FileText size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
+            <TabLink to="/app/results" label="Results" active={path.startswith("/app/results") or path.startswith("/app/specialists")}><Target size={19} strokeWidth={1.75} aria-hidden="true"/></TabLink>
         </nav>
     </div>
 }

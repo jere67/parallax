@@ -58,6 +58,18 @@ test("portfolio: headline figures, equity curve, positions, and activity", async
   await fitsWidth(page);
 });
 
+test("moving to another page starts it at the top, not where the last page was scrolled", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/app");
+  await expect(page.getByRole("heading", { name: "Activity" })).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
+  await page.locator("a[href='/app/runs']:visible").first().click();
+  await expect(page).toHaveURL(/\/app\/runs$/);
+  await expect(page.getByRole("heading", { name: "Shortlist" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+});
+
 test("run: the latest run's shortlist leads to a decision's full trail", async ({ page }) => {
   await logIn(page);
   await page.goto("/app/runs");
