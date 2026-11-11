@@ -28,6 +28,8 @@ glob VERDICTS: dict[str, tuple[str, str]] = {
     "no data": ("No data yet", TONE_QUIET)
 };
 glob SHORT_LABELS: dict[str, str] = {"team": "Your agent", "equal_weight": "Equal-weight", "spy": "SPY"};
+# How a comparison names its baseline mid-sentence.
+glob AGAINST: dict[str, str] = {"equal_weight": "the equal-weight shortlist", "spy": "SPY buy-and-hold"};
 
 """An estimate as a signed percentage, with its interval when it has one."""
 def ranged_pct(e: EstimateData | None, digits: int = 2) -> str {
@@ -59,7 +61,7 @@ def Verdict(word: str) -> JsxElement {
 def ComparisonRow(c: ComparisonData) -> JsxElement {
     <div className="flex flex-col gap-2 border-t border-line px-4 py-4 first:border-t-0 sm:flex-row sm:items-center sm:gap-6">
         <div className="min-w-0 sm:w-56">
-            <div className="text-[13px] text-muted">{"Against " + c.label}</div>
+            <div className="text-[13px] text-muted">{"Against " + AGAINST.get(c.baseline, c.label)}</div>
             <div className={"num mt-1 text-[22px] font-medium leading-7 " + tone(c.excess_return.value)}>{signed_pct(c.excess_return.value)}</div>
         </div>
         <dl className="num grid min-w-0 flex-1 grid-cols-1 gap-1 text-[12px] text-muted sm:grid-cols-2">
@@ -76,20 +78,20 @@ def SeriesTable(series: list[SeriesData]) -> JsxElement {
             <thead>
                 <tr>
                     <th className={TH}></th>
-                    {for s in series { <th key={s.key} className={TH_NUM}>{SHORT_LABELS.get(s.key, s.label)}</th> }}
+                    {for s in series { <th key={s.key} className={TH_NUM + " max-sm:whitespace-normal"}>{SHORT_LABELS.get(s.key, s.label)}</th> }}
                 </tr>
             </thead>
             <tbody>
                 <tr className={ROW}>
-                    <td className={TD + " text-muted"}>Total return</td>
+                    <td className={TD + " text-muted max-sm:whitespace-normal"}>Total return</td>
                     {for s in series { <td key={s.key} className={TD_NUM + " " + tone(s.total_return)}>{signed_pct(s.total_return)}</td> }}
                 </tr>
                 <tr className={ROW}>
-                    <td className={TD + " text-muted"}>Sharpe</td>
+                    <td className={TD + " text-muted max-sm:whitespace-normal"}>Sharpe</td>
                     {for s in series { <td key={s.key} className={TD_NUM}>{num(s.sharpe, 2)}</td> }}
                 </tr>
                 <tr className={ROW}>
-                    <td className={TD + " text-muted"}>Max drawdown</td>
+                    <td className={TD + " text-muted max-sm:whitespace-normal"}>Max drawdown</td>
                     {for s in series { <td key={s.key} className={TD_NUM}>{pct(s.max_drawdown)}</td> }}
                 </tr>
             </tbody>
@@ -172,7 +174,7 @@ def Specialists(rows: list[CalibrationData]) -> JsxElement {
                     <thead>
                         <tr>
                             <th className={TH}>Specialist</th>
-                            <th className={TH_NUM}>Votes</th>
+                            <th className={TH_NUM + " max-sm:hidden"}>Votes</th>
                             <th className={TH_NUM}>Confidence</th>
                             <th className={TH_NUM}>Hit rate</th>
                             <th className={TH_NUM}>Gap</th>
@@ -181,13 +183,16 @@ def Specialists(rows: list[CalibrationData]) -> JsxElement {
                     <tbody>
                         {for c in rows {
                             <tr key={c.specialist} className={ROW}>
-                                <td className={TD}>{title(c.specialist)}</td>
-                                <td className={TD_NUM}>{str(c.votes)}</td>
+                                <td className={TD}>
+                                    {title(c.specialist)}
+                                    <span className="num block text-[11px] text-faint sm:hidden">{count(c.votes, "vote")}</span>
+                                </td>
+                                <td className={TD_NUM + " max-sm:hidden"}>{str(c.votes)}</td>
                                 <td className={TD_NUM}>{pct(c.confidence, 0)}</td>
                                 <td className={TD_NUM}>
                                     {pct(c.hit_rate.value, 0)}
                                     {if c.hit_rate.lo is not None {
-                                        <span className="text-faint">{" (" + pct(c.hit_rate.lo, 0) + " to " + pct(c.hit_rate.hi, 0) + ")"}</span>
+                                        <span className="text-faint max-sm:block max-sm:text-[11px]">{" (" + pct(c.hit_rate.lo, 0) + " to " + pct(c.hit_rate.hi, 0) + ")"}</span>
                                     }}
                                 </td>
                                 <td className={TD_NUM + (" text-up" if c.within_target else (" text-down" if c.within_target is not None else ""))}>{gap_text(c)}</td>
@@ -216,7 +221,7 @@ def Operations(r: ReliabilityData, o: OperationsData) -> JsxElement {
             <Figure label="Complete runs" value={pct(r.share, 0)} sub={str(r.complete) + " of " + count(r.sessions, "session")} tone_={"text-up" if r.share is not None and r.share >= 0.98 else "text-text"}/>
             <Figure label="Gate bypasses" value={str(o.bypasses)} sub="orders outside the gate" tone_={"text-up" if o.bypasses == 0 else "text-down"}/>
             <Figure label="Run time" value={minutes_text(o.latency_median_minutes)} sub={"median, longest " + minutes_text(o.latency_max_minutes)}/>
-            <Figure label="Model requests" value={num(o.requests_per_run, 0)} sub={"per run, peak day " + str(o.peak_daily_requests) + " of " + str(o.daily_cap)}/>
+            <Figure label="Model requests" value={num(o.requests_per_run, 0)} sub={("per run, peak day " + str(o.peak_daily_requests) + " of " + str(o.daily_cap)) if o.peak_daily_requests > 0 else ("per run, at most " + str(o.requests_max_run))}/>
         </div>
         {if len(r.missed) > 0 or len(r.incomplete) > 0 {
             <ul className="num mt-4 flex flex-col gap-1 border-t border-line pt-3 text-[12px] text-muted">

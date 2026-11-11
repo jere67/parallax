@@ -100,7 +100,7 @@ test("results: the forward test against both baselines, and where the result cam
   await logIn(page, "results");
   await page.goto("/app/results");
   await expect(page.getByRole("heading", { level: 1, name: "Results" })).toBeVisible();
-  await expect(page.getByText("Against Equal-weight shortlist")).toBeVisible();
+  await expect(page.getByText("Against the equal-weight shortlist")).toBeVisible();
   await expect(page.getByText("Against SPY buy-and-hold")).toBeVisible();
   for (const name of ["Against the baselines", "Screen", "Arbiter", "Specialist calibration", "Reliability"]) {
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
@@ -639,7 +639,7 @@ test("mobile: the bottom tabs reach each page, and targets are a thumb's size", 
   await logIn(page);
   await page.goto("/app");
   const tabs = page.getByRole("navigation", { name: "Main" });
-  if (page.viewportSize().width >= 768) {
+  if (page.viewportSize().width >= 1024) {
     await expect(tabs).toBeHidden();
     return;
   }
