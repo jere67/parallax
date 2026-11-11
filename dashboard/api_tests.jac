@@ -253,3 +253,21 @@ test "the refresh job rebuilds the specialists view only when a run finishes or 
         fake.stop();
     }
 }
+
+test "the specialists view counts runs from their stored tallies and reads votes only for recent ones" {
+    fake = FakeBroker();
+    try {
+        (portfolio, first, _) = traded(fake);
+        # A tally stands for the run's votes: its counts are used as they are.
+        first.specialist_tallies = {"technical": [9, 4, 3]};
+        technical = {s.specialist: s for s in specialist_summaries(portfolio)}["technical"];
+        assert (technical.votes, technical.scored, technical.hits) == (9, 4, 3);
+        assert [(v.run_date, v.sample) for v in technical.recent] == [(DAY1, 0), (DAY1, 1)];
+        # A run whose tally has no votes from a role still short of recent ones is not read at all.
+        first.specialist_tallies = {"flow": [0, 0, 0]};
+        technical = {s.specialist: s for s in specialist_summaries(portfolio)}["technical"];
+        assert technical.votes == 0 and technical.recent == [];
+    } finally {
+        fake.stop();
+    }
+}

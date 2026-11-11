@@ -12,7 +12,7 @@ close is missing, the vote is marked scored with no excess return, so it is neve
 import statistics;
 import from datetime { date, datetime, timedelta }
 import from analysis.consensus { sign, signed_score }
-import from models.graph { Covers, Portfolio, Ran, Run, RunStatus, VoteRecord, Voted }
+import from models.graph { Coverage, Covers, Portfolio, Ran, Run, RunStatus, VoteRecord, Voted }
 import from analysis.history { History }
 import from research.alpaca { bars_final }
 
@@ -77,6 +77,36 @@ def records(votes: list[VoteRecord]) -> dict[str, SpecialistRecord] {
     return found;
 }
 
+"""Each specialist's votes in `votes` as [votes, scored directional votes, hits]: what a run's
+`specialist_tallies` holds, so the Specialists page can count a run without reading its votes."""
+def tally_votes(votes: list[VoteRecord]) -> dict[str, list[int]] {
+    found: dict[str, list[int]] = {};
+    for v in votes {
+        row = found.setdefault(v.specialist.value, [0, 0, 0]);
+        row[0] += 1;
+        result = hit(v);
+        if result is not None {
+            row[1] += 1;
+            if result {
+                row[2] += 1;
+            }
+        }
+    }
+    return found;
+}
+
+def votes_of(run: Run) -> list[VoteRecord] {
+    return [v for c in [run ->:Covers:->[?:Coverage]] for v in [c ->:Voted:->[?:VoteRecord]]];
+}
+
+"""Store `run`'s tally from its votes, writing only when it changed."""
+def tally_run(run: Run, votes: list[VoteRecord] | None = None) {
+    tally = tally_votes(votes if votes is not None else votes_of(run));
+    if tally != run.specialist_tallies {
+        run.specialist_tallies = tally;
+    }
+}
+
 obj ScoringReport {
     has scored: int = 0,
         unscorable: int = 0,
@@ -87,19 +117,20 @@ obj ScoringReport {
     }
 }
 
-"""Score every vote on `portfolio`'s runs whose window has closed by `now`. Each vote is
-scored once."""
+"""Score every vote on `portfolio`'s runs whose window has closed by `now`, then refresh each
+run's `specialist_tallies` from the votes this pass already read. Each vote is scored once."""
 def score_votes(portfolio: Portfolio, now: datetime, history: History = History()) -> ScoringReport {
-    found = ScoringReport();
-    pending: list[tuple[str, VoteRecord]] = [];
-    for run in [portfolio ->:Ran:->[?:Run]] {
-        if run.status == RunStatus.SKIPPED {
-            continue;
-        }
-        for cov in [run ->:Covers:->] {
-            pending.extend((run.run_date, v) for v in [cov ->:Voted:->[?:VoteRecord]] if not v.scored_at);
-        }
+    walked = [(run, votes_of(run)) for run in [portfolio ->:Ran:->[?:Run]] if run.status != RunStatus.SKIPPED];
+    found = score_walked(walked, now, history);
+    for (run, votes) in walked {
+        tally_run(run, votes);
     }
+    return found;
+}
+
+def score_walked(walked: list[tuple[Run, list[VoteRecord]]], now: datetime, history: History) -> ScoringReport {
+    found = ScoringReport();
+    pending = [(run.run_date, v) for (run, votes) in walked for v in votes if not v.scored_at];
     if not pending {
         return found;
     }
