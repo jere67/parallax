@@ -88,7 +88,7 @@ test "specialist summaries count scored directional votes and link recent output
         by_role = {s.specialist: s for s in specialist_summaries(portfolio)};
         assert len(by_role) == 5;
         technical = by_role["technical"];
-        assert (technical.votes, technical.scored, technical.hits, technical.hit_rate) == (2, 2, 2, 1.0);
+        assert (technical.runs, technical.votes, technical.scored, technical.hits, technical.hit_rate) == (1, 2, 2, 2, 1.0);
         assert [(v.run_date, v.ticker, v.sample) for v in technical.recent] == [(DAY1, "AAA", 0), (DAY1, "AAA", 1)];
         fundamentals = by_role["fundamentals"];
         assert (fundamentals.votes, fundamentals.scored, fundamentals.hits, fundamentals.hit_rate) == (2, 1, 0, 0.0);

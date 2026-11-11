@@ -382,7 +382,11 @@ def runs_by_day(portfolio: Portfolio) -> dict[str, Run] {
 def specialist_summaries(portfolio: Portfolio) -> list[SpecialistSummaryView] {
     by_role = {s.value: SpecialistSummaryView(specialist=s.value) for s in SPECIALIST_ROLES};
     runs = runs_by_day(portfolio);
-    for day in sorted(runs, reverse=True)[:SPECIALIST_RUNS] {
+    recent_days = sorted(runs, reverse=True)[:SPECIALIST_RUNS];
+    for row in by_role.values() {
+        row.runs = len(recent_days);
+    }
+    for day in recent_days {
         for cov in sorted([c for c in [runs[day] ->:Covers:->[?:Coverage]]], key=lambda (c: Coverage) { c.ticker; }) {
             for v in sorted([v for v in [cov ->:Voted:->[?:VoteRecord]]], key=lambda (v: VoteRecord) { (v.specialist.value, v.sample); }) {
                 row = by_role[v.specialist.value];

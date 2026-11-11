@@ -246,10 +246,12 @@ obj SpecialistVoteView {
         hit: bool | None = None;
 }
 
-"""One role's record over the most recent runs. Only scored directional votes count as hits."""
+"""One role's record over the most recent runs (`runs` of them). Only scored directional votes
+count as hits."""
 obj SpecialistSummaryView {
     has specialist: str;
-    has votes: int = 0,
+    has runs: int = 0,
+        votes: int = 0,
         scored: int = 0,
         hits: int = 0,
         hit_rate: float | None = None,
