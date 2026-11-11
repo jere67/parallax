@@ -225,12 +225,38 @@ def team_trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = T
     }
 }
 
+# The SQLSTATEs the runtime replays a unit of work on (jaclang's session, `run_request`).
+glob CONFLICT_CODES: set[str] = {"40001", "40P01", "55P03", "08006"};
+
+"""True when `e`, or an error it came from, is the database asking for a retry: a concurrent
+transaction won. The runtime then rolls the whole firing back and replays it, which is safe
+because every order's client ID is fixed by the run and the position, so a replay finds the
+orders the first attempt placed (TDD §8, idempotency)."""
+def db_conflict(e: BaseException) -> bool {
+    cur: BaseException | None = e;
+    for _ in range(8) {
+        if cur is None {
+            return False;
+        }
+        for arg in cur.args {
+            if isinstance(arg, dict) and arg.get("C") in CONFLICT_CODES {
+                return True;
+            }
+        }
+        cur = cur.__cause__ or cur.__context__;
+    }
+    return False;
+}
+
 """`trading_tick`, with a failure logged and recorded on the day's run, for the next tick to try
-again."""
+again. A database conflict is not a failure: it goes up to the runtime, which replays the firing."""
 def guarded_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps) -> list[str] {
     try {
         return trading_tick(portfolio, now, deps);
     } except Exception as e {
+        if db_conflict(e) {
+            raise;
+        }
         reason = redact(f"{type(e).__name__}: {str(e)[:300]}");
         LOG.error("trading tick failed: %s", reason);
         run = run_for(portfolio, now.astimezone(NEW_YORK).date().isoformat());
