@@ -61,8 +61,11 @@ def decisions_of(run: Run | None) -> list[Decision] {
 
 test "a run whose every request is refused stops at its deadline and says why" {
     (outcome, took) = refused_run(1.0);
-    # The panel's refused votes would go on for the whole panel; at the deadline they stop.
-    assert took < 2.5, f"the run took {took:.1f}s past a 1s deadline, {len(fake.requests)} requests";
+    # Without the deadline the panel's refused votes go on for the whole panel: 127 requests and
+    # 11 seconds before #240. The request count is the check, since a slower machine sends fewer
+    # requests, not more; the time bound is loose so a slow CI runner does not trip it.
+    assert len(fake.requests) < 60, f"{len(fake.requests)} requests in {took:.1f}s against a 1s deadline";
+    assert took < 6.0, f"the run took {took:.1f}s against a 1s deadline, {len(fake.requests)} requests";
     assert outcome.status == RunStatus.FALLBACK;
     run = outcome.run;
     assert run is not None;
@@ -78,7 +81,8 @@ test "a run whose every request is refused stops at its deadline and says why" {
 test "a cutoff that comes before the deadline stops the run, and the summary names it" {
     cutoff = datetime.now(NEW_YORK) + timedelta(seconds=1);
     (outcome, took) = refused_run(5400.0, cutoff=cutoff);
-    assert took < 2.5, f"the run took {took:.1f}s past a cutoff 1s away";
+    assert len(fake.requests) < 60, f"{len(fake.requests)} requests in {took:.1f}s against a cutoff 1s away";
+    assert took < 6.0, f"the run took {took:.1f}s against a cutoff 1s away";
     run = outcome.run;
     assert run is not None and outcome.status == RunStatus.FALLBACK;
     clock = f"{cutoff.hour % 12 or 12}:{cutoff.minute:02d} {'AM' if cutoff.hour < 12 else 'PM'}";
