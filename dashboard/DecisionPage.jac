@@ -145,6 +145,9 @@ def Hero(trail: TrailData) -> JsxElement {
                 </div>
             }}
         </div>
+        {if d is not None {
+            <p className="text-[12px] text-muted">Conviction measures panel strength: the absolute weighted vote score times agreement. It is not a chance of profit.</p>
+        }}
         {if d is not None and d.thesis {
             <p className="max-w-[680px] text-[15px] leading-6 text-pretty text-text">{d.thesis}</p>
         }}
