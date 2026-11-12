@@ -349,3 +349,24 @@ test "a position's entry and opening date reach the policy's rules" {
         stubs.restore();
     }
 }
+
+"""Holds with no vote behind them are not a panel's verdict, so a run where no specialist answered
+says why, whatever the Orchestrator claimed (launch guide: failures stay visible)."""
+test "a run where no model answers is a fallback that says the models were unavailable" {
+    outcome = run_day(Stubs(models_down=True), team(), scripted_driver);
+    assert outcome.status == RunStatus.FALLBACK;
+    run = outcome.run;
+    assert run is not None and run.status == RunStatus.FALLBACK;
+    assert run.summary.startswith("Models unavailable: no specialist answered for any of the 2 tickers (");
+    assert run.summary.endswith("so every ticker holds and no new position was opened.");
+    assert {t: d.action for (t, d) in decisions_of(run).items()} == {"AAPL": TradeAction.HOLD, "MSFT": TradeAction.HOLD};
+    session = outcome.session;
+    assert session is not None and any(a.startswith("models unavailable: ") for a in session.actions);
+}
+
+test "a run whose request budget is spent before the panel says so, not that the models were down" {
+    outcome = run_day(Stubs(provider_left=0), team(), scripted_driver);
+    run = outcome.run;
+    assert run is not None and run.status == RunStatus.FALLBACK;
+    assert run.summary.startswith("Request budget spent: no specialist answered for any of the 2 tickers (");
+}

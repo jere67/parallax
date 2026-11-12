@@ -31,19 +31,20 @@ Integration tests that need a real server are in `tests/`.
 
 | Folder | Test files | What they cover |
 | --- | --- | --- |
-| `research/` | 13 | Collectors against recorded fixtures, the screener, indicators, briefs, rate limits |
+| `research/` | 14 | Collectors against recorded fixtures, the screener, indicators, briefs, rate limits |
 | `action/` | 7 | Sizing, the risk gate (with property tests), the executor, reconciliation, baselines, insight cards |
-| `run/` | 8 | The Run Guard, the Orchestrator loop, the trading day, scheduled jobs, the manual run |
-| `tests/` | 10 | Endpoints served, private visibility, the dashboard endpoints through a real server |
+| `run/` | 10 | The Run Guard, the Orchestrator loop, the trading day, scheduled jobs, the manual run, the health endpoint |
+| `tests/` | 14 | Endpoints served, private visibility, the dashboard endpoints through a real server, the deploy settings, demo data never reaching a broker, the backtest harness, the Action exit run, and the rehearsal |
+| `market/` | 10 | The market pages' data: listings, prices, company figures, queries, refreshes |
 | `agents/` | 6 | Model roles, research agents, specialists, the Arbiter |
-| `dashboard/` | 5 | View building, the news feed, the read cache, demo history, number and time formatting |
-| `analysis/` | 3 | The consensus engine and vote scoring |
+| `dashboard/` | 8 | View building, the news feed, the read cache, demo history, number and time formatting, screener ranges and addresses |
+| `analysis/` | 5 | The consensus engine, vote scoring, policies, the evaluation, and the final report |
 | `models/` | 2 | The graph and the agents' output types |
 | `policy/` | 4 | The assistant's edits, the figures rules read, replay, and saved versions |
 | `accounts/` | 1 | Sealing a user's keys |
 | `reports/` | 1 | How many requests a report may spend |
 
-In all, 60 test files hold 482 tests.
+In all, about 80 test files hold over 600 tests.
 
 ### Property tests
 
@@ -59,6 +60,19 @@ See [Risk gate](/system/risk-gate).
 | `tests/fakes/openrouter.jac` (`FakeOpenRouter`) | OpenRouter's chat API, from a script of answers, with delays for timeout tests. |
 | `tests/fakes/source_server.jac` (`FakeSource`) | Every data source, replaying recorded fixtures. |
 | `run/stubs.jac` | The run layer's collectors, calendar, budget check, and agents, so a full run can be tested in one process. |
+
+### The rehearsal
+
+`tests/runs/rehearsal_tests.jac` is the launch rehearsal, run on every commit with no network.
+It trades three sessions on the fake broker, with two things going wrong on purpose: one morning every model is down, and on another the risk gate refuses a buy for an earnings blackout.
+It checks that:
+
+- every order traces back through an approved gate check to its decision, the run's votes, and an order ID that names the same day and ticker;
+- the refused buy is recorded with its rule, and no order is sent for it;
+- the day the models are down is a fallback that says so, sends no order, and still lets the broker's stops close a losing position;
+- the stored evaluation counts that day as incomplete, and the report built from it prints the same snapshot ID and rebuilds byte for byte.
+
+The live version of the same flow runs each weekday morning; see [Starting a run by hand](/guide/manual-run).
 
 ### Recording fixtures
 

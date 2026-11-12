@@ -30,7 +30,7 @@ import from action.executor { MarketView, open_positions }
 import from action.fixtures { broker_for, market, team }
 import from action.reconcile { marks_of }
 import from analysis.history { History, bar }
-import from models.graph { Coverage, Covers, Decided, Decision, Order, PortfolioMode, Run, Sent, VoteRecord, Voted }
+import from models.graph { Coverage, Covers, Decided, Decision, Order, Portfolio, PortfolioMode, Run, Sent, VoteRecord, Voted }
 import from research.alpaca { Bar, MarketDay }
 import from run.guard { NEW_YORK, RunSession, daily_run }
 import from run.stubs { Stubs, calendar_day }
@@ -91,7 +91,8 @@ obj ExitRun {
         votes_scored: int = 0,
         votes_total: int = 0,
         baselines: dict[str, list[str]] = {},
-        baseline_equity: dict[str, dict[str, float]] = {};
+        baseline_equity: dict[str, dict[str, float]] = {},
+        portfolio: Portfolio | None = None;
 
     def passed -> bool {
         return len(self.days) == len(DAYS) and all(d.clean() for d in self.days);
@@ -149,7 +150,12 @@ def market_events(fake: FakeBroker, day: str, hhmm: str) {
         fake.set_price(s, price);
     }
     for (ref, qty, price) in FILLS.get(day, {}).get(hhmm, []) {
-        fake.fill(ref, qty, price);
+        # A variant run may not have sent the order, or have sent fewer shares, so the script
+        # fills only what is working.
+        found = fake.find(ref);
+        if found is not None and found.working() {
+            fake.fill(ref, qty, price);
+        }
     }
     if hhmm == "16:00" {
         fake.close_session();
@@ -176,8 +182,12 @@ def decisions_of(run: Run) -> dict[str, str] {
     return found;
 }
 
-"""Simulate the three sessions on a fresh fake account and a fresh team portfolio."""
-def exit_run -> ExitRun {
+"""Simulate the three sessions on a fresh fake account and a fresh team portfolio. A variant sets
+`models_down` to a day whose run makes no model request, as when every free model is down, and
+`earnings` to the sessions until each name's earnings, by day, for names the gate should hold
+back."""
+def exit_run(models_down: str = "", earnings: dict[str, dict[str, int]] | None = None) -> ExitRun {
+    due = earnings or {};
     found = ExitRun();
     fake = FakeBroker(now=ny(DAYS[0], "07:00").isoformat());
     saved = os.environ.get(FORWARD_TEST_ENV);
@@ -185,8 +195,9 @@ def exit_run -> ExitRun {
     try {
         deps = deps_for(fake);
         portfolio = team(PortfolioMode.INSIGHT, 0.0);
+        found.portfolio = portfolio;
         for day in DAYS {
-            stubs = Stubs(symbols=SYMBOLS, vote=VOTE);
+            stubs = Stubs(symbols=SYMBOLS, vote=VOTE, sessions_until=due.get(day, {}), models_down=day == models_down);
             stubs.install();
             try {
                 outcome = daily_run(portfolio, day, driver);

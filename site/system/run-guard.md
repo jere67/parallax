@@ -106,12 +106,20 @@ It never raises.
 | Status | When |
 | --- | --- |
 | `normal` | The Orchestrator itself submitted the decisions, before the deadline. |
-| `fallback` | Anything else: the Orchestrator raised, stopped early, or ran late, and the Run Guard finished the run. |
+| `fallback` | Anything else: the Orchestrator raised, stopped early, or ran late, and the Run Guard finished the run. Also any run where no specialist voted on any ticker, whatever the Orchestrator submitted. |
 | `skipped` | Not a trading day, or the day was already claimed. |
 | `failed` | Data collection failed. |
 | `running` | The run is in progress. |
 
 If no summary was written, the Run Guard writes one, such as "15 tickers decided by the Orchestrator: 2 BUY, 13 NO_ACTION. 241 model requests."
+
+A run where no specialist voted on any ticker holds everything, and a hold with no vote behind it is not the panel's verdict.
+So the Run Guard marks that run `fallback` and replaces its summary with the cause, which the Runs page shows:
+
+- **Models unavailable**, when the run still had requests left: every model was down or the kill switch was set. For example: "Models unavailable: no specialist answered for any of the 15 tickers (insufficient data: no complete market, fundamentals, news research), so every ticker holds and no new position was opened."
+- **Request budget spent**, when the run had used its requests before the panel.
+
+The evaluation counts such a run as incomplete ([Evaluation](/system/evaluation)).
 
 ## Recording the run
 
