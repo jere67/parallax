@@ -8,6 +8,7 @@ import from run.attempts { GRACE, attempt_for, begin, busy, finish, forget, reco
 import from run.guard { NEW_YORK, claim_run, rerunnable }
 import from run.jobs { morning_due }
 import from run.manual { manual_refusal }
+import run.orchestration as orchestration;
 
 def at(day: str, hhmm: str) -> datetime {
     return datetime.fromisoformat(f"{day}T{hhmm}:00").replace(tzinfo=NEW_YORK).astimezone(timezone.utc);
@@ -98,6 +99,29 @@ test "only a run that failed before deciding anything is claimed again, on the s
         decided.status = RunStatus.FAILED;
         assert not rerunnable(decided) and claim_run(other, day, rerun=True) is None;
     } finally {
+        forget(day);
+    }
+}
+
+def fall_over(*_args: object, **_kwargs: object) -> object {
+    raise RuntimeError("the market calendar fell over");
+}
+
+test "a run that fails before claiming its day is forgotten, so the next firing tries again" {
+    day = "2026-11-18";
+    original = orchestration.daily_run;
+    setattr(orchestration, "daily_run", fall_over);
+    try {
+        raised = False;
+        try {
+            orchestration.morning_run(day);
+        } except RuntimeError {
+            raised = True;
+        }
+        assert raised and attempt_for(day) is None and unsettled(at(day, "09:00")) == [];
+        assert morning_due(team(), at(day, "07:31").astimezone(NEW_YORK));
+    } finally {
+        setattr(orchestration, "daily_run", original);
         forget(day);
     }
 }

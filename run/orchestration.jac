@@ -47,8 +47,10 @@ def morning_run(run_day: str = "", cutoff: datetime | None = None, rerun: bool =
     begin(day, datetime.now(timezone.utc));
     try {
         outcome = daily_run(team_portfolio(), day, orchestrate, RunLimits(), team_policy(), cutoff, rerun);
-    } except Exception as e {
-        finish(day, datetime.now(timezone.utc), RunStatus.FAILED.value, f"the run stopped with {type(e).__name__}.");
+    } except Exception {
+        # `daily_run` never raises once it has claimed the day, so nothing was written: forget
+        # the attempt and let the schedule's next firing try again, as before #240.
+        forget(day);
         raise;
     }
     if outcome.run is None or outcome.status == RunStatus.SKIPPED {
