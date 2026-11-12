@@ -11,8 +11,10 @@ import from dashboard.ui.format {
     count,
     day_long,
     day_short,
+    gate_label,
     money,
     num,
+    order_label,
     pct,
     qty,
     signed,
@@ -116,7 +118,7 @@ def Fact(label: str, value: str, sub: str = "") -> JsxElement {
     <div className="min-w-0 bg-panel px-4 py-3">
         <Overline className="truncate">{label}</Overline>
         <div className="num mt-1 text-[15px] font-medium leading-5 text-pretty">{value}</div>
-        <div className="num mt-0.5 truncate text-[11px] text-faint">{sub or "\u00a0"}</div>
+        <div className="num mt-0.5 truncate text-[11px] text-faint" title={sub}>{sub or "\u00a0"}</div>
     </div>
 }
 
@@ -126,7 +128,7 @@ def Facts(run: RunData) -> JsxElement {
     tokens = run.prompt_tokens + run.completion_tokens;
     <section className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-3 lg:grid-cols-6" aria-label="Run">
         <Fact label="Covered" value={count(len(run.rows), "ticker")} sub={str(screened) + " from the screen"}/>
-        <Fact label="Risk gate" value={run.execution_note or MISSING}/>
+        <Fact label="Risk gate" value={run.execution_summary or MISSING} sub={run.execution_detail}/>
         <Fact label="Analysis" value={time_range_et(run.started_at, run.finished_at)}/>
         <Fact label="Executed" value={time_et(run.executed_at)}/>
         <Fact label="Reconciled" value={time_et(run.reconciled_at)}/>
@@ -203,7 +205,7 @@ def GateCell(row: CoverageData) -> JsxElement {
         return <span className="text-faint">-</span>;
     }
     <div className="flex flex-col items-start gap-0.5" title={row.rejected_by}>
-        <StatusBadge status={row.gate_outcome}/>
+        <StatusBadge status={row.gate_outcome} label={gate_label(row.gate_outcome)}/>
         <span className="num text-[11px] text-faint">
             {(qty(row.approved_qty) + " of " + qty(row.requested_qty)) if row.gate_outcome != "rejected" else row.rejected_by}
         </span>
@@ -221,7 +223,7 @@ def OrderCell(row: CoverageData) -> JsxElement {
             {" " + qty(row.filled_qty) + " of " + qty(row.order_qty)}
         </span>
         <span className="num text-[11px] text-faint">
-            {("@ " + money(row.filled_avg_price)) if row.filled_avg_price is not None else row.order_status.replace("_", " ")}
+            {("@ " + money(row.filled_avg_price)) if row.filled_avg_price is not None else (order_label(row.order_status, row.order_reject_reason) or row.order_status.replace("_", " ")).lower()}
         </span>
     </div>
 }
