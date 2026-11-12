@@ -14,11 +14,15 @@ the tick decides from New York time and the market calendar which Action step is
 (run/trading.jac). It trades only when the team portfolio is in auto mode. Neither job touches
 a team portfolio that holds the local demo history (dashboard/demo.jac).
 """
+import logging;
 import from datetime { datetime, timezone }
 import from models.graph { Portfolio }
+import from run.attempts { attempt_for, record_lost, unsettled }
 import from run.guard { NEW_YORK, find_team_portfolio, morning_window, scheduled_cutoff, team_portfolio }
 import from run.orchestration { morning_run }
 import from run.trading { run_for, team_trading_tick }
+
+glob LOG: logging.Logger = logging.getLogger("trading_agent.jobs");
 
 """True when the team's morning run should start at `local` (New York time): inside the morning
 window, with no run on record for the day. The record check keeps the firings after the run cheap,
@@ -27,7 +31,13 @@ def morning_due(portfolio: Portfolio | None, local: datetime) -> bool {
     if not morning_window(local) {
         return False;
     }
-    return portfolio is None or run_for(portfolio, local.date().isoformat()) is None;
+    day = local.date().isoformat();
+    # A run this process started for the day, still working or not yet saved, is never started
+    # again by the schedule: a lost one is recorded, and the admin decides (run/attempts.jac).
+    if attempt_for(day) is not None {
+        return False;
+    }
+    return portfolio is None or run_for(portfolio, day) is None;
 }
 
 """Fires every weekday minute from 11:00 to 14:59 UTC, which holds 7:30 to 9:15 a.m. New York time
@@ -37,6 +47,22 @@ def morning_job {
     local = datetime.now(NEW_YORK);
     if morning_due(find_team_portfolio(), local) {
         morning_run(local.date().isoformat(), scheduled_cutoff(local.date().isoformat()));
+    }
+}
+
+"""Records a team run the server could not save (run/attempts.jac). Fires every minute, and
+reads the graph only when a run's work ended over three minutes ago and its record is unseen."""
+@schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * *")
+def lost_run_job {
+    now = datetime.now(timezone.utc);
+    if not unsettled(now) {
+        return;
+    }
+    found = find_team_portfolio();
+    if found is not None {
+        for line in record_lost(found, now) {
+            LOG.warning("%s", line);
+        }
     }
 }
 

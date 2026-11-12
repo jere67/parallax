@@ -160,14 +160,36 @@ def count_requests(portfolio: Portfolio, day: str, requests: int) {
 glob _CLAIM_LOCK: threading.Lock = threading.Lock();
 
 """Claim the run for `run_day` on `portfolio`, or None when another firing already has it, so
-a duplicate scheduler tick does no work (TDD §4, idempotency)."""
-def claim_run(portfolio: Portfolio, run_day: str) -> Run | None {
+a duplicate scheduler tick does no work (TDD §4, idempotency). With `rerun`, a day whose run
+failed before deciding anything is claimed again on the same record (`rerunnable`)."""
+def claim_run(portfolio: Portfolio, run_day: str, rerun: bool = False) -> Run | None {
     with _CLAIM_LOCK {
-        if any(r.run_date == run_day for r in [portfolio ->:Ran:->[?:Run]]) {
-            return None;
+        found = [r for r in [portfolio ->:Ran:->[?:Run]] if r.run_date == run_day];
+        if found {
+            return reopen(found[0]) if rerun and rerunnable(found[0]) else None;
         }
         return public(portfolio +>:Ran():+> Run(run_date=run_day, started_at=utc_now().isoformat()));
     }
+}
+
+"""True for a run that failed before deciding anything, such as one the server could not save
+(run/attempts.jac): no ticker is covered, so no decision, card, or order hangs off it, and
+running the day again loses nothing."""
+def rerunnable(run: Run) -> bool {
+    return run.status == RunStatus.FAILED and not [run ->:Covers:->[?:Coverage]];
+}
+
+"""Start `run` over, keeping a line in its log on what the earlier attempt said."""
+def reopen(run: Run) -> Run {
+    stamp = datetime.now(NEW_YORK).strftime("%H:%M");
+    run.action_log = run.action_log + [f"{stamp} rerun: the day is run again after: {_clip(run.summary, MAX_REASON_CHARS)}"];
+    run.started_at = utc_now().isoformat();
+    run.status = RunStatus.RUNNING;
+    run.summary = "";
+    run.finished_at = "";
+    run.executed_at = "";
+    run.execution_note = "";
+    return run;
 }
 
 """The portfolio's open positions by ticker, each with the time stop its opening decision set,
@@ -659,13 +681,14 @@ def daily_run(
     driver: Callable[[RunSession], str] | None = None,
     limits: RunLimits = RunLimits(),
     in_force: tuple[Policy, int] = (Policy(), 0),
-    cutoff: datetime | None = None
+    cutoff: datetime | None = None,
+    rerun: bool = False
 ) -> RunOutcome {
     if portfolio.demo or demo_mode() {
         return RunOutcome(run_day=run_day, status=RunStatus.SKIPPED, note="the portfolio holds the demo history" if portfolio.demo else f"the server runs with {DEMO_ENV}=1, so no agent runs");
     }
     checked = preflight(run_day, portfolio, limits);
-    run = claim_run(portfolio, run_day);
+    run = claim_run(portfolio, run_day, rerun);
     if run is None {
         return RunOutcome(run_day=run_day, status=RunStatus.SKIPPED, preflight=checked, note=f"the run for {run_day} was already claimed");
     }
