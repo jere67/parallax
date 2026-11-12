@@ -107,8 +107,12 @@ jobs:
             sleep 1
           done
           curl -sf http://localhost:8000/healthz
-          curl -sf -X POST http://localhost:8000/function/health \
-            -H 'Content-Type: application/json' -d '{}' | grep -q '"status": "ok"'
+          health=$(curl -sf -X POST http://localhost:8000/function/health \
+            -H 'Content-Type: application/json' -d '{}')
+          echo "$health" | grep -q '"status": "ok"'
+          # This server is a demo that can send no order, and it says so.
+          echo "$health" | grep -q '"demo": true'
+          echo "$health" | grep -q '"orders": "off"'
           curl -sf http://localhost:8000/ | grep -q '<title>Parallax</title>'
           echo "Server booted and answered."
 
