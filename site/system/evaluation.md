@@ -34,7 +34,7 @@ The metrics follow [TDD §13](/design/tdd#metrics).
 | Screen spread | Each run's shortlisted names against every other S&P 500 member that day, both as ten-session excess returns over SPY, averaged over runs. |
 | Specialist calibration | Each specialist's mean stated confidence against its hit rate on scored BUY and SELL votes. The target is a gap within 10 percentage points. |
 | Arbiter value | The ten-session excess return of buys the Arbiter downgraded, had they been taken, beside the buys it confirmed. |
-| Reliability | Sessions with a run that finished (normally or in fallback) with a decision for every covered ticker, out of all trading sessions since the start. |
+| Reliability | Sessions with a run that finished (normally or in fallback) with a decision for every covered ticker and a vote from at least one specialist, out of all trading sessions since the start. A run that held everything because no specialist answered counts as incomplete. |
 | Operations | Risk-gate bypasses, each run's time from preflight to its decisions, and free-model requests per run and on the busiest day. |
 
 Run time stops at the decisions, not the orders, because orders wait for 9:45 a.m. by design; time to orders would measure the clock rather than the run.
