@@ -300,7 +300,8 @@ def arbiter_result(decisions: list[Decision]) -> ArbiterResult {
 }
 
 """Each trading session from the start through the last day: a run that finished normally or in
-fallback with a decision for every covered ticker is complete."""
+fallback with a decision for every covered ticker, and a vote from at least one specialist, is
+complete. Holds that no specialist voted on, as when every model was down, are not."""
 def reliability(sessions: list[str], runs: dict[str, Run]) -> Reliability {
     found = Reliability(sessions=len(sessions), missed=[], incomplete=[]);
     for day in sessions {
@@ -315,6 +316,8 @@ def reliability(sessions: list[str], runs: dict[str, Run]) -> Reliability {
             found.incomplete.append(f"{day}: {run.status.value}");
         } elif undecided {
             found.incomplete.append(f"{day}: {undecided} of {len(coverages)} tickers without a decision");
+        } elif coverages and not any([c ->:Voted:->[?:VoteRecord]] for c in coverages) {
+            found.incomplete.append(f"{day}: no specialist answered");
         } else {
             found.complete += 1;
         }

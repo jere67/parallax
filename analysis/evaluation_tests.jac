@@ -134,16 +134,19 @@ test "the Arbiter helped when the buys it blocked lagged SPY; confirmed buys are
     assert arbiter_result([]).verdict == "no data";
 }
 
-test "a session with no run is missed, and a failed run or an undecided ticker is incomplete" {
+test "a session with no run is missed, and a failed run, an undecided ticker, or a run no specialist voted in is incomplete" {
     portfolio = team();
     ok = finished_run(portfolio, "2026-11-02", [Call(ticker="AAA", action=TradeAction.HOLD)]);
+    [ok ->:Covers:->[?:Coverage]][0] +>:Voted():+> scored_vote(Specialist.NEWS, Stance.HOLD, 0.5, None);
     failed = finished_run(portfolio, "2026-11-03", [], status=RunStatus.FAILED);
     partial = finished_run(portfolio, "2026-11-05", [Call(ticker="AAA", action=TradeAction.HOLD)]);
     partial +>:Covers():+> Coverage(ticker="BBB", sector="Energy", reason=CoverageReason.SCREEN);
-    found = reliability(["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"], {r.run_date: r for r in [ok, failed, partial]});
-    assert found.sessions == 4 and found.complete == 1 and found.share == 0.25;
+    # Every model was down: the run held every ticker, but no specialist voted.
+    silent = finished_run(portfolio, "2026-11-06", [Call(ticker="AAA", action=TradeAction.HOLD)], status=RunStatus.FALLBACK);
+    found = reliability(["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06"], {r.run_date: r for r in [ok, failed, partial, silent]});
+    assert found.sessions == 5 and found.complete == 1 and found.share == 0.2;
     assert found.missed == ["2026-11-04"];
-    assert found.incomplete == ["2026-11-03: failed", "2026-11-05: 1 of 2 tickers without a decision"];
+    assert found.incomplete == ["2026-11-03: failed", "2026-11-05: 1 of 2 tickers without a decision", "2026-11-06: no specialist answered"];
 }
 
 test "from MIN_VOTES scored votes, calibration says whether the hit rate is within 10 points" {
