@@ -1,7 +1,7 @@
 """The market endpoints on a demo server's invented market: no source, and no argument trusted."""
 import os;
 import from market.api { get_stock_about, get_stock_history, screen_stocks }
-import from market.demo { DEMO_ENV }
+import from run.switches { DEMO_ENV }
 
 test "the endpoints answer a demo server without any source" {
     before = os.environ.get(DEMO_ENV);

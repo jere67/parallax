@@ -19,13 +19,12 @@ Sweeps of SEC and Finnhub pause around the morning run, which needs those source
 cache is skipped: it would keep gigabytes of bodies that are reduced to kilobytes here.
 """
 import logging;
-import os;
 import threading;
 import time;
 import from datetime { date, datetime, time as day_time, timedelta, timezone }
 import from market.analysts { AnalystRecord, analyst_record }
 import from market.companies { company_facts, company_record, submissions, wants_facts }
-import from market.demo { DEMO_ENV }
+import from run.switches { demo_mode }
 import from market.listings { build_listings, listed_tickers }
 import from market.prices { Quote, positive_bars, price_stats, snapshots }
 import from market.state { CompanySummary, EarningsDates, MarketState, STATE, summary_of }
@@ -372,7 +371,7 @@ def in_background(lock: threading.Lock, work: Callable[[], None]) {
 invented, so it has nothing to refresh."""
 @schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * *")
 def market_job {
-    if os.environ.get(DEMO_ENV, "").strip() == "1" {
+    if demo_mode() {
         return;
     }
     now = datetime.now(timezone.utc);

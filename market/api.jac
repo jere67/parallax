@@ -6,13 +6,13 @@ provider on a cache miss, under the shared allowance in market/ondemand.jac. A s
 covered stock is turned away before anything is fetched.
 """
 import logging;
-import os;
 import re;
 import threading;
 import from datetime { date, datetime, time as day_time, timezone }
 import from dashboard.api { get_portfolio, get_run }
 import from market.companies { CompanyRecord }
-import from market.demo { DEMO_ENV, demo_history, demo_intraday, demo_state }
+import from market.demo { demo_history, demo_intraday, demo_state }
+import from run.switches { demo_mode }
 import from market.ondemand { Busy, stock_description, stock_history, stock_intraday, stock_news }
 import from market.prices { technical_signals }
 import from market.query { as_count, as_flag, as_list, as_text, peers_of, read_filters, run_query }
@@ -72,7 +72,7 @@ glob HELD: Held = Held();
 glob _ROWS_LOCK: threading.Lock = threading.Lock();
 
 def is_demo -> bool {
-    return os.environ.get(DEMO_ENV, "").strip() == "1";
+    return demo_mode();
 }
 
 def today_et -> date {
