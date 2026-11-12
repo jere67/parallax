@@ -32,12 +32,16 @@ Step 6 below checks that the volume exists and that data survives a redeploy.
 **A plan.** A permanent deploy needs the Builder plan ($15 a month), which allows one.
 The free plan's sandbox deploy expires after 30 days.
 
-**Keys of the host's own.** Give the hosted server its own Alpaca paper account and its own OpenRouter key, not the ones the team's laptop server uses:
-
-- Two servers with the same Alpaca keys would each trade the same paper account.
-- Two servers with the same OpenRouter key would share one daily request cap, and the team's forward test would run out partway through a run.
-
+**An Alpaca account of the host's own.** Give the hosted server its own Alpaca paper account, not the one the team's laptop server uses.
+Two servers with the same Alpaca keys would each trade the same paper account.
 Alpaca lets one login hold several paper accounts, each with its own keys; a second login works too.
+
+**One morning run per OpenRouter account.** OpenRouter limits free-model requests per account, not per key: "Making additional accounts or API keys will not affect your rate limits" ([its limits page](https://openrouter.ai/docs/api/reference/limits)).
+Every key on one account shares its 20 free-model requests a minute, and buying credits raises only the daily cap, not that one.
+A new deploy runs its own team morning run at 7:30 a.m., the same time as the laptop server's.
+With keys on one account, the two runs split those 20 requests, and most of each panel's requests come back refused (HTTP 429).
+That happened on November 12, when something else used the account's requests from 8:06 a.m., and the laptop server's run was refused until its deadline ([#240](https://github.com/jere67/parallax/issues/240)).
+Give the hosted server a key from an OpenRouter account the laptop server does not use, or keep only one of the two servers up on weekday mornings.
 The team's forward test keeps running on the laptop server, where its history since November 2 is stored.
 A new deploy starts with an empty graph, and its team portfolio stays out of auto mode, so it places no orders of its own until someone sets `TRADING_AGENT_FORWARD_TEST_START`.
 
@@ -70,7 +74,7 @@ A new deploy starts with an empty graph, and its team portfolio stays out of aut
    | `PARALLAX_KEYS_SECRET` | Yes | `openssl rand -base64 48`. Seals each user's keys. Keep a copy: changing it makes every stored key unreadable. |
    | `JAC_SERVE_AUTH_SECRET` | Yes | `openssl rand -base64 48`. Signs sign-in tokens. Without it each deploy makes a new one, which signs everyone out. |
    | `ALPACA_API_KEY`, `ALPACA_SECRET_KEY` | Yes | The host's own paper account. The market pages read prices with them, and the admin's team agent trades with them. |
-   | `OPENROUTER_API_KEY` | Yes | The host's own key. The admin's team agent and the admin's policy assistant use it; every other account uses its own key. |
+   | `OPENROUTER_API_KEY` | Yes | A key from an OpenRouter account the laptop server does not use (see [Before you start](#before-you-start)). The admin's team agent and the admin's policy assistant use it; every other account uses its own key. |
    | `SEC_USER_AGENT` | Yes | A name and a contact email, such as `Parallax team@example.edu`. SEC EDGAR refuses requests without one. |
    | `FINNHUB_API_KEY` | No | Earnings dates and company news. Without it those sections stay empty. |
    | `PARALLAX_MAX_AGENTS` | No | How many accounts may have an agent. Defaults to 10. |

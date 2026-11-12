@@ -33,7 +33,7 @@ Integration tests that need a real server are in `tests/`.
 | --- | --- | --- |
 | `research/` | 14 | Collectors against recorded fixtures, the screener, indicators, briefs, rate limits |
 | `action/` | 7 | Sizing, the risk gate (with property tests), the executor, reconciliation, baselines, insight cards |
-| `run/` | 10 | The Run Guard, the Orchestrator loop, the trading day, scheduled jobs, the manual run, the health endpoint |
+| `run/` | 12 | The Run Guard, the run's deadline, a run the server could not save, the Orchestrator loop, the trading day, scheduled jobs, the manual run, the health endpoint |
 | `tests/` | 14 | Endpoints served, private visibility, the dashboard endpoints through a real server, the deploy settings, demo data never reaching a broker, the backtest harness, the Action exit run, and the rehearsal |
 | `market/` | 10 | The market pages' data: listings, prices, company figures, queries, refreshes |
 | `agents/` | 6 | Model roles, research agents, specialists, the Arbiter |
@@ -73,6 +73,13 @@ It checks that:
 - the stored evaluation counts that day as incomplete, and the report built from it prints the same snapshot ID and rebuilds byte for byte.
 
 The live version of the same flow runs each weekday morning; see [Starting a run by hand](/guide/manual-run).
+
+### A morning of refused requests
+
+`run/deadline_tests.jac` replays the morning of November 12 ([#240](https://github.com/jere67/parallax/issues/240)).
+Its model is the real `LimitedModel`, with its limiter and retries, against `FakeOpenRouter`, which answers the macro brief and the research and then refuses every request with HTTP 429.
+The run must stop within a second or so of a one-second deadline, or of a cutoff, hold every ticker with the deadline as its reason, and say that it ran out of time and that the models were refusing.
+`run/attempts_tests.jac` covers what happens when such a run cannot be saved: the trading tick waits, the run is recorded as failed, and only the admin runs the day again.
 
 ### Recording fixtures
 
