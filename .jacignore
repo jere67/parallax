@@ -1,0 +1,5 @@
+# Left out of a deploy upload: the docs site, the browser tests, and the evaluation write-ups.
+# The server reads none of them.
+site/
+e2e/
+docs/

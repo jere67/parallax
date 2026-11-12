@@ -72,7 +72,18 @@ select = ["all"]
 enabled = true
 
 [scale.admin]
+# Read once, when the admin is created. The fallback suits a laptop only: a deployed server must
+# set ADMIN_PASSWORD (scripts/check-deploy.sh fails while admin/changeme logs in).
 default_password = "${ADMIN_PASSWORD:-changeme}"
+
+[scale.kubernetes]
+# A deploy (JacHammer runs `jac scale deploy`) keeps the graph in a Postgres of its own on a
+# persistent volume, kept across redeploys. One pod only: the model rate limiter, the run guards,
+# and the view caches are module globals, so a second pod would double the provider requests the
+# limiter allows and hold a run guard the first pod cannot see.
+database_mode = "provision"
+min_replicas = 1
+max_replicas = 1
 
 [client.app_meta_data]
 title = "Parallax"
