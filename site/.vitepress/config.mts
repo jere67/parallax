@@ -24,7 +24,8 @@ const guide: DefaultTheme.SidebarItem[] = [
       { text: 'Introduction', link: '/guide/introduction' },
       { text: 'Quickstart', link: '/guide/quickstart' },
       { text: 'Configuration', link: '/guide/configuration' },
-      { text: 'Demo data', link: '/guide/demo-data' }
+      { text: 'Demo data', link: '/guide/demo-data' },
+      { text: 'Deploying to JacHammer', link: '/guide/deploy' }
     ]
   },
   {

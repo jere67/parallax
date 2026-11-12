@@ -16,7 +16,7 @@ Each agent returns a typed object that byLLM validates, and code checks what the
 
 | Setting | Value |
 | --- | --- |
-| Primary model | `openrouter/nvidia/nemotron-3-super-120b-a12b:free` |
+| Primary model | `openrouter/nvidia/nemotron-3.5-super-vl:free` |
 | Fallback model | `openrouter/dots-studio/dots-3-note-preview:free` |
 | Requests per minute | 18, paced evenly across every thread |
 | Free requests per UTC day | 1,000 |
