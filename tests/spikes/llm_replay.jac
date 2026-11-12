@@ -98,12 +98,12 @@ def state_path -> Path {
     return Path(os.environ.get("REPLAY_STATE", "llm-replay-state.json"));
 }
 
-def load_state -> dict {
+def load_state -> dict[str, any] {
     found = state_path();
     return json.loads(found.read_text()) if found.exists() else {"tickers": [], "days": [], "pairs": {}, "requests": 0, "seconds": 0.0, "screen_gaps": []};
 }
 
-def save_state(state: dict) {
+def save_state(state: dict[str, any]) {
     target = state_path();
     temp = target.with_suffix(".tmp");
     temp.write_text(json.dumps(state, indent=1));
@@ -172,7 +172,7 @@ def replay_sessions -> tuple[list[str], list[str]] {
 }
 
 """The screen's top `TICKERS` new picks as of the first day, from history-only data."""
-def pick_tickers(day: str) -> tuple[list[dict], list[str]] {
+def pick_tickers(day: str) -> tuple[list[dict[str, any]], list[str]] {
     budget = run_budget();
     gaps: list[str] = [];
     enter_as_of(decision_time(day));
@@ -188,7 +188,7 @@ def pick_tickers(day: str) -> tuple[list[dict], list[str]] {
 }
 
 """Collect the fixed tickers for `day` with history-only data."""
-def collect_day(day: str, tickers: list[dict]) -> Collection {
+def collect_day(day: str, tickers: list[dict[str, any]]) -> Collection {
     budget = run_budget();
     gaps: list[str] = [];
     at = decision_time(day);
@@ -221,12 +221,12 @@ def late(evidence: list[Evidence], at: datetime, label: str) -> list[str] {
     return found;
 }
 
-def research_row(r: ResearchResult) -> dict {
+def research_row(r: ResearchResult) -> dict[str, any] {
     return {"domain": r.domain.value, "complete": r.complete(), "model": r.model, "view": r.body.view.value, "confidence": r.body.confidence, "error": r.error};
 }
 
 """One ticker's decision on `day` as a JSON row, scored later."""
-def decision_row(day: str, a: TickerAnalysis, reports: dict[Domain, ResearchResult], macro_late: list[str], fetch_errors: list[str], requests: float, seconds: float) -> dict {
+def decision_row(day: str, a: TickerAnalysis, reports: dict[Domain, ResearchResult], macro_late: list[str], fetch_errors: list[str], requests: float, seconds: float) -> dict[str, any] {
     c = a.consensus;
     at = decision_time(day);
     late_evidence = list(macro_late);
@@ -275,7 +275,7 @@ def decision_row(day: str, a: TickerAnalysis, reports: dict[Domain, ResearchResu
     };
 }
 
-def replay(state: dict) {
+def replay(state: dict[str, any]) {
     for source in ["alpaca_data", "alpaca_trading"] {
         SOURCES[source].per_minute = ALPACA_PER_MINUTE;
     }
@@ -348,7 +348,7 @@ def wilson(hits: int, n: int) -> list[float] | None {
     return [round(middle - half, 4), round(middle + half, 4)];
 }
 
-def score(state: dict) -> dict {
+def score(state: dict[str, any]) -> dict[str, any] {
     (days, sessions) = replay_sessions();
     rows = [state["pairs"][k] for k in sorted(state["pairs"])];
     symbols = sorted({r["ticker"] for r in rows} | {BENCHMARK});

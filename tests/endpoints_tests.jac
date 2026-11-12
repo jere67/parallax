@@ -6,19 +6,19 @@ import from jaclang.testing.testing { JacTestClient }
 
 glob PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent;
 glob SKIP_DIRS: set[str] = {".git", ".jac", "dist", "node_modules", "tests"};
-glob FUNCTION_DECL: re.Pattern[str] = re.compile(r"def:(?:pub|priv)\s+(\w+)([^{;]*)");
-glob WALKER_DECL: re.Pattern[str] = re.compile(r"walker:(?:pub|priv)\s+(\w+)");
+glob FUNCTION_DECL: re.Pattern[str] = re.compile(r"def:(?:pub|protect)\s+(\w+)([^{;]*)");
+glob WALKER_DECL: re.Pattern[str] = re.compile(r"walker:(?:pub|protect)\s+(\w+)");
 # Browser globals place a module client (jac guide jac-codespaces), so its :pub helpers are
 # exports for other client modules, not endpoints.
 glob BROWSER_GLOBAL: re.Pattern[str] = re.compile(r"\b(?:window|document|localStorage)\.");
 
-"""Names of the functions and walkers marked :pub or :priv in the source, skipping client
+"""Names of the functions and walkers marked :pub or :protect in the source, skipping client
 components and modules that use browser globals."""
 def declared_endpoints -> tuple[set[str], set[str]] {
     functions: set[str] = set();
     walkers: set[str] = set();
     for path in PROJECT_ROOT.rglob("*.jac") {
-        if SKIP_DIRS & set(path.relative_to(PROJECT_ROOT).parts) {
+        if SKIP_DIRS & set(path.relative_to(PROJECT_ROOT).parts) or path.name.startswith("fixture_") {
             continue;
         }
         source = path.read_text();
@@ -62,6 +62,33 @@ test "every declared endpoint is served" {
     assert not missing, f"Not served: {missing}. Import each one by name in main.jac (TDD §3, rule 7).";
 }
 
+"""Names of the scheduled jobs: they run on the server's clock, so none may be an endpoint."""
+def scheduled_jobs -> set[str] {
+    found: set[str] = set();
+    for path in PROJECT_ROOT.rglob("*.jac") {
+        if SKIP_DIRS & set(path.relative_to(PROJECT_ROOT).parts) {
+            continue;
+        }
+        for hit in re.finditer(r"@schedule\([^)]*\)\s*(?:def|walker)(?::\w+)?\s+(\w+)", path.read_text()) {
+            found.add(hit.group(1));
+        }
+    }
+    return found;
+}
+
+test "no scheduled job is served, so no caller can fire the trading day by hand" {
+    jobs = scheduled_jobs();
+    assert {"morning_job", "trading_job", "manual_run_job", "agents_trading_job"} <= jobs, jobs;
+    client = start_client();
+    try {
+        served = set(client.get("/functions").json()["data"]["functions"]) | set(client.get("/walkers").json()["data"]["walkers"]);
+    } finally {
+        client.close();
+    }
+    assert jobs & served == set(), jobs & served;
+    assert "DailyRun" not in served;
+}
+
 test "only health answers an anonymous caller; everything else takes an account" {
     client = start_client();
     try {
@@ -89,6 +116,7 @@ test "only health answers an anonymous caller; everything else takes an account"
         found.group(1)
         for path in PROJECT_ROOT.rglob("*.jac")
         if not SKIP_DIRS & set(path.relative_to(PROJECT_ROOT).parts)
+            and not path.name.startswith("fixture_")
             and "ui" not in path.relative_to(PROJECT_ROOT).parts
             and not BROWSER_GLOBAL.search(path.read_text())
         for found in re.finditer(r"def:pub\s+(\w+)([^{;]*)", path.read_text())

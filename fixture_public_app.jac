@@ -14,7 +14,7 @@ import from models.graph {
 import from run.public { public }
 
 """Write a public run with one public coverage, plus a coverage left private."""
-def:priv seed_team_graph -> str {
+def:protect seed_team_graph -> str {
     team = public(
         root.shared ++> Portfolio(
             name="team", mode=PortfolioMode.AUTO, starting_cash=100000.0, opened_at="2026-10-06T13:30:00+00:00"

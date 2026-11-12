@@ -75,7 +75,7 @@ def row(start: str, end: str, val: float, filed: str, accn: str = "0000000001-26
     return found;
 }
 
-def usd(concept: str, rows: list[dict[str, object]]) -> dict[str, dict] {
+def usd(concept: str, rows: list[dict[str, object]]) -> dict[str, dict[str, any]] {
     return {concept: {"units": {"USD": rows}}};
 }
 

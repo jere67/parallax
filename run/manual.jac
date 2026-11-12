@@ -82,7 +82,7 @@ def take_request(day: str) -> bool {
 
 """Ask for today's morning run on the team portfolio. Admin only; the run starts within a
 minute, from `manual_run_job`."""
-def:priv start_morning_run -> ManualRun {
+def:protect start_morning_run -> ManualRun {
     local = datetime.now(NEW_YORK);
     day = local.date().isoformat();
     refusal = manual_refusal(caller_is_admin(), find_team_portfolio(), day, local);

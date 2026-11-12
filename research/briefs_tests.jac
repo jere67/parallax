@@ -209,7 +209,7 @@ test "the length cap keeps the first sources, and only those can be cited" {
 }
 
 test "numbers read at a sensible scale" {
-    assert [usd(1.234e12), usd(-5.6e9), usd(12_340_000.0), usd(331.44), usd(None)] == ["$1.2T", "-$5.6B", "$12.3M", "$331.44", "n/a"];
+    assert [usd(1.234e12), usd(-5.6e9), usd(12.34e6), usd(331.44), usd(None)] == ["$1.2T", "-$5.6B", "$12.3M", "$331.44", "n/a"];
     assert [pct(0.1234), pct(0.5, 0), change(0.042), change(-0.011), change(None)] == ["12.3%", "50%", "+4.2%", "-1.1%", "n/a"];
 }
 

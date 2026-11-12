@@ -21,7 +21,7 @@ def usd(rows: list[dict[str, any]]) -> dict[str, any] {
 
 """A year of four quarters: 90, 100, 110, and a fourth known only as the 400 year less the 300 of
 nine months, which is how a 10-Q reports it."""
-def facts_of_a_year -> dict[str, dict] {
+def facts_of_a_year -> dict[str, dict[str, any]] {
     return {
         "us-gaap": {
             "Revenues": usd([

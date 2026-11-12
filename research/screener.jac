@@ -26,7 +26,7 @@ glob SCREEN_VERSION: str = "2026-10-08.1";
 obj ScreenConfig {
     has shortlist_size: int = 15,
         per_sector: int = 3,
-        min_dollar_volume: float = 50_000_000.0,
+        min_dollar_volume: float = 50e6,
         max_wildcards: int = 3,
         earnings_sessions: int = 5,
         news_sessions: int = 3,

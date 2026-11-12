@@ -492,7 +492,7 @@ obj DemoSim {
         }
 
         votes: dict[Specialist, list[Vote]] = {};
-        for spec in list(Specialist) {
+        for spec in [*Specialist] {
             # Cite positions in the packet the specialist would read, as a real vote does.
             shown = len(packet(spec, t, day, bodies, self.macro_body).evidence);
             lean = signal + self.rng.gauss(0.0, 0.18);

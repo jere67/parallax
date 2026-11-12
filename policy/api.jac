@@ -40,13 +40,13 @@ def save_reply(scope: PolicyScope, policy: Policy, base_version: int, source: st
 }
 
 """The ranges, metrics, and words an editor is built from."""
-def:priv get_policy_catalog -> PolicyCatalog {
+def:protect get_policy_catalog -> PolicyCatalog {
     return PolicyCatalog(
         knobs=KNOBS,
         groups=KNOB_GROUPS,
         metrics=METRICS,
-        effects=[EffectView(value=e.value, lead=EFFECT_LEADS[e]) for e in list(RuleEffect)],
-        ops=[OpView(value=o.value, label=OP_LABELS[o], words=o in (Op.IN, Op.NOT_IN)) for o in list(Op)],
+        effects=[EffectView(value=e.value, lead=EFFECT_LEADS[e]) for e in [*RuleEffect]],
+        ops=[OpView(value=o.value, label=OP_LABELS[o], words=o in (Op.IN, Op.NOT_IN)) for o in [*Op]],
         defaults=Policy(),
         max_rules=MAX_RULES,
         max_conditions=MAX_CONDITIONS
@@ -55,24 +55,24 @@ def:priv get_policy_catalog -> PolicyCatalog {
 
 """What `policy` would have done with the caller's agent's run on `run_date` (the newest when
 empty). Saves nothing, so a draft can be tried as it is edited."""
-def:priv preview_policy(policy: Policy, run_date: str = "") -> ReplayView {
+def:protect preview_policy(policy: Policy, run_date: str = "") -> ReplayView {
     return replay_my_run(policy, run_date);
 }
 
 """The policy that drives the caller's agent."""
-def:priv get_my_policy -> PolicyDoc {
+def:protect get_my_policy -> PolicyDoc {
     scope = my_scope();
     return policy_doc(scope, versions_of(scope));
 }
 
 """Save `policy` as its next version, edited from `base_version`."""
-def:priv save_policy_version(policy: Policy, base_version: int, note: str = "") -> PolicySaveReply {
+def:protect save_policy_version(policy: Policy, base_version: int, note: str = "") -> PolicySaveReply {
     return save_reply(my_scope(), policy, base_version, "form", note);
 }
 
 """Make version `version` the policy in force again, as a new version, so nothing in its history
 is lost."""
-def:priv restore_policy_version(version: int, base_version: int) -> PolicySaveReply {
+def:protect restore_policy_version(version: int, base_version: int) -> PolicySaveReply {
     target = my_scope();
     versions = versions_of(target);
     for v in versions {

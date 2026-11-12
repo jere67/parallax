@@ -112,7 +112,7 @@ def view_key(team: Portfolio, *parts: str) -> str {
 """The caller's portfolio, with its positions and its most recently submitted orders: at its last
 mark, overlaid with what Alpaca values the account at now when it can be asked (`live_at`,
 dashboard/live.jac)."""
-def:priv get_portfolio -> PortfolioView {
+def:protect get_portfolio -> PortfolioView {
     team = my_portfolio();
     if team is None {
         return PortfolioView(name=AGENT_PORTFOLIO, mode="insight", started=False);
@@ -121,7 +121,7 @@ def:priv get_portfolio -> PortfolioView {
 }
 
 """The team portfolio's daily equity beside both forward-test baselines."""
-def:priv get_performance -> PerformanceView {
+def:protect get_performance -> PerformanceView {
     team = my_portfolio();
     if team is None {
         return PerformanceView(started=False);
@@ -130,7 +130,7 @@ def:priv get_performance -> PerformanceView {
 }
 
 """The team's runs, newest first."""
-def:priv list_runs -> list[RunSummary] {
+def:protect list_runs -> list[RunSummary] {
     team = my_portfolio();
     if team is None {
         return [];
@@ -139,7 +139,7 @@ def:priv list_runs -> list[RunSummary] {
 }
 
 """The run for `run_date`, or the newest run when it is empty; None when there is none."""
-def:priv get_run(run_date: str = "") -> RunView | None {
+def:protect get_run(run_date: str = "") -> RunView | None {
     team = my_portfolio();
     if team is None {
         return None;
@@ -148,7 +148,7 @@ def:priv get_run(run_date: str = "") -> RunView | None {
 }
 
 """One ticker's trail in the run for `run_date`, or None when the run did not cover it."""
-def:priv get_decision_trail(run_date: str, ticker: str) -> TrailView | None {
+def:protect get_decision_trail(run_date: str, ticker: str) -> TrailView | None {
     team = my_portfolio();
     if team is None {
         return None;
@@ -159,13 +159,13 @@ def:priv get_decision_trail(run_date: str, ticker: str) -> TrailView | None {
 
 """The caller's agent's latest evaluation (TDD §13, metrics), as the evening review stored it,
 or None before its first evening review."""
-def:priv get_evaluation -> Evaluation | None {
+def:protect get_evaluation -> Evaluation | None {
     portfolio = my_portfolio();
     return latest_evaluation(portfolio) if portfolio is not None else None;
 }
 
 """The five roles' recent votes and outcomes from the caller's own agent."""
-def:priv get_specialists -> list[SpecialistSummaryView] {
+def:protect get_specialists -> list[SpecialistSummaryView] {
     team = my_portfolio();
     if team is None {
         return [SpecialistSummaryView(specialist=s.value) for s in SPECIALIST_ROLES];

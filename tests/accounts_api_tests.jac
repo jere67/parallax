@@ -9,7 +9,7 @@ import from jaclang.testing.testing { JacTestClient }
 import from accounts.vault { SECRET_ENV }
 import from tests.fakes.providers { FakeProviders, GOOD_ALPACA, GOOD_FINNHUB, GOOD_OPENROUTER, GOOD_SECRET, LIVE_ALPACA, OTHER_ALPACA, SMALL_OPENROUTER }
 
-glob APP: str = str(Path(__file__).resolve().parent / "fixtures" / "accounts_app.jac");
+glob APP: str = str(Path(__file__).resolve().parent.parent / "fixture_accounts_app.jac");
 glob PASSWORD: str = "test-password-1";
 glob FULL_KEYS: dict[str, str] = {"alpaca_key": GOOD_ALPACA, "alpaca_secret": GOOD_SECRET, "openrouter_key": GOOD_OPENROUTER};
 # A second user's keys: their own Alpaca paper account, since no two agents may share one.

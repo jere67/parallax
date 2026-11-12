@@ -3,20 +3,20 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.testing.testing { JacTestClient }
 
-glob APP: str = str(Path(__file__).resolve().parent / "fixtures" / "public_app.jac");
+glob APP: str = str(Path(__file__).resolve().parent.parent / "fixture_public_app.jac");
 glob PUBLIC_VIEW: list[str] = ["portfolio:team", "run:2026-10-06", "coverage:AAPL"];
 
 test "published nodes are readable anonymously and by other users, unpublished ones are not" {
     client = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
     try {
-        client.register_user("writer", "writer-password-1");
+        client.register_user("writer", "quiet-harbor-71");
         assert client.post("/function/seed_team_graph", json={}).ok;
         writer_view = client.post("/function/read_team_graph", json={}).json()["data"]["result"];
 
         client.clear_auth();
         anonymous_view = client.post("/function/read_team_graph", json={}).json()["data"]["result"];
 
-        client.register_user("reader", "reader-password-1");
+        client.register_user("reader", "amber-lantern-42");
         reader_view = client.post("/function/read_team_graph", json={}).json()["data"]["result"];
     } finally {
         client.close();
@@ -29,7 +29,7 @@ test "published nodes are readable anonymously and by other users, unpublished o
 test "anonymous readers receive stored research with its typed report embedded" {
     client = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
     try {
-        client.register_user("writer", "writer-password-1");
+        client.register_user("writer", "quiet-harbor-71");
         assert client.post("/function/seed_team_graph", json={}).ok;
         client.clear_auth();
         records = client.post("/function/read_research", json={}).json()["data"]["result"];

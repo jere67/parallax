@@ -1,0 +1,3 @@
+# Test apps for JacTestClient (tests/*_tests.jac). They sit at the project root, since Jac 0.39
+# serves an app from the folder its file is in, and never belong in the app bundle.
+fixture_*_app.jac

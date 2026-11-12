@@ -35,7 +35,7 @@ obj RowFilter {
 """An argument as a list. Jac's server fills an argument left out of the request with its default as
 text ("[]", "0"), and the rest comes from anyone on the web, so `screen_stocks` trusts no argument's
 type."""
-def as_list(value: object) -> list {
+def as_list(value: object) -> list[any] {
     return value if isinstance(value, list) else [];
 }
 

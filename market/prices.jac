@@ -96,7 +96,7 @@ def snapshots(symbols: list[str], budget: RunBudget, client: SourceClient | None
 
 """A snapshot as a quote, or None without a daily bar. A trade outside the regular session is
 the extended-hours price; the daily bar leaves those out."""
-def quote_of(symbol: str, row: dict[str, dict | None]) -> Quote | None {
+def quote_of(symbol: str, row: dict[str, dict[str, any] | None]) -> Quote | None {
     bar = row.get("dailyBar") or row.get("prevDailyBar");
     if not bar {
         return None;

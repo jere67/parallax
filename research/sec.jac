@@ -305,8 +305,8 @@ glob INSTANT_CONCEPTS: dict[str, list[str]] = {
 against the same quarter a year earlier, trailing twelve months, the latest balance sheet,
 and ratios derived from them. Cash-flow concepts are year-to-date in 10-Qs, so their
 trailing twelve months are the last fiscal year plus this year to date minus last year's."""
-def reduce_facts(symbol: str, cik: str, company: str, facts: dict[str, dict], fetched: Fetched) -> tuple[Fundamentals | None, list[str]] {
-    gaap: dict[str, dict] = facts.get("us-gaap") or {};
+def reduce_facts(symbol: str, cik: str, company: str, facts: dict[str, dict[str, any]], fetched: Fetched) -> tuple[Fundamentals | None, list[str]] {
+    gaap: dict[str, dict[str, any]] = facts.get("us-gaap") or {};
     values: list[ReportedValue] = [];
     gaps: list[str] = [];
     def add(name: str, value: float, unit: str, period: str, fact: Fact) {
@@ -553,7 +553,7 @@ the newest filing per period. With `widest`, the concept with the largest value 
 contract revenue leaves out a landlord's rent and a bank's interest, so it is only part of
 their top line. In a replay, a fact filed on or after the replayed day is left out, so a later
 restatement never replaces what was reported then (research/asof.jac)."""
-def _series(taxonomy: dict[str, dict], concepts: list[str], unit: str, instant: bool, widest: bool = False) -> list[Fact] {
+def _series(taxonomy: dict[str, dict[str, any]], concepts: list[str], unit: str, instant: bool, widest: bool = False) -> list[Fact] {
     best: list[Fact] = [];
     for concept in concepts {
         rows = ((taxonomy.get(concept) or {}).get("units") or {}).get(unit) or [];

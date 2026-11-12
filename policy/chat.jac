@@ -403,12 +403,12 @@ def own_turn(turn_id: str) -> ChatTurn | None {
 # --- Endpoints ----------------------------------------------------------------------------
 
 """The caller's chat about their policy, collecting any answer that has finished."""
-def:priv get_policy_chat -> ChatState {
+def:protect get_policy_chat -> ChatState {
     return chat_state(my_scope(), utc_now());
 }
 
 """Send `text` to the assistant. It answers in the background; `get_policy_chat` collects it."""
-def:priv send_policy_message(text: str) -> ChatState {
+def:protect send_policy_message(text: str) -> ChatState {
     target = my_scope();
     now = utc_now();
     state = chat_state(target, now);
@@ -429,7 +429,7 @@ def:priv send_policy_message(text: str) -> ChatState {
 
 """Apply proposal `turn_id`: only the caller's own, and only if the policy has not moved since it
 was drafted."""
-def:priv apply_policy_proposal(turn_id: str) -> ChatActionReply {
+def:protect apply_policy_proposal(turn_id: str) -> ChatActionReply {
     now = utc_now();
     turn = own_turn(turn_id);
     if turn is None {
@@ -452,7 +452,7 @@ def:priv apply_policy_proposal(turn_id: str) -> ChatActionReply {
 }
 
 """Set aside proposal `turn_id`; the policy stays as it is."""
-def:priv discard_policy_proposal(turn_id: str) -> ChatActionReply {
+def:protect discard_policy_proposal(turn_id: str) -> ChatActionReply {
     turn = own_turn(turn_id);
     if turn is None {
         return ChatActionReply(ok=False, message="That proposal is not on record.", chat=ChatState(scope=""));

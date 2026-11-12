@@ -4,9 +4,9 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.testing.testing { JacTestClient }
 
-glob APP: str = str(Path(__file__).resolve().parent / "fixtures" / "policy_app.jac");
+glob APP: str = str(Path(__file__).resolve().parent.parent / "fixture_policy_app.jac");
 
-def call(c: JacTestClient, name: str, body: dict = {}) -> any {
+def call(c: JacTestClient, name: str, body: dict[str, any] = {}) -> any {
     return c.post(f"/function/{name}", json=body).json()["data"]["result"];
 }
 

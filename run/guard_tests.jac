@@ -148,10 +148,12 @@ test "a failed collection fails the run and holds every open position" {
     portfolio +>:Holds():+> position;
     outcome = run_day(Stubs(collect_error="Wikipedia is down"), portfolio);
     assert outcome.status == RunStatus.FAILED;
-    decided = decisions_of(outcome.run);
+    run = outcome.run;
+    assert run is not None;
+    decided = decisions_of(run);
     assert list(decided) == ["XOM"] and decided["XOM"].action == TradeAction.HOLD;
     assert decided["XOM"].forced_hold_reason == "collection failed: RuntimeError: Wikipedia is down";
-    held_cards = [card for c in [outcome.run ->:Covers:->] for card in [c ->:Published:->[?:InsightCard]]];
+    held_cards = [card for c in [run ->:Covers:->] for card in [c ->:Published:->[?:InsightCard]]];
     assert len(held_cards) == 1 and held_cards[0].note.startswith("collection failed");
 }
 

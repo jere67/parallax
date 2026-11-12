@@ -49,7 +49,7 @@ glob RUN_START: time = time(7, 30);
 glob LOOKBACK_DAYS: int = 366;
 # Sessions of bars a simulated day reads before itself, as the baselines' LOOKBACK_DAYS does.
 glob SIM_LOOKBACK_SESSIONS: int = 10;
-glob STARTING_CASH: float = 100_000.0;
+glob STARTING_CASH: float = 100e3;
 glob BLOCK: int = 10;
 glob RESAMPLES: int = 2000;
 glob SEED: int = 449;

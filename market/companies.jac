@@ -153,8 +153,8 @@ def filings_of(cik: str, found: dict[str, any]) -> tuple[list[FilingLink], str] 
 
 """The latest figures and the period tables from company facts. Nothing when the newest period
 is older than STALE_DAYS as of `today`, since those figures no longer describe the company."""
-def figures_of(facts: dict[str, dict], today: str) -> tuple[dict[str, float], list[Period], list[Period], str, str] {
-    gaap: dict[str, dict] = facts.get("us-gaap") or {};
+def figures_of(facts: dict[str, dict[str, any]], today: str) -> tuple[dict[str, float], list[Period], list[Period], str, str] {
+    gaap: dict[str, dict[str, any]] = facts.get("us-gaap") or {};
     values: dict[str, float] = {};
     annual: dict[str, dict[str, float]] = {};
     quarterly: dict[str, dict[str, float]] = {};
@@ -239,7 +239,7 @@ def figures_of(facts: dict[str, dict], today: str) -> tuple[dict[str, float], li
 }
 
 """The per-share figures: EPS and dividends over the trailing year, and EPS growth."""
-def _per_share(gaap: dict[str, dict], values: dict[str, float]) {
+def _per_share(gaap: dict[str, dict[str, any]], values: dict[str, float]) {
     for concept in EPS_CONCEPTS {
         series = _series(gaap, [concept], "USD/shares", instant=False);
         if not series {
@@ -267,7 +267,7 @@ def _per_share(gaap: dict[str, dict], values: dict[str, float]) {
 """Shares outstanding from the newest source within a year and a half: the cover page, the balance
 sheet, then the diluted average. Share classes reported apart, and ADRs, need the Finnhub market
 cap, which replaces this figure for a stock once the analyst sweep has reached it."""
-def _shares(facts: dict[str, dict], gaap: dict[str, dict], values: dict[str, float], today: str) {
+def _shares(facts: dict[str, dict[str, any]], gaap: dict[str, dict[str, any]], values: dict[str, float], today: str) {
     cutoff = (date.fromisoformat(today) - timedelta(days=550)).isoformat();
     cover = _series(facts.get("dei") or {}, ["EntityCommonStockSharesOutstanding"], "shares", instant=True);
     candidates: list[Fact] = list(cover);

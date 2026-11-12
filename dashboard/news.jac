@@ -429,7 +429,7 @@ def as_flag(value: bool | str) -> bool {
 """One page of the feed. `q` must appear word by word in a note's text; the others are exact, and
 an empty one does not filter. `lean` is "up", "flat", or "down", and `held` keeps the tickers the
 caller's agent holds now."""
-def:priv get_news_feed(
+def:protect get_news_feed(
     q: str = "",
     ticker: str = "",
     desk: str = "",
@@ -447,7 +447,7 @@ def:priv get_news_feed(
 
 """One note in full, by the parts of its address; None when there is no such note, or it is not in
 the caller's feed."""
-def:priv get_news_story(day: str, ticker: str, desk: str, n: int = 0, requested: bool = False) -> NewsStory | None {
+def:protect get_news_story(day: str, ticker: str, desk: str, n: int = 0, requested: bool = False) -> NewsStory | None {
     symbol = ticker.upper();
     # Typed here, since the cache's key and the lookup below both need the real values.
     note = int(n);

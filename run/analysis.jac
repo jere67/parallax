@@ -161,7 +161,7 @@ def analyze(
             result.forced_hold_reason = f"insufficient data: no complete {', '.join(missing)} research";
         } else {
             reports = {d: r.body for (d, r) in found.items()};
-            packets[ticker] = [packet(s, ticker, run_day, reports, macro) for s in list(Specialist)];
+            packets[ticker] = [packet(s, ticker, run_day, reports, macro) for s in [*Specialist]];
         }
         results.append(result);
     }

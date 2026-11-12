@@ -14,13 +14,13 @@ import from policy.chat { ANSWERS, apply_policy_proposal, discard_policy_proposa
 import from research.collector { utc_now }
 import from run.public { public }
 
-def:priv set_admin(on: bool) -> str {
+def:protect set_admin(on: bool) -> str {
     setattr(store, "is_admin_root", lambda (_users: object, _caller: str) -> bool { on; });
     store._ROLES.clear();
     return "ok";
 }
 
-def:priv seed_policy_run -> str {
+def:protect seed_policy_run -> str {
     team = public(root.shared ++> Portfolio(name="team", mode=PortfolioMode.AUTO, starting_cash=100000.0, opened_at="2026-10-21T13:00:00+00:00"));
     run = finished_run(team, "2026-11-03", [Call(ticker="AAPL", action=TradeAction.NO_ACTION, conviction=0.2), Call(ticker="MSFT", action=TradeAction.BUY, conviction=0.4)]);
     scores = {"AAPL": (0.3, 0.45), "MSFT": (0.5, 0.8)};
@@ -32,35 +32,35 @@ def:priv seed_policy_run -> str {
 }
 
 """Answer the next chat messages with these raw model outputs, through byLLM's real parser."""
-def:priv script_assistant(outputs: list[str]) -> str {
+def:protect script_assistant(outputs: list[str]) -> str {
     setattr(policy_assistant, "policy_llm", MockLLM(model_name="mock-policy", config={"outputs": [MockRawResponse(content=o) for o in outputs]}));
     return "ok";
 }
 
 """Pretend the morning run has already used `requests` of the day's model requests."""
-def:priv spend_requests(requests: int) -> str {
+def:protect spend_requests(requests: int) -> str {
     LIMITER.sent_by_day[utc_now().date().isoformat()] = requests;
     return "ok";
 }
 
 """Send a message in a transaction that then fails, as a serialization conflict would."""
-def:priv send_then_fail(text: str) -> str {
+def:protect send_then_fail(text: str) -> str {
     send_policy_message(text);
     raise RuntimeError("the transaction failed");
 }
 
 """Collect the finished answers in a transaction that then fails."""
-def:priv collect_then_fail -> str {
+def:protect collect_then_fail -> str {
     get_policy_chat();
     raise RuntimeError("the transaction failed");
 }
 
 """How many model calls the chat has started and not yet forgotten."""
-def:priv answers_started -> int {
+def:protect answers_started -> int {
     return len(ANSWERS);
 }
 
 """Wait for every started model call to finish, without collecting any."""
-def:priv calls_finished -> bool {
+def:protect calls_finished -> bool {
     return all(f.done() for f in ANSWERS.values());
 }
