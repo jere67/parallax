@@ -2,6 +2,11 @@
 import from dashboard.ui.format {
     compact,
     day_long,
+    day_year,
+    gate_label,
+    order_label,
+    source_time,
+    stamp_long_et,
     day_short,
     money,
     num,
@@ -40,4 +45,19 @@ test "dates and times read in New York time, across daylight saving" {
     assert time_range_et("2026-10-21T11:30:00+00:00", "2026-10-21T12:40:00+00:00") == "7:30 - 8:40 AM ET";
     assert time_range_et("2026-10-21T15:30:00+00:00", "2026-10-21T16:10:00+00:00") == "11:30 AM - 12:10 PM ET";
     assert time_range_et("2026-10-21T11:30:00+00:00", "") == "7:30 AM ET" and time_range_et("", "") == "-";
+}
+
+test "a source's time carries its year, and a bare date stays a date" {
+    assert day_year("2026-10-21") == "Oct 21, 2026" and day_year("") == "-";
+    assert stamp_long_et("2025-12-31T21:05:00+00:00") == "Dec 31, 2025, 4:05 PM ET" and stamp_long_et("") == "-";
+    assert source_time("2026-10-20T13:05:00Z", "2026-10-20T13:05:00+00:00") == "Oct 20, 2026, 9:05 AM ET";
+    assert source_time("2026-08-14") == "Aug 14, 2026" and source_time("") == "-";
+}
+
+test "a blocked gate, an order never sent, and a broker's refusal read differently" {
+    assert gate_label("rejected") == "Gate blocked" and gate_label("approved") == "Approved" and gate_label("resized") == "Resized";
+    assert order_label("rejected", "insufficient buying power") == "Broker rejected";
+    assert order_label("rejected", "not sent: its stop filled (5 shares) before the order") == "Not sent";
+    assert order_label("filled") == "" and order_label("pending_new") == "";
+    assert gate_label("rejected") != order_label("rejected");
 }
