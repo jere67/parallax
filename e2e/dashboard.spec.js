@@ -340,6 +340,24 @@ test("account: sign up, connect keys, log out, and log back in to where you were
   const connect = page.getByRole("button", { name: "Check and connect" });
   const alpaca = page.getByRole("group", { name: "Alpaca paper account" });
   const openrouter = page.getByRole("group", { name: "OpenRouter" });
+  const finnhub = page.getByRole("group", { name: "Finnhub", exact: true });
+
+  // With no key yet, each provider lists how to make one and opens its page in a new tab.
+  const makers = [
+    [alpaca, "Open Alpaca's paper dashboard", "https://app.alpaca.markets/paper/dashboard/overview"],
+    [openrouter, "Open OpenRouter's keys page", "https://openrouter.ai/settings/keys"],
+    [finnhub, "Open Finnhub's dashboard", "https://finnhub.io/dashboard"],
+  ];
+  for (const [group, name, href] of makers) {
+    await expect(group.getByText("How to get your key")).toBeVisible();
+    const open = group.getByRole("link", { name });
+    await expect(open).toHaveAttribute("href", href);
+    await expect(open).toHaveAttribute("target", "_blank");
+    await expect(open).toHaveAttribute("rel", "noopener noreferrer");
+  }
+  await expect(alpaca.getByRole("link", { name: "Sign up" })).toHaveAttribute("href", "https://app.alpaca.markets/signup");
+  await expect(openrouter.getByRole("link", { name: "Buy credits" })).toHaveAttribute("href", "https://openrouter.ai/settings/credits");
+  await expect(finnhub.getByRole("link", { name: "Sign up" })).toHaveAttribute("href", "https://finnhub.io/register");
 
   // A wrong key says so, and nothing is stored.
   await alpaca.getByLabel("API key ID").fill("PKNOTAREALKEY0001");
@@ -360,6 +378,12 @@ test("account: sign up, connect keys, log out, and log back in to where you were
   await connect.click();
   await expect(alpaca.getByText(/Connected/)).toBeVisible();
   await expect(openrouter.getByText(/Connected/)).toBeVisible();
+  // A connected key folds its steps away until asked; one still missing keeps them out.
+  await expect(alpaca.getByText("How to get your key")).toHaveCount(0);
+  await expect(alpaca.getByRole("link", { name: "Open Alpaca's paper dashboard" })).toBeHidden();
+  await alpaca.getByText("Need a new key?").click();
+  await expect(alpaca.getByRole("link", { name: "Open Alpaca's paper dashboard" })).toBeVisible();
+  await expect(finnhub.getByText("How to get your key")).toBeVisible();
   // Never shown again, here or after a reload, beyond its last characters.
   await expect(alpaca.getByLabel("API key ID")).toHaveValue("");
   await page.reload();
