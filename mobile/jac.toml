@@ -1,0 +1,52 @@
+[project]
+name = "parallax-mobile"
+version = "0.1.0"
+description = "Parallax on a phone: the portfolio, the latest morning run, and each decision's trail, read from a Parallax server."
+jac-version = "==0.37.12"
+
+[dependencies]
+
+[dependencies.npm]
+react = "^19.2.0"
+react-dom = "^19.2.0"
+react-native-web = "^0.21.4"
+lucide-react = "^1.72.0"
+
+[dependencies.npm.native]
+# Expo Go in the App Store runs SDK 58, and Jac 0.37.12 scaffolds SDK 57, so every package the
+# scaffold pins is raised to SDK 58's version here. scripts/setup.sh raises the two dev
+# dependencies these cannot reach.
+expo = "~58.0.25"
+expo-asset = "~58.0.21"
+expo-constants = "~58.0.16"
+expo-font = "~58.0.12"
+expo-notifications = "~58.1.9"
+expo-secure-store = "~58.0.3"
+expo-status-bar = "~58.0.5"
+react = "19.3.0"
+react-native = "0.88.1"
+react-native-gesture-handler = "~3.3.0"
+react-native-safe-area-context = "~5.11.1"
+react-native-screens = "~4.30.1"
+react-native-svg = "15.16.0"
+lucide-react-native = "^1.72.0"
+"@expo-google-fonts/instrument-serif" = "^0.4.1"
+
+# The app is declared on its own so its platform can be set. Jac 0.37.12's mobile dev server
+# starts a headless backend with --no-client, but that flag is ignored for a mobile app, so
+# the backend tries a full Xcode build of its own and races the dev server's. With the app's
+# platform set to web the backend serves plainly; start the phone build with --platform ios
+# (scripts/dev.sh does this).
+[apps.mobile]
+kind = "mobile"
+entry-point = "main"
+platform = "web"
+
+[client.react_native]
+default_platform = "ios"
+
+# The app reads a Parallax server over HTTP and has no server code of its own. Without this pin
+# the solver places pure modules (fonts, views, format) on a server, and the native bundle
+# cannot import their pub names.
+[placement.pins]
+"*" = "client"
