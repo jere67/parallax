@@ -3,7 +3,7 @@ import time;
 import from pathlib { Path }
 import from jaclang.testing.testing { JacTestClient }
 
-glob APP: str = str(Path(__file__).resolve().parent / "fixtures" / "report_worker_app.jac");
+glob APP: str = str(Path(__file__).resolve().parent.parent / "fixture_report_worker_app.jac");
 
 test "queued report becomes a persisted insight with votes and sources but no orders" {
     c = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());

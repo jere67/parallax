@@ -6,7 +6,7 @@ import from pathlib { Path }
 import from jaclang.testing.testing { JacTestClient }
 import from market.demo { DEMO_ENV }
 
-glob APP: str = str(Path(__file__).resolve().parent / "fixtures" / "dashboard_app.jac");
+glob APP: str = str(Path(__file__).resolve().parent.parent / "fixture_dashboard_app.jac");
 
 def call(client: JacTestClient, name: str, body: dict[str, str | bool] | None = None) -> object {
     resp = client.post(f"/function/{name}", json=body or {});
@@ -118,7 +118,7 @@ test "a member sees only their own agent, never the team's" {
         assert client.post("/function/seed_team_graph", json={}).ok;
         assert call(client, "get_portfolio")["started"] is True;
         client.clear_auth();
-        client.register_user("member", "member-password-1");
+        client.register_user("member", "quiet-harbor-71");
         assert client.post("/function/set_admin", json={"on": False}).ok;
         mine = call(client, "get_portfolio");
         assert mine["started"] is False and mine["positions"] == [];

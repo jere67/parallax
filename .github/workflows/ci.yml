@@ -13,9 +13,9 @@ permissions:
   contents: read
 
 env:
-  JAC_VERSION: 0.37.12
-  # sha256 of jac-0.37.12-linux-x86_64 from the v0.37.12 release assets.
-  JAC_SHA256: 078e0b51556cef698faa43bc080cfeb52e0e316fa7b0771afa1cf8990911712a
+  JAC_VERSION: 0.39.2
+  # sha256 of jac-0.39.2-linux-x86_64 from the v0.39.2 release assets.
+  JAC_SHA256: 1e12bfc47386020500ee72568696af6efddc09abf4032a25c4a06f64d53a9b89
 
 jobs:
   # The unit and property tests take about 30 minutes in one job, so three jobs share them
@@ -92,7 +92,7 @@ jobs:
         env:
           TRADING_AGENT_DEMO: "1"
           TRADING_AGENT_DISABLE_ORDERS: "1"
-          ADMIN_PASSWORD: e2e-admin-password
+          ADMIN_PASSWORD: e2e-boot-password-71
           OPENROUTER_API_KEY: e2e-fake
           OPENROUTER_API_BASE: http://127.0.0.1:8399
           ALPACA_BASE_URL: http://127.0.0.1:8399
@@ -127,7 +127,7 @@ jobs:
       - name: Check every page on each device
         working-directory: e2e
         env:
-          E2E_ADMIN_PASSWORD: e2e-admin-password
+          E2E_ADMIN_PASSWORD: e2e-boot-password-71
         run: |
           npm ci
           npx playwright install --with-deps chromium webkit

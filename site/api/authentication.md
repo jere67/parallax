@@ -15,7 +15,7 @@ Only [`health`](/api/health), [`healthz`](/api/healthz), the landing page, and s
 
 ## Private endpoints
 
-Functions marked `def:priv` need a signed-in user's token.
+Functions marked `def:protect` need a signed-in user's token.
 That covers the dashboard endpoints, the [policy endpoints](/api/policy), and the [account endpoints](/api/accounts).
 
 <Steps>
@@ -66,6 +66,7 @@ Every other account starts empty.
 Any other signed-in user gets `started: false` and the message `Only the admin can start a run.`
 
 ::: warning Set ADMIN_PASSWORD
-Without it, the admin password is `changeme`.
+Without it, the server makes a one-time admin password and prints it in its log once.
 Set it before the server first starts on any machine others can reach.
+A new server refuses to start when the password is shorter than 8 characters, is a common password, or contains `admin`.
 :::

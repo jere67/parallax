@@ -81,7 +81,7 @@ def card_note(d: Decision) -> str {
 """Each specialist's samples in panel order, and their mean signed score."""
 def tallies(votes: list[VoteRecord]) -> list[SpecialistTally] {
     found: list[SpecialistTally] = [];
-    for s in list(Specialist) {
+    for s in [*Specialist] {
         mine = sorted([v for v in votes if v.specialist == s], key=lambda (v: VoteRecord) { v.sample; });
         if mine {
             found.append(SpecialistTally(

@@ -136,7 +136,7 @@ def coverage_of(rows: list[dict[str, float | str | None]]) -> CoverageView {
 """One page of the screener. `columns` picks which fields each row carries; empty means them all.
 `filters` is described in market/query.jac, `symbols` limits it to a watchlist, and an unknown field or
 unusable bound is left out rather than refused, so an old link still opens."""
-def:priv screen_stocks(
+def:protect screen_stocks(
     filters: list[dict[str, any]] = [],
     search: str = "",
     symbols: list[str] = [],
@@ -202,7 +202,7 @@ def peer_view(row: dict[str, any]) -> PeerView {
     );
 }
 
-def period_views(periods: list) -> list[PeriodView] {
+def period_views(periods: list[any]) -> list[PeriodView] {
     return [PeriodView(end=p.end, label=p.label, values=p.values) for p in periods];
 }
 
@@ -252,7 +252,7 @@ def profile_view(listing_cik: str, record: CompanyRecord | None, website: str, i
 }
 
 """A stock's page, without its long history and news, or `found=False` for anything uncovered."""
-def:priv get_stock(symbol: str) -> StockView {
+def:protect get_stock(symbol: str) -> StockView {
     wanted = as_text(symbol).strip().upper();
     state = market_state();
     cache = current_rows(state);
@@ -326,7 +326,7 @@ def seasons_of(bars: list[Bar]) -> list[SeasonView] {
 
 """A stock's long price history and five sessions of intraday bars, for the chart and seasonals.
 `busy` asks the page to retry; a provider failure returns what there is, which may be nothing."""
-def:priv get_stock_history(symbol: str) -> HistoryView {
+def:protect get_stock_history(symbol: str) -> HistoryView {
     wanted = as_text(symbol).strip().upper();
     state = market_state();
     if wanted not in state.listings or not SYMBOL.fullmatch(wanted) {
@@ -359,7 +359,7 @@ def:priv get_stock_history(symbol: str) -> HistoryView {
 }
 
 """A stock's headlines and description. Each is on its own, so one failing leaves the other."""
-def:priv get_stock_about(symbol: str) -> StockAboutView {
+def:protect get_stock_about(symbol: str) -> StockAboutView {
     wanted = as_text(symbol).strip().upper();
     state = market_state();
     listing = state.listings.get(wanted);

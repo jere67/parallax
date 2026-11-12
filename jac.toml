@@ -4,9 +4,9 @@ version = "0.1.0"
 description = "Multi-agent system that researches S&P 500 stocks and trades them on Alpaca paper accounts."
 entry-point = "main"
 kind = "web-app"
-jac-version = "==0.37.12"
+jac-version = "==0.39.2"
 
-[dependencies]
+[dependencies.pypi]
 # Collectors call data sources directly (research/collector.jac).
 httpx = ">=0.28,<1"
 # The risk gate's property tests (action/gate_tests.jac, TDD §14). A regular dependency, since
@@ -43,7 +43,7 @@ tailwindcss = "^4.3.0"
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
-[dev-dependencies]
+[dev-dependencies.pypi]
 watchdog = ">=3.0.0"
 
 [placement]
@@ -65,14 +65,25 @@ max_output_retries = 1
 
 [check.lint]
 select = ["all"]
+# Since 0.38 "all" also strips comments and docstrings and moves bodies into impls. The
+# comments and docstrings here are the documentation, and bodies stay beside their declarations.
+ignore = ["separate-impls", "strip-comments", "strip-docstrings"]
 
 [scale.scheduler]
 # Install-time capability: run `jac install` after changing it. Runs the morning job
 # (run/jobs.jac) inside the server process.
 enabled = true
 
+[serve.workers]
+# One process. Since Jac 0.38 an unset count forks one worker per core, and each would keep its own
+# copy of the module globals this app relies on: the model rate limiter, the run guards, and the
+# caches. tests/config_tests.jac fails if this changes.
+count = "1"
+
 [scale.admin]
-default_password = "${ADMIN_PASSWORD:-changeme}"
+# Unset, the server mints a one-time admin password and prints it in its log once. Set, it must
+# meet the password policy: 8 or more characters, not a common password, and not containing "admin".
+default_password = "${ADMIN_PASSWORD:-}"
 
 [client.app_meta_data]
 title = "Parallax"

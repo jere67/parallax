@@ -87,8 +87,12 @@ Dashed boxes are deterministic code and solid boxes are LLM agents; the Orchestr
 
 The whole backend, agent layer, and dashboard are written in Jac: agents are `by llm()` functions with typed returns, the pipeline is a walker that traverses a persistent graph, and the Jac server turns `def:pub` functions and walkers into authenticated REST endpoints.
 Python libraries (pandas, alpaca-py, requests) are imported directly, since Jac compiles to Python bytecode.
-The project pins Jac 0.37.12 (`jac-version = "==0.37.12"` in `jac.toml`).
-Jac replaced its storage engine with Postgres in 0.36.0 and folded `jac start` into `jac run` in 0.37.0 ([breaking changes](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/community/breaking-changes.md); [release notes](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/community/release_notes/jaclang.md)), so the team does not upgrade mid-semester.
+The project pins Jac 0.39.2 (`jac-version = "==0.39.2"` in `jac.toml`).
+Jac replaced its storage engine with Postgres in 0.36.0 and folded `jac start` into `jac run` in 0.37.0 ([breaking changes](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/community/breaking-changes.md); [release notes](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/community/release_notes/jaclang.md)).
+The project moved from 0.37.12 to 0.39.2 on November 11, 2026, ahead of launch ([breaking changes at v0.39.2](https://github.com/jaseci-labs/jac/blob/v0.39.2/jac/jaclang/cli/docs/community/breaking-changes.md)).
+Authenticated endpoints are now `def:protect`, since 0.39 serves `:priv` and plain declarations to no one; scheduled jobs stay plain so no caller can fire them.
+Python packages sit under `[dependencies.pypi]`, a test app is served from the folder its file is in (so the test apps live at the project root, `fixture_*_app.jac`), and a float literal with digit separators is read only up to its first underscore (`tests/literals_tests.jac` guards against it).
+Links below that point at the `v0.37.12` tag cite behavior that did not change.
 The docs.jaseci.org website still describes 0.34 in places (FastAPI, SQLite, `jac start`), so this document cites the docs bundled with the compiler, published at the `v0.37.12` tag on GitHub and readable offline with `jac guide`.
 Where those docs are silent, it cites the runtime source at the same tag and the spike that confirmed the behavior.
 
@@ -123,7 +127,7 @@ Where those docs are silent, it cites the runtime source at the same tag and the
 | `obj LimitedModel(Model)` | One subclass that gates every provider request through the shared rate limiter, backs off on 429s, and falls back to a second model |
 | `walker` | The daily pipeline and any endpoint that traverses the graph |
 | `def:pub` | Dashboard and report endpoints that only read or compute; preferred over walkers when no traversal is needed ([endpoints guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-endpoints.md)) |
-| `:pub` vs. default visibility | `:pub` endpoints allow anonymous callers and read public data from `root.shared`; default endpoints behave the same as `:priv`, requiring a JWT and running on the caller's own root ([auth guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-auth.md)) |
+| `:pub` vs. `:protect` | `:pub` endpoints allow anonymous callers and read public data from `root.shared`; `:protect` endpoints require a JWT and run on the caller's own root, and plain or `:priv` declarations are not served at all ([auth guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-auth.md)) |
 | `root.shared` and `grant()` | The public team graph, written by the scheduled job and opened read-only per node with `grant(node, level=AccessLevel.READ)` ([multi-user guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-multi-user.md)) |
 | jac-client components | Dashboard pages, which call `def:pub` functions with `await` or spawn walkers and read `.reports` |
 | `@schedule` | The 7:30 a.m. run and the 4:30 p.m. post-close job, registered in UTC (Section 4) |
@@ -140,7 +144,7 @@ This `jac.toml` is the single copy of the model configuration; Section 12 refers
 [project]
 name = "trading-agent"
 kind = "web-app"
-jac-version = "==0.37.12"
+jac-version = "==0.39.2"
 
 [byllm]
 [byllm.model]
@@ -157,7 +161,7 @@ default = "server"            # opt out of native inference; Python imports alre
 enabled = true                # install-time capability; run `jac install` after setting it
 
 [scale.admin]
-default_password = "${ADMIN_PASSWORD:-changeme}"   # set ADMIN_PASSWORD for any deploy
+default_password = "${ADMIN_PASSWORD:-}"   # set ADMIN_PASSWORD for any deploy
 ```
 
 ```jac
@@ -829,7 +833,7 @@ Sign-up is open and takes an email and a password.
 There is no Google, passkey, or single sign-on, and no forgot-password link, because none of them is set up; a signed-in user can change their password, and the admin can reset one by hand.
 
 Privacy is enforced by the server.
-Every data endpoint is `def:priv`, so an anonymous call gets a 401, and only the front page, health, and static files are public.
+Every data endpoint is `def:protect`, so an anonymous call gets a 401, and only the front page, health, and static files are public.
 A guard in the client sends a reader with no token to log in and back, but it is only a courtesy: the endpoints are the control.
 
 ### Agents
@@ -885,7 +889,7 @@ Every page states that the product is an educational student project using simul
 
 The dashboard is a jac-client React-style app served by the same `jac run` process, with its pages built around one idea: every number links down to the evidence behind it.
 It is built last, but a read-only Portfolio page and Decision page must exist for Pitch Week.
-The backing endpoints are `def:priv` functions that read the caller's own agent (Section 9), and `main.jac` imports every one of them (Section 3; [endpoints guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-endpoints.md)).
+The backing endpoints are `def:protect` functions that read the caller's own agent (Section 9), and `main.jac` imports every one of them (Section 3; [endpoints guide](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-endpoints.md)).
 
 | Page | Access | Shows | Backing endpoints |
 | --- | --- | --- | --- |
@@ -1187,7 +1191,7 @@ The largest risks are untrusted text reaching agents, leaked credentials, and a 
 | Unauthorized run triggers | The daily run is a static scheduled job with no public endpoint; manual reruns go through an endpoint that checks for an admin account, never through the scheduler's dynamic `/jobs` API, which any signed-in user can call ([scheduler reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/jac-scale-scheduler.md)). The endpoint (`start_morning_run`, run/manual.jac) only records the request in the server's app token store; a static job takes it within a minute and runs the day as the 7:30 job does ([app tokens](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/skills/jac-sv-multi-user.md)) |
 | Abuse of on-demand reports | Per-user and global daily caps; sign-in required; NGINX rate limiting at the Kubernetes ingress (`[scale.kubernetes] ingress_limit_rps`; [Kubernetes reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/jac-scale-kubernetes.md)) |
 | Stolen user API keys | Sealed with AES-256-GCM under the server's secret, bound to their owner and name, never sent to the browser, deleted on disconnect, and redacted from errors and logs (Section 9) |
-| One user reading another's data | Every data endpoint is `def:priv`, an agent lives on its owner's root, and a test walks every served endpoint as an anonymous caller |
+| One user reading another's data | Every data endpoint is `def:protect`, an agent lives on its owner's root, and a test walks every served endpoint as an anonymous caller |
 | A live account connected by mistake | The key is refused on entry, and the broker refuses any non-paper host or account on every call (Section 8) |
 
 ### Compliance
@@ -1308,7 +1312,7 @@ Each has a mitigation, and a cut line defines what to drop first if the team fal
 
 | Risk | Likelihood | Impact | Mitigation |
 | --- | --- | --- | --- |
-| Jac or byLLM behavior differs from the docs, or a release breaks the build | Medium | High | Pin Jac 0.37.12; treat the version-pinned bundled docs as authoritative over the website, which still describes 0.34; follow the implementation rules in Section 3; spike the Orchestrator's tool loop on the free model in week 1 |
+| Jac or byLLM behavior differs from the docs, or a release breaks the build | Medium | High | Pin Jac 0.39.2; treat the version-pinned bundled docs as authoritative over the website, which still describes 0.34; follow the implementation rules in Section 3; spike the Orchestrator's tool loop on the free model in week 1 |
 | The free model leaves OpenRouter's free list, is congested at peak hours, or loses its single provider | High (it happened to Qwen3.8 27B within a week) | High | The model is one config value; a named fallback model; shared limiter and retries; rerun spike #12 on any change |
 | The free model is too weak for reliable typed outputs or tool use | Medium | High | Small, focused prompts; typed returns with one retry; measure the validation failure rate in week 2 and switch models if it exceeds 5% |
 | The daily free-model cap is reached | Medium | Medium | Preflight budget check, reduced mode, cache-only reports (Section 12) |

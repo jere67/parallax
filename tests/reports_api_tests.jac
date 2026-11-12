@@ -3,7 +3,7 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.testing.testing { JacTestClient }
 
-glob APP: str = str(Path(__file__).resolve().parent / "fixtures" / "reports_app.jac");
+glob APP: str = str(Path(__file__).resolve().parent.parent / "fixture_reports_app.jac");
 
 test "report history is private; duplicate and shared requests do not spend quota twice" {
     c = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());

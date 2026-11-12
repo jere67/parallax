@@ -50,7 +50,7 @@ site/           this documentation site (VitePress)
 
 - **Every endpoint is imported by name in `main.jac`.**
   An endpoint that is not imported returns 404 or 405.
-  `tests/endpoints_tests.jac` fails for any `def:pub` or `def:priv` the server does not serve.
+  `tests/endpoints_tests.jac` fails for any `def:pub` or `def:protect` the server does not serve.
 - **Module paths that declare node types are frozen once data is stored.**
   Stored rows name their type by module path, so moving a module strands them.
 - **Import from the project root.**

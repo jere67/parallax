@@ -56,7 +56,7 @@ def can_request_new(c: ReportCatalog) -> bool {
     return account is not None and has_required_keys(account);
 }
 
-def:priv list_reports -> ReportsView {
+def:protect list_reports -> ReportsView {
     c = catalog();
     mine = [r for r in [root -->[?:ReportRequest]]];
     policy = current_of(versions_of(my_scope()));
@@ -83,7 +83,7 @@ def:priv list_reports -> ReportsView {
     return view;
 }
 
-def:priv get_report(request_id: str) -> ReportView | None {
+def:protect get_report(request_id: str) -> ReportView | None {
     # Resolve only from the caller's own history, never an unchecked jobj(id).
     for r in [root -->[?:ReportRequest]] {
         if jid(r) == request_id { return report_view(r, current_of(versions_of(my_scope()))); }
@@ -91,7 +91,7 @@ def:priv get_report(request_id: str) -> ReportView | None {
     return None;
 }
 
-def:priv request_report(ticker: str) -> ReportReply {
+def:protect request_report(ticker: str) -> ReportReply {
     symbol = ticker.strip().upper().replace(".", "-");
     c = catalog();
     if c is None or symbol not in c.symbols {

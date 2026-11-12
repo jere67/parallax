@@ -58,13 +58,18 @@ Trim large bodies to what the test needs, commit the files under `tests/fixtures
 
 ## Writing Jac
 
-We pin Jac 0.37.12, and much of the Jac website still describes 0.34.
+We pin Jac 0.39.2, and much of the Jac website still describes older versions.
 Trust the guides bundled with the compiler (`jac guide`, starting with `jac guide jac-essentials`) over the website.
 Read the implementation rules in [TDD §3](docs/TDD.md#jac-implementation-rules) before writing agent, endpoint, or concurrency code.
 The ones that bite most often:
 
 - Every endpoint must be imported by name in `main.jac`, or it returns 404 or 405.
-  Mark endpoints `def:pub` or `def:priv` (`walker:pub` or `walker:priv`) explicitly; `tests/endpoints_tests.jac` fails for any marked endpoint the server does not serve.
+  Mark endpoints `def:pub` or `def:protect` (`walker:pub` or `walker:protect`) explicitly; `tests/endpoints_tests.jac` fails for any marked endpoint the server does not serve.
+  Leave `@schedule` jobs plain: since Jac 0.39 a plain or `:priv` declaration is not served, and the same test fails if a job ever is.
+- A test app for `JacTestClient` lives at the project root as `fixture_<name>_app.jac`, since Jac 0.39 treats the folder an app file is in as the app's root.
+- Write a large float as `50e6`, never `50_000_000.0`: Jac 0.39.2 reads a float literal only up to its first underscore (`tests/literals_tests.jac`).
+- Keep state that must be shared across requests out of module globals, or keep the server at one worker: `[serve.workers] count = "1"` in `jac.toml`, which `tests/config_tests.jac` guards.
+  Since Jac 0.38 an unset count forks one worker process per core, each with its own globals.
 - Never name a file `test_*.jac`; use `module_tests.jac` or a `module.test.jac` annex.
 - Import project modules from the project root (`import from analysis.consensus { ... }`), never with `..`.
   This applies to client components too: a `..` import passes `jac check` but breaks `jac build`.

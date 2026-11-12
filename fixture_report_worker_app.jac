@@ -33,7 +33,7 @@ def fake_generate(ticker: str, day: str, allowance: int, _policy: Policy = Polic
     } finally { stubs.restore(); }
 }
 
-def:priv setup_worker -> str {
+def:protect setup_worker -> str {
     # The admin's reports run on the server's keys; a member's are tested in accounts_api_tests.jac.
     setattr(store, "is_admin_root", lambda (_users: object, _caller: str) -> bool { True; });
     store._ROLES.clear();
@@ -43,13 +43,13 @@ def:priv setup_worker -> str {
     return "ok";
 }
 
-def:priv tick_worker -> str { reports_job(); return "ok"; }
+def:protect tick_worker -> str { reports_job(); return "ok"; }
 
-def:priv order_count -> int {
+def:protect order_count -> int {
     return sum(len([p ->:Sent:->]) for p in [root.shared -->[?:Portfolio]]);
 }
 
-def:priv abandoned_job -> str {
+def:protect abandoned_job -> str {
     public(root.shared ++> ReportJob(ticker="FAIL", trading_date="2026-10-16", created_at=utc_now().isoformat(), status=ReportStatus.RUNNING, started_at="2026-01-01T00:00:00+00:00", worker="previous-process"));
     return "ok";
 }

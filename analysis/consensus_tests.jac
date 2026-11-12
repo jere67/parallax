@@ -49,9 +49,9 @@ def example_votes -> dict[Specialist, list[Vote]] {
 }
 
 def random_votes(rng: random.Random) -> dict[Specialist, list[Vote]] {
-    stances = list(Stance);
+    stances = [*Stance];
     found: dict[Specialist, list[Vote]] = {};
-    for s in list(Specialist) {
+    for s in [*Specialist] {
         found[s] = [vote(rng.choice(stances), round(rng.random(), 2)) for _ in range(rng.randint(0, 5))];
     }
     return found;
@@ -98,7 +98,7 @@ test "a specialist with no valid vote is left out, and no votes give no consensu
     c = consensus(votes, "AAPL");
     assert c is not None and "flow" not in c.specialist_scores;
     assert close_to(c.score, 0.95 / 4);
-    assert consensus({s: [] for s in list(Specialist)}, "AAPL") is None;
+    assert consensus({s: [] for s in [*Specialist]}, "AAPL") is None;
     assert consensus({}, "AAPL") is None;
 }
 
@@ -127,7 +127,7 @@ test "abstaining samples leave the rest of their specialist's samples counted" {
 }
 
 test "an all-HOLD panel has C = 0 and no agreement" {
-    c = consensus({s: [vote(Stance.HOLD, 0.8)] * 3 for s in list(Specialist)}, "AAPL");
+    c = consensus({s: [vote(Stance.HOLD, 0.8)] * 3 for s in [*Specialist]}, "AAPL");
     assert c is not None;
     assert (c.score, c.agreement, c.ci_low, c.ci_high) == (0.0, 0.0, 0.0, 0.0);
 }

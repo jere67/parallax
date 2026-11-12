@@ -10,14 +10,14 @@ import from jaclang.testing.testing { JacTestClient }
 import from accounts.vault { SECRET_ENV }
 import from tests.fakes.providers { FakeProviders, GOOD_ALPACA, GOOD_OPENROUTER, GOOD_SECRET }
 
-glob APP: str = str(Path(__file__).resolve().parent / "fixtures" / "policy_app.jac");
-glob RULE: dict = {"kind": "add_rule", "effect": "avoid_buy", "label": "Too hot", "conditions": [{"metric": "score", "op": "lt", "number": 0.6}]};
+glob APP: str = str(Path(__file__).resolve().parent.parent / "fixture_policy_app.jac");
+glob RULE: dict[str, any] = {"kind": "add_rule", "effect": "avoid_buy", "label": "Too hot", "conditions": [{"metric": "score", "op": "lt", "number": 0.6}]};
 
-def call(c: JacTestClient, name: str, body: dict = {}) -> any {
+def call(c: JacTestClient, name: str, body: dict[str, any] = {}) -> any {
     return c.post(f"/function/{name}", json=body).json()["data"]["result"];
 }
 
-def answer(reply: str, edits: list[dict] = []) -> str {
+def answer(reply: str, edits: list[dict[str, any]] = []) -> str {
     return json.dumps({"reply": reply, "edits": edits});
 }
 

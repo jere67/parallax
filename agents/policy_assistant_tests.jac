@@ -17,7 +17,7 @@ def ask_with(outputs: list[str]) -> tuple[PolicyAnswer, MockLLM] {
     }
 }
 
-def answer(edits: list[dict]) -> str {
+def answer(edits: list[dict[str, any]]) -> str {
     return json.dumps({"reply": "Here is a rule.", "edits": edits});
 }
 
@@ -65,7 +65,7 @@ test "an effect or operator outside the lists is sent back, and the retry's answ
 test "the prompt itself says how to write every kind of edit" {
     (_, mock) = ask_with([answer([])]);
     prompt = mock.seen_prompts[0];
-    for word in [k.value for k in list(EditKind)] + [e.value for e in list(RuleEffect)] {
+    for word in [k.value for k in [*EditKind]] + [e.value for e in [*RuleEffect]] {
         assert word in prompt, word;
     }
     assert "With lt, le, gt," in prompt and "or ge, give a number" in prompt and "With in or not_in, give words" in prompt;

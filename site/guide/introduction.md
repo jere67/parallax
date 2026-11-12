@@ -78,7 +78,7 @@ The admin's team agent is switched by the [forward test](/guide/forward-test), o
 
 | Part | Choice |
 | --- | --- |
-| Language and server | Jac 0.37.12 (`jac-scale` serves the app, runs the scheduler, and stores the graph) |
+| Language and server | Jac 0.39.2 (`jac-scale` serves the app, runs the scheduler, and stores the graph) |
 | Models | Free models on OpenRouter, called through byLLM |
 | Market data and broker | Alpaca (market data and a paper trading account) |
 | Other data | SEC EDGAR, Finnhub, Wikipedia |

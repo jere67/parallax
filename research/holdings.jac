@@ -179,7 +179,7 @@ def reduce_archive(data: bytes, quarter: str) -> str {
                 selected.update({acc: manager for acc in kept});
             }
         }
-        totals: dict[str, dict] = {};
+        totals: dict[str, dict[str, any]] = {};
         managers: dict[str, set[str]] = {};
         shared = 0;
         for row in _rows(zipped, "INFOTABLE", {"ACCESSION_NUMBER", "CUSIP", "NAMEOFISSUER", "TITLEOFCLASS", "SSHPRNAMT", "SSHPRNAMTTYPE", "PUTCALL", "VALUE", "OTHERMANAGER"}) {
@@ -257,7 +257,7 @@ def join_holdings(names: dict[str, str], fetched: Fetched, archive: Archive) -> 
     }
     candidates: dict[str, list[str]] = {};
     ambiguous: set[str] = set();
-    totals: dict[str, dict] = parsed["totals"];
+    totals: dict[str, dict[str, any]] = parsed["totals"];
     for (cusip, row) in totals.items() {
         symbols: set[str] = set();
         for name in row["names"] {

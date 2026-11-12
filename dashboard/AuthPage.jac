@@ -16,10 +16,17 @@ def next_page(search: str, fallback: str) -> str {
     return wanted if wanted == "/app" or wanted.startsWith("/app/") else fallback;
 }
 
-"""Words for a failed sign-up. The server's message names the case worth telling apart."""
+"""Words for a failed sign-up. The server's message names the cases worth telling apart: an
+account that exists, and a password the auth policy refuses ("Rejected by the auth policy: the
+password is too common"), whose reasons are worth showing as they are."""
 def signup_words(error: str) -> str {
-    if "exist" in error.lower() or "already" in error.lower() {
+    lowered = error.lower();
+    if "exist" in lowered or "already" in lowered {
         return "An account with this email already exists. Log in instead.";
+    }
+    if "auth policy" in lowered and ":" in error {
+        reasons = error.partition(":")[2].strip();
+        return f"Choose another password: {reasons}.";
     }
     return "This account could not be created. Check your email and password, then try again.";
 }

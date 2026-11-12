@@ -395,6 +395,10 @@ test("account: a crafted link cannot send someone elsewhere after logging in", a
 test("account: signing up with no link in mind goes to connecting keys", async ({ page }) => {
   await page.goto("/signup");
   await page.getByLabel("Email", { exact: true }).fill(`direct-${process.pid}-${Date.now()}@example.test`);
+  // A password the server's policy refuses says why, in the server's own words.
+  await page.getByLabel("Password", { exact: true }).fill("password");
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Choose another password: the password is too common.");
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Create account", exact: true }).click();
   await expect(page).toHaveURL(/\/app\/settings$/);

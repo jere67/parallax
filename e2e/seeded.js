@@ -14,8 +14,8 @@ async function post(baseURL, path, body, token) {
 async function signedUp(baseURL) {
   const username = `seeded-${Date.now()}@example.test`;
   const credential = { type: "password", password: "local-seeded-password" };
-  await post(baseURL, "/user/register", { identities: [{ type: "username", value: username }], credential });
-  const resp = await post(baseURL, "/user/login", { identity: { type: "username", value: username }, credential });
+  await post(baseURL, "/user/register", { identities: [{ type: "email", value: username }], credential });
+  const resp = await post(baseURL, "/user/login", { identity: { type: "email", value: username }, credential });
   return resp.ok ? (await resp.json())?.data?.token : null;
 }
 

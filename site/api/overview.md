@@ -128,6 +128,6 @@ See [Dashboard internals](/system/dashboard#read-cache).
 
 ## Adding an endpoint
 
-An endpoint is a `def:priv` (signed-in) function, or a `def:pub` (public) one for the health check only, imported by name in `main.jac`.
+An endpoint is a `def:protect` (signed-in) function, or a `def:pub` (public) one for the health check only, imported by name in `main.jac`.
 A function that is not imported answers 404 or 405, and `tests/endpoints_tests.jac` fails for any marked function the server does not serve.
 Return a typed object from `models/views.jac`, so the API stays a contract.

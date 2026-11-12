@@ -121,7 +121,7 @@ def settings_view -> AgentSettings {
     );
 }
 
-def:priv get_agent_settings -> AgentSettings {
+def:protect get_agent_settings -> AgentSettings {
     return settings_view();
 }
 
@@ -198,7 +198,7 @@ def keys_refusal(account: AgentAccount | None) -> str {
 }
 
 """Check the keys sent, and store them all or none. A blank field keeps what is stored."""
-def:priv save_agent_keys(alpaca_key: str = "", alpaca_secret: str = "", openrouter_key: str = "", finnhub_key: str = "") -> KeysReply {
+def:protect save_agent_keys(alpaca_key: str = "", alpaca_secret: str = "", openrouter_key: str = "", finnhub_key: str = "") -> KeysReply {
     account = my_account();
     refusal = keys_refusal(account);
     if refusal {
@@ -236,7 +236,7 @@ def:priv save_agent_keys(alpaca_key: str = "", alpaca_secret: str = "", openrout
 
 """Disconnect a provider's keys. Without Alpaca or OpenRouter the agent stops running and trading;
 its positions stay open on Alpaca, where its owner can close them."""
-def:priv remove_agent_keys(provider: str) -> AgentReply {
+def:protect remove_agent_keys(provider: str) -> AgentReply {
     account = my_account();
     names = {"alpaca": [ALPACA_KEY, ALPACA_SECRET], "openrouter": [OPENROUTER_KEY], "finnhub": [FINNHUB_KEY]}.get(provider);
     if account is None or names is None {
@@ -282,7 +282,7 @@ def flat_problem(account: AgentAccount) -> str {
 
 """Turn the agent's paper orders on or off. On asks only for its next chance to trade: the trading
 job carries it out, since a morning run may hold the portfolio."""
-def:priv set_paper_trading(on: bool) -> AgentReply {
+def:protect set_paper_trading(on: bool) -> AgentReply {
     account = my_account();
     if caller_is_admin() {
         return AgentReply(ok=False, message="This agent's trading is set on the server.", settings=settings_view());
@@ -318,7 +318,7 @@ def:priv set_paper_trading(on: bool) -> AgentReply {
 }
 
 """Ask for today's run now. It uses the caller's own keys and starts within a couple of minutes."""
-def:priv start_my_run -> AgentReply {
+def:protect start_my_run -> AgentReply {
     local = datetime.now(NEW_YORK);
     day = local.date().isoformat();
     if caller_is_admin() {

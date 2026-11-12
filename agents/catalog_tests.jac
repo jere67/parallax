@@ -18,7 +18,7 @@ def bare(model: str) -> str {
 }
 
 """Point the API base at the fake listing `rows`; returns what `restore` puts back."""
-def use_fake(rows: list[dict] | None) -> tuple[dict[str, str | None], list[str]] {
+def use_fake(rows: list[dict[str, any]] | None) -> tuple[dict[str, str | None], list[str]] {
     fake.models = rows;
     saved = ({name: os.environ.get(name) for name in ["OPENROUTER_API_KEY", OPENROUTER_API_BASE_ENV]}, list(CHAIN.models));
     os.environ["OPENROUTER_API_KEY"] = "test-key";
@@ -38,7 +38,7 @@ def restore(saved: tuple[dict[str, str | None], list[str]]) {
     CHAIN.reset(saved_chain);
 }
 
-def listed_from_fake(rows: list[dict] | None) -> list[ListedModel] | None {
+def listed_from_fake(rows: list[dict[str, any]] | None) -> list[ListedModel] | None {
     saved = use_fake(rows);
     try {
         return listed_models();
@@ -48,7 +48,7 @@ def listed_from_fake(rows: list[dict] | None) -> list[ListedModel] | None {
 }
 
 """Resolve against the fake; returns the chain, the note, and the shared chain it set."""
-def resolve_from_fake(rows: list[dict] | None) -> tuple[list[str], str, list[str]] {
+def resolve_from_fake(rows: list[dict[str, any]] | None) -> tuple[list[str], str, list[str]] {
     saved = use_fake(rows);
     try {
         (chain, note) = resolve_models(TODAY);

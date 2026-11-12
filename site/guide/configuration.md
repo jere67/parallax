@@ -33,7 +33,7 @@ The run records the error and carries on with the data it has.
 | `FINNHUB_API_KEY` | Earnings calendar, company news | Free plan. |
 | `SEC_USER_AGENT` | SEC EDGAR | No key, but SEC fair access requires a User-Agent with a contact email. A value without `@`, or the template's `example.com` placeholder, is refused. |
 | `OPENROUTER_API_KEY` | Every model call | Free models only. |
-| `ADMIN_PASSWORD` | The admin account | Read once, when the admin user is created. Defaults to `changeme`, so always set it on a shared server. |
+| `ADMIN_PASSWORD` | The admin account | Read once, when the admin user is created. It must be at least 8 characters, not a common password, and not contain `admin`, or a new server refuses to start. Unset, the server makes a one-time password and prints it in its log once. |
 | `PARALLAX_KEYS_SECRET` | Users' stored keys | At least 32 characters. Each user's keys are sealed with AES-256-GCM under a key derived from it. Without it, the server refuses to store keys. Generate one with `openssl rand -base64 48`. Changing it makes every stored key unreadable, so users must connect their keys again. |
 | `PARALLAX_MAX_AGENTS` | Sign-ups | How many agents the server keeps. Defaults to 10. A user who has no agent yet is refused once the server is full. |
 
@@ -85,10 +85,10 @@ The project file pins the compiler and sets the server's defaults.
 
 | Setting | Value | Why |
 | --- | --- | --- |
-| `[project] jac-version` | `==0.37.12` | The compiler the code and its guides were written against. |
+| `[project] jac-version` | `==0.39.2` | The compiler the code and its guides were written against. |
 | `[byllm.model] default_model` | `openrouter/nvidia/nemotron-3-super-120b-a12b:free` | The primary free model, chosen by the [free-models spike](/design/spike-free-models). Each role overrides its own temperature. |
 | `[byllm.call_params]` | `temperature = 0.2`, `max_output_retries = 1` | Low temperature for research and review; the specialists use 0.8. |
 | `[scale.scheduler] enabled` | `true` | Runs the [scheduled jobs](/system/trading-day#scheduled-jobs) inside the server process. Run `jac install` after changing it. |
-| `[scale.admin] default_password` | `${ADMIN_PASSWORD:-changeme}` | The admin account's password at creation. |
+| `[scale.admin] default_password` | `${ADMIN_PASSWORD:-}` | The admin account's password at creation. |
 | `[test] directory` | `.` | `jac test` runs every test in the project, colocated or under `tests/`. |
 | `[check.lint] select` | `["all"]` | Every lint rule is on. |

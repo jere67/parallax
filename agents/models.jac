@@ -305,7 +305,7 @@ obj LimitedModel(Model) {
         request_timeout_s: float = REQUEST_TIMEOUT_S,
         reasoning_effort: str = "low";
 
-    # These hooks match the pinned Jac 0.37.12 runtime. Classify typed retries from
+    # These hooks match the pinned Jac 0.39.2 runtime. Classify typed retries from
     # the actual retry hook, never by searching untrusted prompt text for a phrase.
     override def _typed_retry_reset(mt_run: MTRuntime, base_msgs: list[object], base_scaffolding: list[object], reason: str, output: str) {
         super._typed_retry_reset(mt_run, base_msgs, base_scaffolding, reason, output);
@@ -375,7 +375,8 @@ obj LimitedModel(Model) {
                 try {
                     response = self.send(params);
                     if model == ROUTER_MODEL {
-                        answered_by = str(getattr(response, "model", "") or "unknown");
+                        # byLLM hands back the provider response as a dict; OpenRouter names the model it picked.
+                        answered_by = str(response.get("model") or "unknown");
                         self.chain.note_routed(answered_by);
                         LOG.warning("every chosen model failed; the Free Models Router answered with %s", answered_by);
                     }

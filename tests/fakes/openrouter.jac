@@ -15,11 +15,11 @@ import from http.server { BaseHTTPRequestHandler, ThreadingHTTPServer }
 obj FakeOpenRouter {
     has script: list[tuple[int, str]] = [],
         delays: list[float] = [],
-        requests: list[dict] = [],
+        requests: list[dict[str, any]] = [],
         key_usage: dict[str, int] | None = None,
         key_requests: list[str] = [],
         auth: list[str] = [],
-        models: list[dict] | None = None;
+        models: list[dict[str, any]] | None = None;
     has _server: ThreadingHTTPServer | None = None,
         _lock: threading.Lock | None = None;
 

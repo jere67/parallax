@@ -15,7 +15,7 @@ The dashboard needs an account, so you sign up once at `/signup`.
 You need:
 
 - macOS or Linux.
-- [Jac 0.37.12](https://www.jaseci.org/), the version the project pins in `jac.toml`.
+- [Jac 0.39.2](https://www.jaseci.org/), the version the project pins in `jac.toml`.
   Much of the Jac website still describes 0.34, so trust `jac guide` over the website.
 - Node.js 22, only for the end-to-end browser tests.
 - A clone of the [repository](https://github.com/jere67/parallax).
@@ -24,11 +24,11 @@ You need:
 
 <Steps>
 
-1. **Install Jac 0.37.12.**
+1. **Install Jac 0.39.2.**
 
    ```bash
    curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh \
-     | bash -s -- --version 0.37.12
+     | bash -s -- --version 0.39.2
    jac --version
    ```
 
