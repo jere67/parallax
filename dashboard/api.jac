@@ -12,13 +12,15 @@ portfolio, performance, and run list every minute, so a page shows the graph as 
 a minute or two ago.
 """
 import math;
+import re;
 import statistics;
+import from datetime { datetime, timezone }
 import from urllib.parse { urlsplit }
 import from accounts.store { AGENT_PORTFOLIO, my_portfolio }
 import from action.baselines { baselines_of, sim_marks }
 import from action.insights { DISCLAIMER }
 import from action.reconcile { marks_of }
-import from agents.specialists { packet }
+import from agents.specialists { NO_EVIDENCE, packet }
 import from dashboard.cache { VIEWS }
 import from analysis.consensus { abstains, signed_score }
 import from analysis.evaluation { latest_evaluation }
@@ -92,6 +94,21 @@ glob SPECIALIST_RUNS: int = 60;
 glob RECENT_SPECIALIST_VOTES: int = 8;
 glob SPECIALIST_ROLES: list[Specialist] = [Specialist.FUNDAMENTALS, Specialist.TECHNICAL, Specialist.NEWS, Specialist.MACRO, Specialist.FLOW];
 glob SERIES_LABELS: dict[str, str] = {"team": "Your agent", "equal_weight": "Equal-weight shortlist", "spy": "SPY buy-and-hold"};
+# How run/analysis.jac `record_analysis` words a dropped sample: "<role> sample <n>: <error>".
+glob SAMPLE_ERROR: re.Pattern[str] = re.compile(r"^(\w+) sample (\d+): (.*)$", re.DOTALL);
+# The heads of the executor's execution note (action/executor.jac `execute_run`).
+glob EXECUTED: re.Pattern[str] = re.compile(r"^(\d+) checks?, (\d+) approved");
+glob ORDERS_OFF: re.Pattern[str] = re.compile(r"orders are disabled [^;]*; (\d+) checks? recorded, nothing sent");
+# Alpaca's order statuses in plain words; any other status is still working at the broker.
+glob ORDER_WORDS: dict[str, str] = {
+    "filled": "filled",
+    "partially_filled": "partly filled",
+    "canceled": "canceled",
+    "expired": "expired",
+    "replaced": "replaced",
+    "done_for_day": "done for the day",
+    "rejected": "broker rejected"
+};
 # Research is shown nearest the price first, as on the insight cards (action/insights.jac).
 glob DOMAIN_ORDER: list[Domain] = [Domain.MARKET, Domain.FUNDAMENTALS, Domain.NEWS, Domain.MACRO];
 
@@ -146,6 +163,16 @@ def:priv get_run(run_date: str = "") -> RunView | None {
         return None;
     }
     return VIEWS.get(view_key(team, "run", run_date), run_view, team, run_date);
+}
+
+"""The caller's newest run from the read cache, for other modules' endpoints (market/api.jac)
+that link to its decisions without walking the graph themselves."""
+def my_latest_run -> RunView | None {
+    team = my_portfolio();
+    if team is None {
+        return None;
+    }
+    return VIEWS.get(view_key(team, "run", ""), run_view, team, "");
 }
 
 """One ticker's trail in the run for `run_date`, or None when the run did not cover it."""
@@ -357,6 +384,8 @@ def order_view(o: Order) -> OrderView {
         updated_at=o.updated_at,
         reject_reason=o.reject_reason,
         run_day=day,
+        decision_id=f"{day}/{o.ticker}" if day else "",
+        broker_order_id=o.alpaca_order_id,
         fills=[FillView(qty=f.qty, price=f.price, filled_at=f.filled_at) for f in fills]
     );
 }
@@ -563,7 +592,56 @@ def run_view(portfolio: Portfolio, run_date: str) -> RunView | None {
         [coverage_row(c) for c in [run ->:Covers:->[?:Coverage]]],
         key=lambda (r: CoverageRow) { (-(r.conviction or 0.0), r.ticker); }
     );
+    (view.execution_summary, view.execution_detail) = execution_summary(run.execution_note, view.rows);
     return view;
+}
+
+"""An order's status in plain words: a refusal the executor recorded without sending reads "not
+sent", Alpaca's refusal "broker rejected", and a status still working at the broker "working"."""
+def order_word(status: str, reject_reason: str = "") -> str {
+    if status == "rejected" and reject_reason.startswith("not sent") {
+        return "not sent";
+    }
+    return ORDER_WORDS.get(status, "working");
+}
+
+def counted(n: int, noun: str) -> str {
+    return f"{n} {noun}" + ("" if n == 1 else "s");
+}
+
+"""What the risk gate and the broker did with a run's decisions, in plain words, from the
+executor's note (which counts the checks, held stocks the run did not cover among them) and the
+rows' orders as they stand now: ("2 of 3 approved", "1 filled · 1 broker rejected"). An
+empty note gives empty text, and a note this cannot read is shown as the executor wrote it."""
+def execution_summary(note: str, rows: list[CoverageRow]) -> tuple[str, str] {
+    if not note {
+        return ("", "");
+    }
+    off = ORDERS_OFF.search(note);
+    if off is not None {
+        return (f"{counted(int(off.group(1)), 'check')}, none sent", "orders are turned off");
+    }
+    done = EXECUTED.match(note);
+    if done is None {
+        return (note[:1].upper() + note[1:], "");
+    }
+    (checks, approved) = (int(done.group(1)), int(done.group(2)));
+    words: dict[str, int] = {};
+    for r in rows {
+        if r.order_status {
+            word = order_word(r.order_status, r.order_reject_reason);
+            words[word] = words.get(word, 0) + 1;
+        }
+    }
+    detail = [f"{n} {word}" for (word, n) in words.items()];
+    if not detail {
+        detail.append("nothing sent");
+    }
+    if "market data gaps" in note {
+        detail.append("market data gaps");
+    }
+    head = "No orders to check" if checks == 0 else f"{approved} of {checks} approved";
+    return (head, " · ".join(detail));
 }
 
 def coverage_row(cov: Coverage) -> CoverageRow {
@@ -602,6 +680,7 @@ def coverage_row(cov: Coverage) -> CoverageRow {
         o = first_of([o for o in [rc ->:Placed:->[?:Order]]]);
         if o is not None {
             row.order_status = o.status;
+            row.order_reject_reason = o.reject_reason;
             row.order_side = o.side.value;
             row.order_qty = o.qty;
             row.filled_qty = o.filled_qty;
@@ -626,6 +705,8 @@ def trail_view(portfolio: Portfolio, run_date: str, ticker: str) -> TrailView | 
     records = [r for r in [cov ->:Researched:->[?:ResearchRecord]]];
     view = TrailView(
         run_date=run_date,
+        run_id=run_date,
+        decision_id=f"{run_date}/{cov.ticker}",
         ticker=cov.ticker,
         sector=cov.sector,
         reason=cov.reason.value,
@@ -651,7 +732,7 @@ def trail_view(portfolio: Portfolio, run_date: str, ticker: str) -> TrailView | 
         view.consensus = ConsensusView(score=c.score, agreement=c.agreement, ci_low=c.ci_low, ci_high=c.ci_high, draft_action=c.draft_action.value, samples_used=c.samples_used, samples_dropped=c.samples_dropped);
     }
     sources = packet_sources(records, first_of([m for m in [run ->:HasMacro:->[?:MacroRecord]]]), cov.ticker, run_date);
-    view.specialists = specialist_views([v for v in [cov ->:Voted:->[?:VoteRecord]]], c.weights if c is not None else {}, sources);
+    view.specialists = specialist_views([v for v in [cov ->:Voted:->[?:VoteRecord]]], c.weights if c is not None else {}, sources, cov.analysis_errors);
     d = first_of([d for d in [cov ->:Decided:->[?:Decision]]]);
     if d is None {
         return view;
@@ -726,7 +807,25 @@ def research_views(records: list[ResearchRecord]) -> list[ResearchView] {
 }
 
 def evidence_view(e: Evidence) -> EvidenceView {
-    return EvidenceView(claim=e.claim, source_url=e.source_url, published=e.published, host=urlsplit(e.source_url).hostname or "");
+    return EvidenceView(claim=e.claim, source_url=e.source_url, published=e.published, host=urlsplit(e.source_url).hostname or "", published_at=utc_stamp(e.published));
+}
+
+"""A source's stamp as an ISO timestamp in UTC when it carries a time of day, or "" for a bare
+date or anything unreadable. A stamp with no zone is taken as UTC, as the app stores times."""
+def utc_stamp(text: str) -> str {
+    text = text.strip();
+    if len(text) < 16 or text[10] not in "T " {
+        return "";
+    }
+    try {
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"));
+    } except ValueError {
+        return "";
+    }
+    if moment.tzinfo is None {
+        moment = moment.replace(tzinfo=timezone.utc);
+    }
+    return moment.astimezone(timezone.utc).isoformat();
 }
 
 """Each specialist's evidence packet as the panel read it (agents/specialists.jac), so a vote's
@@ -741,17 +840,31 @@ def packet_sources(records: list[ResearchRecord], macro: MacroRecord | None, tic
     return {s.value: [evidence_view(e) for e in packet(s, ticker, run_date, newest, body).evidence] for s in SPECIALIST_ROLES};
 }
 
-"""Each specialist's samples in panel order, with its mean signed score over the samples that
-count, its weight, and the evidence each sample cited. A specialist whose samples all abstain
-scores 0 and has no weight."""
-def specialist_views(votes: list[VoteRecord], weights: dict[str, float], sources: dict[str, list[EvidenceView]] | None = None) -> list[SpecialistView] {
+"""Each role's dropped samples, (sample, error) in the order recorded, from a coverage's
+`analysis_errors`."""
+def dropped_samples(errors: list[str]) -> dict[str, list[tuple[int, str]]] {
+    found: dict[str, list[tuple[int, str]]] = {};
+    for line in errors {
+        m = SAMPLE_ERROR.match(line);
+        if m is not None {
+            found.setdefault(m.group(1), []).append((int(m.group(2)), m.group(3)));
+        }
+    }
+    return found;
+}
+
+"""All five specialists in panel order, each with its samples, its mean signed score over the
+samples that count, its weight, the evidence each sample cited, and why any sample was dropped
+(`errors` is the coverage's `analysis_errors`). A specialist with no sample that counts scores 0
+and has no weight, and its `status` says whether it abstained for want of evidence, failed, or
+never ran (SpecialistView)."""
+def specialist_views(votes: list[VoteRecord], weights: dict[str, float], sources: dict[str, list[EvidenceView]] | None = None, errors: list[str] | None = None) -> list[SpecialistView] {
     sources = sources or {};
+    dropped = dropped_samples(errors or []);
     found: list[SpecialistView] = [];
     for s in SPECIALIST_ROLES {
         mine = sorted([v for v in votes if v.specialist == s], key=lambda (v: VoteRecord) { v.sample; });
-        if not mine {
-            continue;
-        }
+        failed = sorted(dropped.get(s.value, []));
         samples = [
             SampleView(
                 sample=v.sample,
@@ -769,8 +882,25 @@ def specialist_views(votes: list[VoteRecord], weights: dict[str, float], sources
             )
             for v in mine
         ];
-        counted = [x.signed for x in samples if not x.abstained];
-        found.append(SpecialistView(specialist=s.value, score=statistics.fmean(counted) if counted else 0.0, weight=weights.get(s.value), samples=samples));
+        scored = [x.signed for x in samples if not x.abstained];
+        status = "voted";
+        if not scored {
+            if samples or (failed and all(text == NO_EVIDENCE for (_, text) in failed)) {
+                status = "abstained";
+            } elif failed {
+                status = "failed";
+            } else {
+                status = "not_run";
+            }
+        }
+        found.append(SpecialistView(
+            specialist=s.value,
+            score=statistics.fmean(scored) if scored else 0.0,
+            weight=weights.get(s.value),
+            samples=samples,
+            status=status,
+            errors=[f"Sample {n + 1}: {text}" for (n, text) in failed]
+        ));
     }
     return found;
 }

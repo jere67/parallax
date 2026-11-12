@@ -18,8 +18,8 @@ import from dashboard.market.screen_url {
     sort_of,
     write_screen
 }
-import from dashboard.ui.format { count, num, qty, stamp_et }
-import from dashboard.ui.parts { Empty, ErrorBox, FROZEN_CELL, FROZEN_HEAD, ROW, TD, TD_NUM, TH, TH_NUM }
+import from dashboard.ui.format { action_label, count, day_short, num, qty, stamp_et }
+import from dashboard.ui.parts { ActionBadge, Empty, ErrorBox, FROZEN_CELL, FROZEN_HEAD, ROW, TD, TD_NUM, TH, TH_NUM }
 import from dashboard.ui.rpc { screen_stocks }
 import from models.market { CoverageView as CoverageData, ScreenerView as ScreenerData }
 
@@ -218,8 +218,9 @@ def ColumnHead(key_: str, active: bool, descending: bool, sort: Callable[[str], 
     </th>
 }
 
-"""The first column: the ticker, its company, and the star that adds it to the watchlist."""
-def SymbolCell(row: dict[str, float | str | None], starred: bool, star: Callable[[str], None]) -> JsxElement {
+"""The first column: the ticker, its company, the star that adds it to the watchlist, and the
+agent's decision on it in its latest run (`action` on `day`), which opens that decision's trail."""
+def SymbolCell(row: dict[str, float | str | None], starred: bool, star: Callable[[str], None], action: str = "", day: str = "") -> JsxElement {
     symbol = str(row["symbol"]);
     <td className={TD + FROZEN_CELL + " max-w-[136px] sm:max-w-[300px]"}>
         <div className="flex items-center gap-2">
@@ -232,13 +233,26 @@ def SymbolCell(row: dict[str, float | str | None], starred: bool, star: Callable
             >
                 <Star size={14} strokeWidth={1.75} fill={"currentColor" if starred else "none"} aria-hidden="true"/>
             </button>
-            <Link to={"/app/stocks/" + symbol} className="group/link flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:gap-2">
-                <span className="font-semibold text-text group-hover/link:text-accent">{symbol}</span>
-                <span className="truncate text-[11px] leading-4 text-muted sm:text-[12px]">{str(row.get("name") or "")}</span>
-                {if row.get("kind") == "adr" {
-                    <span className="hidden shrink-0 text-[10px] font-medium text-faint sm:inline" title="American depositary receipt">ADR</span>
+            <div className="flex min-w-0 flex-1 flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
+                <Link to={"/app/stocks/" + symbol} className="group/link flex min-w-0 max-w-full flex-col sm:flex-row sm:items-baseline sm:gap-2">
+                    <span className="font-semibold text-text group-hover/link:text-accent">{symbol}</span>
+                    <span className="truncate text-[11px] leading-4 text-muted sm:text-[12px]">{str(row.get("name") or "")}</span>
+                    {if row.get("kind") == "adr" {
+                        <span className="hidden shrink-0 text-[10px] font-medium text-faint sm:inline" title="American depositary receipt">ADR</span>
+                    }}
+                </Link>
+                {if action and day {
+                    <Link
+                        to={"/app/runs/" + day + "/" + symbol}
+                        data-testid="screener-decision"
+                        className="shrink-0 rounded-full hover:opacity-80 sm:ml-auto"
+                        title={"Your agent's decision on " + symbol + ", " + day_short(day) + ": " + action_label(action) + ". Open the decision trail."}
+                        aria-label={"Decision trail for " + symbol + " on " + day_short(day)}
+                    >
+                        <ActionBadge action={action}/>
+                    </Link>
                 }}
-            </Link>
+            </div>
         </div>
     </td>
 }
@@ -621,7 +635,13 @@ def:pub ScreenerPage -> JsxElement {
                         <tbody>
                             {for row in rows {
                                 <tr key={str(row["symbol"])} className={ROW + " group"}>
-                                    <SymbolCell row={row} starred={str(row["symbol"]) in stars} star={star}/>
+                                    <SymbolCell
+                                        row={row}
+                                        starred={str(row["symbol"]) in stars}
+                                        star={star}
+                                        action={view.decisions.get(str(row["symbol"]), "")}
+                                        day={view.decided_day}
+                                    />
                                     {for key in shown {
                                         <DataCell key={key} key_={key} value={row.get(key)}/>
                                     }}

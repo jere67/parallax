@@ -126,6 +126,127 @@ test("run: the latest run's shortlist leads to a decision's full trail", async (
   await fitsWidth(page);
 });
 
+// A signed-in account's endpoint calls, for finding the demo decisions a test needs.
+function api(request, account) {
+  return async (name, data = {}) => {
+    const resp = await request.post(`/function/${name}`, { data, headers: { Authorization: `Bearer ${account.token}` } });
+    expect(resp.ok(), await resp.text()).toBeTruthy();
+    return (await resp.json()).data.result;
+  };
+}
+
+// The latest run's decision trails, each with its ticker.
+async function latestTrails(call) {
+  const run = await call("get_run", { run_date: "" });
+  const trails = [];
+  for (const row of run.rows) {
+    trails.push(await call("get_decision_trail", { run_date: run.run_date, ticker: row.ticker }));
+  }
+  return trails;
+}
+
+test("decision: the trail names its run and decision, and each order its client order ID", async ({ page, request }) => {
+  const account = await logIn(page, "trail");
+  const trails = await latestTrails(api(request, account));
+  const traded = trails.find((t) => t.orders.some((o) => o.purpose !== "stop")) ?? trails[0];
+  await page.goto(`/app/runs/${traded.run_date}/${traded.ticker}`);
+  const ids = page.getByTestId("trail-ids");
+  await expect(ids).toHaveText(new RegExp(`^Run\\s*${traded.run_date}\\s*Decision\\s*${traded.run_date}/${traded.ticker}$`));
+
+  // Each research report says when it was written, and each source when it was published.
+  const research = page.locator("#research");
+  await expect(research.getByTestId("research-time").first()).toHaveText(/^As of [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} (AM|PM) ET$/);
+  await research.getByRole("button", { name: /^Show \d+ sources?$/ }).first().click();
+  await expect(research.getByTestId("source-time").first()).toHaveText(/^· Published [A-Z][a-z]{2} \d{1,2}, \d{4}/);
+
+  // The gate says when it ruled and on which decision.
+  const gate = page.locator("#gate");
+  if (traded.gate) {
+    await expect(gate.getByTestId("gate-checked")).toContainText(`for decision ${traded.decision_id}`);
+    await expect(gate.getByTestId("gate-checked")).toContainText(/ET/);
+  }
+  // Every order shows the client order ID the broker knows it by, and leads to the portfolio.
+  const orders = page.locator("#orders");
+  for (const o of traded.orders) {
+    await expect(orders.locator("[data-testid=client-order-id]:visible", { hasText: o.client_order_id })).toBeVisible();
+    if (o.purpose !== "stop") {
+      expect(o.client_order_id).toContain(`${traded.run_date}-${traded.ticker}-`);
+      expect(o.decision_id).toBe(traded.decision_id);
+    }
+  }
+  await orders.getByRole("link", { name: "Every order on the Portfolio page" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Your portfolio" })).toBeVisible();
+});
+
+test("decision: every specialist shows, and a failure or missing evidence is not a neutral vote", async ({ page, request }) => {
+  const account = await logIn(page, "trail");
+  const trails = await latestTrails(api(request, account));
+  for (const t of trails) {
+    expect(t.specialists.map((s) => s.specialist)).toEqual(["fundamentals", "technical", "news", "macro", "flow"]);
+  }
+  const failed = trails.find((t) => t.specialists.some((s) => s.status === "failed"));
+  const abstained = trails.find((t) => t.specialists.some((s) => s.status === "abstained"));
+  expect(failed, "the demo's latest run has a failed specialist").toBeTruthy();
+  expect(abstained, "the demo's latest run has an abstention").toBeTruthy();
+
+  await page.goto(`/app/runs/${failed.run_date}/${failed.ticker}`);
+  const panel = page.locator("#panel");
+  await expect(panel.getByTestId("specialist")).toHaveCount(5);
+  const news = panel.locator("[data-specialist=news]");
+  await expect(news).toHaveAttribute("data-status", "failed");
+  await expect(news.getByText("Failed", { exact: true })).toBeVisible();
+  await expect(news.getByText("3 samples failed, so it did not vote.")).toBeVisible();
+  await news.getByRole("button").click();
+  await expect(news.getByText(/^Sample 1: RateLimitError/)).toBeVisible();
+  await fitsWidth(page);
+
+  await page.goto(`/app/runs/${abstained.run_date}/${abstained.ticker}`);
+  const role = abstained.specialists.find((s) => s.status === "abstained").specialist;
+  const row = page.locator(`#panel [data-specialist=${role}]`);
+  await expect(row.getByText("Abstained (no evidence)").first()).toBeVisible();
+  // A neutral Hold reads as a stance, never as the abstention's dashed tag.
+  const voted = page.locator("#panel [data-status=voted]").first();
+  await expect(voted.getByText("Abstained (no evidence)")).toHaveCount(0);
+  await fitsWidth(page);
+});
+
+test("decision: a decision the risk gate blocked says so, and has no order", async ({ page, request }) => {
+  const account = await logIn(page, "trail");
+  const call = api(request, account);
+  let blocked = null;
+  for (const summary of await call("list_runs")) {
+    const run = await call("get_run", { run_date: summary.run_date });
+    const row = run.rows.find((r) => r.gate_outcome === "rejected");
+    if (row) {
+      blocked = await call("get_decision_trail", { run_date: run.run_date, ticker: row.ticker });
+      break;
+    }
+  }
+  expect(blocked, "the demo history has a blocked order").toBeTruthy();
+  expect(blocked.orders.filter((o) => o.purpose !== "stop")).toEqual([]);
+
+  await page.goto(`/app/runs/${blocked.run_date}/${blocked.ticker}`);
+  const strip = page.getByRole("navigation", { name: "Decision trail" });
+  await expect(strip.getByText("Gate blocked", { exact: true })).toBeVisible();
+  await expect(strip.getByText("no order sent")).toBeVisible();
+  const gate = page.locator("#gate");
+  await expect(gate.getByText("Gate blocked", { exact: true }).first()).toBeVisible();
+  await expect(gate.getByTestId("gate-blocked")).toContainText("nothing went to the broker");
+  if (blocked.orders.length === 0) {
+    await expect(page.locator("#orders").getByTestId("no-orders")).toContainText("the risk gate blocked");
+  }
+  await expect(page.locator("#orders").getByText("Broker rejected")).toHaveCount(0);
+  await fitsWidth(page);
+});
+
+test("run: the risk gate's card reads in plain words, not the executor's note", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/app/runs");
+  const card = page.getByRole("region", { name: "Run", exact: true });
+  await expect(card.getByText(/^\d+ of \d+ approved$/)).toBeVisible();
+  await expect(card).not.toContainText(/pending_new|; /);
+});
+
 test("specialists: five roles show recent votes and scoring context", async ({ page }) => {
   await logIn(page, "specialists");
   await page.goto("/app/specialists");

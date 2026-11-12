@@ -9,7 +9,7 @@ import logging;
 import re;
 import threading;
 import from datetime { date, datetime, time as day_time, timezone }
-import from dashboard.api { get_portfolio, get_run }
+import from dashboard.api { get_portfolio, my_latest_run }
 import from market.companies { CompanyRecord }
 import from market.demo { demo_history, demo_intraday, demo_state }
 import from run.switches { demo_mode }
@@ -159,8 +159,11 @@ def:priv screen_stocks(
         page = [{f: r.get(f) for f in fields} for r in page];
     }
     quote_days = [str(r.get("quote_day")) for r in cache.rows if r.get("quote_day")];
+    (decided_day, decisions) = decisions_on({str(r.get("symbol")) for r in page});
     return ScreenerView(
         rows=page,
+        decisions=decisions,
+        decided_day=decided_day,
         total=total,
         ready=bool(cache.rows),
         demo=state.demo,
@@ -217,7 +220,7 @@ def committee_of(symbol: str) -> CommitteeView {
                 found.held_qty = position.qty;
             }
         }
-        run = get_run();
+        run = my_latest_run();
         if run is not None {
             for row in run.rows {
                 if row.ticker == symbol {
@@ -231,6 +234,21 @@ def committee_of(symbol: str) -> CommitteeView {
         LOG.warning("market: no committee view for %s: %r", symbol, e);
     }
     return found;
+}
+
+"""The reader's agent's latest run day and the action it decided on each of `symbols` that run
+covered, from the cached run view, as `committee_of` reads it."""
+def decisions_on(symbols: set[str]) -> tuple[str, dict[str, str]] {
+    try {
+        run = my_latest_run();
+        if run is None {
+            return ("", {});
+        }
+        return (run.run_date, {row.ticker: row.action for row in run.rows if row.ticker in symbols and row.action});
+    } except Exception as e {
+        LOG.warning("market: no decisions for the screener: %r", e);
+    }
+    return ("", {});
 }
 
 def profile_view(listing_cik: str, record: CompanyRecord | None, website: str, ipo: str) -> ProfileView {

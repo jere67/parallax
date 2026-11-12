@@ -16,6 +16,7 @@ import from dashboard.ui.format {
     day_short,
     money,
     num,
+    order_label,
     pct,
     qty,
     signed_money,
@@ -431,7 +432,7 @@ def OrderCard(o: OrderData) -> JsxElement {
     <li data-testid="order-card" className={CARD} title={o.reject_reason}>
         <div className="flex items-start justify-between gap-3">
             <TickerCell ticker={o.ticker} day={o.run_day}/>
-            <StatusBadge status={o.status}/>
+            <StatusBadge status={o.status} label={order_label(o.status, o.reject_reason)}/>
         </div>
         <p className="mt-1 text-[12px] text-muted">
             <span className={"font-semibold uppercase " + side_tone(o.side)}>{o.side}</span>
@@ -486,7 +487,7 @@ def OrdersTable(orders: list[OrderData]) -> JsxElement {
                             <td className={TD_NUM}>{money(o.limit_price if o.limit_price is not None else o.stop_price)}</td>
                             <td className={TD_NUM}>{qty(o.filled_qty) + " / " + qty(o.qty)}</td>
                             <td className={TD_NUM}>{money(o.filled_avg_price)}</td>
-                            <td className={TD} title={o.reject_reason}><StatusBadge status={o.status}/></td>
+                            <td className={TD} title={o.reject_reason}><StatusBadge status={o.status} label={order_label(o.status, o.reject_reason)}/></td>
                         </tr>
                     }}
                 </tbody>

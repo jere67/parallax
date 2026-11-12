@@ -158,7 +158,7 @@ test "insight mode, a skipped run, and the kill switch send nothing" {
     }
 }
 
-test "a gate rejection is recorded with its rule and sends nothing" {
+test "a gate rejection is recorded with its rule and sends nothing, so no Order node exists" {
     fake = FakeBroker();
     try {
         broker = broker_for(fake);
@@ -168,6 +168,9 @@ test "a gate rejection is recorded with its rule and sends nothing" {
         rc = checks_of(run)["AAA"];
         assert rc.outcome == RiskOutcome.REJECTED and [r.rule for r in rc.rules if not r.passed] == ["earnings blackout"];
         assert fake.orders == [] and done.refused == ["AAA buy 40: earnings blackout"];
+        # Nothing stands for an order in the graph either: no Placed edge from the check, and no
+        # Order the portfolio sent.
+        assert [rc ->:Placed:->] == [] and [rc ->:Placed:->[?:Order]] == [] and sent(portfolio) == [];
     } finally {
         fake.stop();
     }

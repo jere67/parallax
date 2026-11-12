@@ -65,7 +65,9 @@ obj FillView {
 }
 
 """An order the executor sent (or that Alpaca refused), with its fills. `run_day` links it to
-the decision behind it; a stop has none."""
+the decision behind it, and `decision_id` names that decision as the trail does
+("2026-11-11/AAPL"); a stop has neither. `client_order_id` is the ID the broker shows, and
+`broker_order_id` the broker's own ID for it, empty for an order never accepted."""
 obj OrderView {
     has client_order_id: str,
         ticker: str,
@@ -83,6 +85,8 @@ obj OrderView {
         updated_at: str = "",
         reject_reason: str = "",
         run_day: str = "",
+        decision_id: str = "",
+        broker_order_id: str = "",
         fills: list[FillView] = [];
 }
 
@@ -151,6 +155,7 @@ obj CoverageRow {
         approved_qty: int = 0,
         rejected_by: str = "",
         order_status: str = "",
+        order_reject_reason: str = "",
         order_side: str = "",
         order_qty: int = 0,
         filled_qty: int = 0,
@@ -166,6 +171,9 @@ obj RunSummary {
         actions: dict[str, int] = {};
 }
 
+"""A run. `execution_summary` and `execution_detail` say in plain words what the risk gate and the
+broker did with its decisions ("2 of 3 approved", "1 filled · 1 broker rejected");
+`execution_note` keeps the executor's raw line."""
 obj RunView {
     has run_date: str,
         status: str,
@@ -177,6 +185,8 @@ obj RunView {
         executed_at: str = "",
         reconciled_at: str = "",
         execution_note: str = "",
+        execution_summary: str = "",
+        execution_detail: str = "",
         summary: str = "",
         model_requests: int = 0,
         prompt_tokens: int = 0,
@@ -189,11 +199,15 @@ obj RunView {
         policy_version: int = 0;
 }
 
+"""One cited source. `published` is the source's own stamp as the research copied it, a date or
+a timestamp; `published_at` is that time in UTC when the source gives one, and empty when it
+gives only a date."""
 obj EvidenceView {
     has claim: str,
         source_url: str,
         published: str;
-    has host: str = "";
+    has host: str = "",
+        published_at: str = "";
 }
 
 """One research report on the ticker (or the run's macro brief)."""
@@ -228,11 +242,18 @@ obj SampleView {
         gaps: list[str] = [];
 }
 
+"""One of the five specialists on one ticker, always present whether it voted or not. `status`
+is "voted" when a sample counts toward the consensus, "abstained" when it had no evidence to
+judge (every sample cited only data gaps, or none could be drawn for want of evidence), "failed"
+when every sample it was asked for failed, and "not_run" when it was never asked. `errors`
+says why each dropped sample failed ("Sample 2: ..."), for a partly failed specialist too."""
 obj SpecialistView {
     has specialist: str,
         score: float;
     has weight: float | None = None,
-        samples: list[SampleView] = [];
+        samples: list[SampleView] = [],
+        status: str = "voted",
+        errors: list[str] = [];
 }
 
 """A recent vote linked to the decision trail that contains its full evidence."""
@@ -326,7 +347,9 @@ obj GateView {
 """One ticker's full trail in one run (TDD §10, Decision detail): the evidence, every vote,
 the consensus, the Arbiter's decision, the risk gate, and the orders and fills, with the
 position the decision opened. `tickers` lists the run's covered tickers in order, for
-moving between decisions."""
+moving between decisions. A decision is identified by its run and ticker: `run_id` is the run's
+date and `decision_id` is "<run date>/<ticker>", the same pair each of its orders' client order
+IDs carry ("<tag>-<run date>-<ticker>-<purpose>")."""
 obj TrailView {
     has run_date: str,
         ticker: str,
@@ -335,6 +358,8 @@ obj TrailView {
         run_status: str,
         mode: str;
     has demo: bool = False,
+        run_id: str = "",
+        decision_id: str = "",
         reason_note: str = "",
         screen_score: float | None = None,
         flag_reason: str = "",

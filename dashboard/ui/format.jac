@@ -214,6 +214,47 @@ def stamp_et(iso: str) -> str {
     return f"{day_short(day)}, {clock(hour, minute)} ET";
 }
 
+"""Oct 21, 2026: a date with its year, for a record that may be from another year."""
+def day_year(day: str) -> str {
+    if len(day) < 10 {
+        return MISSING;
+    }
+    (y, m, d) = parse_day(day);
+    return f"{MONTHS[m - 1]} {d}, {y}";
+}
+
+"""Oct 21, 2026, 4:30 PM ET, from an ISO timestamp in UTC."""
+def stamp_long_et(iso: str) -> str {
+    if len(iso) < 16 {
+        return MISSING;
+    }
+    (day, hour, minute) = new_york(iso);
+    return f"{day_year(day)}, {clock(hour, minute)} ET";
+}
+
+"""When a source was published: its New York time when it gives one (`at`, in UTC), or its
+date alone when that is all it gives (`published`)."""
+def source_time(published: str, at: str = "") -> str {
+    return stamp_long_et(at) if at else day_year(published[0:10]);
+}
+
+glob GATE_LABELS: dict[str, str] = {"approved": "Approved", "resized": "Resized", "rejected": "Gate blocked"};
+
+"""The risk gate's ruling as the pages name it. A blocked order never reached the broker, so it
+must not read like the broker's "rejected"."""
+def gate_label(outcome: str) -> str {
+    return GATE_LABELS.get(outcome, title(outcome));
+}
+
+"""A label for an order's status where Alpaca's own word would mislead, or "" to keep it: a
+refusal the executor recorded without sending reads "Not sent", and Alpaca's "Broker rejected"."""
+def order_label(status: str, reject_reason: str = "") -> str {
+    if status != "rejected" {
+        return "";
+    }
+    return "Not sent" if reject_reason.startswith("not sent") else "Broker rejected";
+}
+
 """The New York date of an ISO timestamp in UTC."""
 def day_et(iso: str) -> str {
     return new_york(iso)[0] if len(iso) >= 16 else "";

@@ -2,7 +2,7 @@
 from the research and its sources, through every specialist's votes and the consensus, to the
 Arbiter, the risk gate, and the orders. A strip at the top sums up each stage and jumps to it."""
 import from "@jac/runtime" { Link, useParams }
-import from "lucide-react" { Check, ChevronLeft, ChevronRight, ExternalLink, X }
+import from "lucide-react" { Check, ChevronLeft, ChevronRight, CircleDashed, CircleSlash, ExternalLink, TriangleAlert, X }
 import from dashboard.ui.rpc { get_decision_trail }
 import from dashboard.ui.DotPlot { DotPlot, ScoreScale }
 import from dashboard.ui.format {
@@ -11,13 +11,16 @@ import from dashboard.ui.format {
     count,
     day_long,
     day_short,
+    gate_label,
     money,
     num,
+    order_label,
     pct,
     qty,
     signed,
     signed_money,
     signed_pct,
+    source_time,
     stamp_et,
     title,
     tone
@@ -28,7 +31,9 @@ import from dashboard.ui.parts {
     WIDE_ONLY,
     CardFigure,
     CardFigures,
+    PILL_BASE,
     ROW,
+    TONE_DOWN,
     TD,
     TD_TEXT,
     TD_NUM,
@@ -83,7 +88,12 @@ def SourceLink(e: EvidenceData) -> JsxElement {
         <ExternalLink size={12} className="mt-0.5 shrink-0 text-faint group-hover:text-accent"/>
         <span className="min-w-0">
             <span className="text-text">{e.claim}</span>
-            <span className="block truncate text-[11px] text-faint">{e.host + (" · " + day_short(e.published) if e.published else "")}</span>
+            <span className="num mt-0.5 flex flex-wrap gap-x-1.5 text-[11px] text-faint">
+                <span className="min-w-0 truncate">{e.host}</span>
+                {if e.published {
+                    <span data-testid="source-time" title={"Published " + e.published}>{"· Published " + source_time(e.published, e.published_at)}</span>
+                }}
+            </span>
         </span>
     </a>
 }
@@ -145,8 +155,21 @@ def Hero(trail: TrailData) -> JsxElement {
                 </div>
             }}
         </div>
+        <dl data-testid="trail-ids" className="num flex flex-wrap gap-x-5 gap-y-1 text-[12px]">
+            <div className="flex items-baseline gap-1.5">
+                <dt className="text-faint">Run</dt>
+                <dd className="font-mono text-muted">{trail.run_id}</dd>
+            </div>
+            <div className="flex items-baseline gap-1.5">
+                <dt className="text-faint">Decision</dt>
+                <dd className="font-mono text-muted">{trail.decision_id}</dd>
+            </div>
+        </dl>
         {if d is not None {
-            <p className="text-[12px] text-muted">Conviction measures panel strength: the absolute weighted vote score times agreement. It is not a chance of profit.</p>
+            <p className="text-[12px] text-muted">
+                Conviction measures panel strength: the absolute weighted vote score times agreement. It is not a chance of profit.
+                How often each specialist has been right: <Link to="/app/results#calibration" className="font-medium text-accent hover:underline">calibration</Link>.
+            </p>
         }}
         {if d is not None and d.thesis {
             <p className="max-w-[680px] text-[15px] leading-6 text-pretty text-text">{d.thesis}</p>
@@ -171,8 +194,12 @@ def TrailStrip(trail: TrailData) -> JsxElement {
         sources += len(r.evidence);
     }
     votes = 0;
+    voted = 0;
     for s in trail.specialists {
         votes += len(s.samples);
+        if s.status == "voted" {
+            voted += 1;
+        }
     }
     c = trail.consensus;
     d = trail.decision;
@@ -190,7 +217,7 @@ def TrailStrip(trail: TrailData) -> JsxElement {
     }
     <nav aria-label="Decision trail" className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-3 lg:grid-cols-6">
         <Stage n={1} target="research" label="Research" value={count(len(trail.research), "report")} sub={count(sources, "source")}/>
-        <Stage n={2} target="panel" label="Panel" value={count(votes, "vote")} sub={count(len(trail.specialists), "specialist")}/>
+        <Stage n={2} target="panel" label="Panel" value={count(votes, "vote")} sub={str(voted) + " of " + str(len(trail.specialists)) + " voted"}/>
         <Stage
             n={3}
             target="consensus"
@@ -210,8 +237,8 @@ def TrailStrip(trail: TrailData) -> JsxElement {
             n={5}
             target="gate"
             label="Risk gate"
-            value={title(g.outcome) if g is not None else "Not sent"}
-            sub={(qty(g.approved_qty) + " of " + count(g.requested_qty, "share")) if g is not None else "no order to check"}
+            value={gate_label(g.outcome) if g is not None else "Not sent"}
+            sub={("no order sent" if g.outcome == "rejected" else qty(g.approved_qty) + " of " + count(g.requested_qty, "share")) if g is not None else "no order to check"}
             tone_class={"text-down" if g is not None and g.outcome == "rejected" else "text-text"}
         />
         <Stage
@@ -282,9 +309,12 @@ def ReportRow(r: ResearchData) -> JsxElement {
     has open: bool = False;
 
     <li className="flex flex-col gap-2 border-b border-line/60 px-4 py-3.5 last:border-b-0">
-        <div className="flex items-center justify-between gap-3">
-            <Overline>{title(r.domain) + (" follow-up" if r.followup_question else "")}</Overline>
-            <span className="num text-[12px]"><StanceText stance={r.view}/><span className="text-faint">{" · " + pct(r.confidence, 0)}</span></span>
+        <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+                <Overline>{title(r.domain) + (" follow-up" if r.followup_question else "")}</Overline>
+                <div data-testid="research-time" className="num mt-0.5 text-[11px] text-faint">{"As of " + stamp_et(r.as_of)}</div>
+            </div>
+            <span className="num shrink-0 text-[12px]"><StanceText stance={r.view}/><span className="text-faint">{" · " + pct(r.confidence, 0)}</span></span>
         </div>
         {if r.followup_question {
             <p className="text-[12px] italic text-muted">{"Asked: " + r.followup_question}</p>
@@ -341,6 +371,12 @@ def Research(trail: TrailData) -> JsxElement {
 # --- 2. Panel -------------------------------------------------------------------------------
 
 def Outcome(s: SampleData) -> JsxElement {
+    if s.abstained {
+        return <></>;
+    }
+    if s.hit is None and s.signed == 0.0 {
+        return <span className="text-[11px] text-faint">Neutral, so never scored</span>;
+    }
     if s.hit is None {
         return <span className="text-[11px] text-faint">{"Scored after " + count(s.horizon_days, "session")}</span>;
     }
@@ -349,14 +385,38 @@ def Outcome(s: SampleData) -> JsxElement {
     </span>
 }
 
+"""Why a specialist has no score: it abstained for want of evidence, failed, or never ran. Each
+reads by its word and its outline, not its color alone: a dashed outline is missing evidence,
+where a neutral Hold vote is a plain gray word."""
+def StatusTag(status: str) -> JsxElement {
+    if status == "failed" {
+        return <span className={PILL_BASE + " " + TONE_DOWN}><TriangleAlert size={11} aria-hidden="true"/>Failed</span>;
+    }
+    if status == "abstained" {
+        return <span className={PILL_BASE + " border-dashed border-line-strong text-muted"}><CircleSlash size={11} aria-hidden="true"/>Abstained (no evidence)</span>;
+    }
+    if status == "not_run" {
+        return <span className={PILL_BASE + " border-dashed border-line-strong text-faint"}><CircleDashed size={11} aria-hidden="true"/>Not run</span>;
+    }
+    return <></>;
+}
+
 def SampleRow(s: SampleData) -> JsxElement {
     <li className="flex flex-col gap-1.5 border-t border-line py-2.5 first:border-t-0">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 text-[12px]">
-            <span>
-                <span className="num text-faint">{"#" + str(s.sample + 1) + "  "}</span>
-                <StanceText stance={s.stance}/>
-                <span className="num text-faint">{" · " + pct(s.confidence, 0) + " sure · " + count(s.horizon_days, "session") + (" · abstained, no data" if s.abstained else " · signed " + signed(s.signed))}</span>
-            </span>
+            {if s.abstained {
+                <span className="flex flex-wrap items-center gap-x-2">
+                    <span className="num text-faint">{"#" + str(s.sample + 1)}</span>
+                    <StatusTag status="abstained"/>
+                    <span className="text-faint">cited only data gaps, so it takes no part in the consensus</span>
+                </span>
+            } else {
+                <span>
+                    <span className="num text-faint">{"#" + str(s.sample + 1) + "  "}</span>
+                    <StanceText stance={s.stance}/>
+                    <span className="num text-faint">{" · " + pct(s.confidence, 0) + " sure · " + count(s.horizon_days, "session") + " · signed " + signed(s.signed)}</span>
+                </span>
+            }}
             <Outcome s={s}/>
         </div>
         <p className="text-[13px] leading-relaxed text-muted">{s.rationale}</p>
@@ -373,36 +433,85 @@ def SampleRow(s: SampleData) -> JsxElement {
     </li>
 }
 
+"""What a specialist with no score did instead, in a line beside its tag."""
+def status_note(s: SpecialistData) -> str {
+    if s.status == "failed" {
+        return (count(len(s.errors), "sample") + " failed, so it did not vote.") if len(s.errors) > 0 else "Every sample failed.";
+    }
+    if s.status == "abstained" {
+        return "Cited only data gaps." if len(s.samples) > 0 else "Had no evidence to judge, so no sample was drawn.";
+    }
+    return "Was not asked about this ticker.";
+}
+
+def SampleErrors(errors: list[str]) -> JsxElement {
+    <ul className="flex flex-col gap-1.5 py-2.5">
+        {for e in errors {
+            <li key={e} className="flex gap-2 text-[12px] leading-relaxed text-muted">
+                <TriangleAlert size={12} className="mt-[3px] shrink-0 text-down" aria-hidden="true"/>
+                <span className="min-w-0 break-words">{e}</span>
+            </li>
+        }}
+    </ul>
+}
+
 def SpecialistRow(s: SpecialistData) -> JsxElement {
     has open: bool = False;
     # Abstained samples take no part in the mean, so they get no dot; a specialist with no
-    # counted sample has no score to show.
+    # counted sample has no score to show, and says why in the plot's place.
     counted = [x.signed for x in s.samples if not x.abstained];
-    all_abstained = len(s.samples) > 0 and not counted;
+    scored = s.status == "voted";
+    row = "grid w-full items-center gap-x-4 gap-y-1.5 px-4 py-3 text-left " + GRID;
+    cells = <>
+        <span className="flex items-baseline gap-2">
+            <span className="text-[13px] font-medium">{title(s.specialist)}</span>
+            <span className="num text-[11px] text-faint">{("weight " + num(s.weight)) if s.weight is not None else ""}</span>
+        </span>
+        <span className="order-3 col-span-2 min-w-0 sm:order-none sm:col-span-1">
+            {if scored {
+                <DotPlot values={counted} mean={s.score}/>
+            } else {
+                <span className="flex min-w-0 items-center gap-2">
+                    <StatusTag status={s.status}/>
+                    <span className="min-w-0 truncate text-[12px] text-muted" title={status_note(s)}>{status_note(s)}</span>
+                </span>
+            }}
+        </span>
+        <span className={"num text-right text-[13px] font-semibold " + (tone(s.score) if scored else "text-faint")} title={"" if scored else "No score: this specialist did not vote"}>{signed(s.score) if scored else MISSING}</span>
+    </>;
 
-    <li className="border-b border-line/60 last:border-b-0">
-        <button
-            type="button"
-            onClick={lambda { open = not open; }}
-            aria-expanded={open}
-            className={"grid w-full items-center gap-x-4 gap-y-1 px-4 py-3 text-left transition-colors duration-150 hover:bg-hover " + GRID}
-        >
-            <span className="flex items-baseline gap-2">
-                <span className="text-[13px] font-medium">{title(s.specialist)}</span>
-                <span className="num text-[11px] text-faint">{("weight " + num(s.weight)) if s.weight is not None else ("abstained" if all_abstained else "")}</span>
-            </span>
-            <span className="order-3 col-span-2 sm:order-none sm:col-span-1">
-                <DotPlot values={counted} mean={None if all_abstained else s.score}/>
-            </span>
-            <span className={"num text-right text-[13px] font-semibold " + ("text-faint" if all_abstained else tone(s.score))}>{"-" if all_abstained else signed(s.score)}</span>
-            <ChevronRight size={14} className={"hidden text-faint transition-[rotate] duration-150 ease-out motion-reduce:transition-none sm:block " + ("rotate-90" if open else "")}/>
-        </button>
+    <li data-testid="specialist" data-specialist={s.specialist} data-status={s.status} className="border-b border-line/60 last:border-b-0">
+        {if s.status == "not_run" {
+            <div className={row}>
+                {cells}
+                <span className="hidden sm:block"></span>
+            </div>
+        } else {
+            <button
+                type="button"
+                onClick={lambda { open = not open; }}
+                aria-expanded={open}
+                className={row + " transition-colors duration-150 hover:bg-hover"}
+            >
+                {cells}
+                <ChevronRight size={14} className={"hidden text-faint transition-[rotate] duration-150 ease-out motion-reduce:transition-none sm:block " + ("rotate-90" if open else "")}/>
+            </button>
+        }}
         {if open {
-            <ol className="bg-panel-2/50 px-4 pb-1">
-                {for x in s.samples {
-                    <SampleRow key={str(x.sample)} s={x}/>
+            <div className="bg-panel-2/50 px-4 pb-1">
+                {if len(s.samples) > 0 {
+                    <ol>
+                        {for x in s.samples {
+                            <SampleRow key={str(x.sample)} s={x}/>
+                        }}
+                    </ol>
                 }}
-            </ol>
+                {if len(s.errors) > 0 {
+                    <div className={"border-line " + ("border-t" if len(s.samples) > 0 else "")}>
+                        <SampleErrors errors={s.errors}/>
+                    </div>
+                }}
+            </div>
         }}
     </li>
 }
@@ -410,8 +519,8 @@ def SpecialistRow(s: SpecialistData) -> JsxElement {
 def PanelVotes(trail: TrailData) -> JsxElement {
     <Panel anchor="panel" title="2 · Panel" aside={<span>Each dot is one sample; the bar is the mean</span>} pad={False}>
         <div>
-            {if len(trail.specialists) == 0 {
-                <p className="px-4 py-6 text-[13px] text-muted">The panel did not vote on this ticker.</p>
+            {if len([s for s in trail.specialists if s.status != "not_run"]) == 0 {
+                <p className="px-4 py-6 text-[13px] text-muted">The panel did not vote on this ticker: none of the five specialists was asked.</p>
             } else {
                 <div className={"hidden items-center gap-x-4 border-b border-line bg-panel-2 px-4 py-2 sm:grid " + GRID}>
                     <span className={LABEL + " text-muted"}>Specialist</span>
@@ -535,8 +644,8 @@ def GateFigure(label: str, value: str) -> JsxElement {
     </div>
 }
 
-def Gate(g: GateData | None) -> JsxElement {
-    aside = <StatusBadge status={g.outcome}/> if g is not None else None;
+def Gate(g: GateData | None, decision_id: str) -> JsxElement {
+    aside = <StatusBadge status={g.outcome} label={gate_label(g.outcome)}/> if g is not None else None;
     <Panel anchor="gate" title="5 · Risk gate" aside={aside} pad={False}>
         <div>
             {if g is None {
@@ -566,7 +675,13 @@ def Gate(g: GateData | None) -> JsxElement {
                             </tbody>
                         </table>
                     </div>
-                    <p className="num border-t border-line px-4 py-2 text-[11px] text-faint">{"Checked " + stamp_et(g.checked_at) + " · gate " + (g.gate_version or MISSING)}</p>
+                    {if g.outcome == "rejected" {
+                        <p data-testid="gate-blocked" className="border-t border-line px-4 py-2.5 text-[12px] text-muted">
+                            <span className="font-medium text-down">Gate blocked.</span>
+                            {" A failed rule stopped the order, so nothing went to the broker."}
+                        </p>
+                    }}
+                    <p data-testid="gate-checked" className="num border-t border-line px-4 py-2 text-[11px] text-faint">{"Checked " + stamp_et(g.checked_at) + " for decision " + decision_id + " · rules version " + (g.gate_version or MISSING)}</p>
                 </div>
             }}
         </div>
@@ -583,7 +698,7 @@ def OrderCard(o: OrderData) -> JsxElement {
                 <span className={"font-semibold uppercase " + ("text-up" if o.side == "buy" else "text-down")}>{o.side}</span>
                 <span className="text-muted">{" " + title(o.purpose) + ("" if o.purpose == o.order_type else " · " + title(o.order_type)) + " · " + o.time_in_force.upper()}</span>
             </p>
-            <StatusBadge status={o.status}/>
+            <StatusBadge status={o.status} label={order_label(o.status, o.reject_reason)}/>
         </div>
         <CardFigures>
             <CardFigure label="Price">{money(o.limit_price if o.limit_price is not None else o.stop_price)}</CardFigure>
@@ -597,7 +712,10 @@ def OrderCard(o: OrderData) -> JsxElement {
                 }}
             </div>
         }}
-        <div className="mt-1 break-all font-mono text-[10px] text-faint">{o.client_order_id}</div>
+        <div className="mt-1.5 text-[10px] text-faint" title={("Broker ID " + o.broker_order_id) if o.broker_order_id else "Never reached the broker"}>
+            <span>Client order ID </span>
+            <span data-testid="client-order-id" className="break-all font-mono">{o.client_order_id}</span>
+        </div>
     </li>
 }
 
@@ -627,7 +745,13 @@ def OrdersTable(orders: list[OrderData]) -> JsxElement {
                             <td className={TD}>
                                 <span className={"font-semibold uppercase " + ("text-up" if o.side == "buy" else "text-down")}>{o.side}</span>
                                 <span className="text-muted">{" " + title(o.purpose) + " · " + title(o.order_type) + " " + o.time_in_force.upper()}</span>
-                                <div className="font-mono text-[10px] text-faint">{o.client_order_id}</div>
+                                <div
+                                    data-testid="client-order-id"
+                                    className="font-mono text-[10px] text-faint"
+                                    title={("Client order ID; broker ID " + o.broker_order_id) if o.broker_order_id else "Client order ID; never reached the broker"}
+                                >
+                                    {o.client_order_id}
+                                </div>
                             </td>
                             <td className={TD_NUM}>{money(o.limit_price if o.limit_price is not None else o.stop_price)}</td>
                             <td className={TD_NUM}>{qty(o.filled_qty) + " / " + qty(o.qty)}</td>
@@ -639,7 +763,7 @@ def OrdersTable(orders: list[OrderData]) -> JsxElement {
                                     <div key={str(i)}>{qty(f.qty) + " @ " + money(f.price) + ", " + stamp_et(f.filled_at)}</div>
                                 }}
                             </td>
-                            <td className={TD} title={o.reject_reason}><StatusBadge status={o.status}/></td>
+                            <td className={TD} title={o.reject_reason}><StatusBadge status={o.status} label={order_label(o.status, o.reject_reason)}/></td>
                         </tr>
                     }}
                 </tbody>
@@ -648,11 +772,24 @@ def OrdersTable(orders: list[OrderData]) -> JsxElement {
     </div>
 }
 
+"""Why a decision has no orders: insight mode, a blocked gate, or nothing to trade."""
+def no_orders(trail: TrailData) -> str {
+    if trail.mode != "auto" {
+        return "Insight mode: this decision was published as a card, not traded.";
+    }
+    g = trail.gate;
+    if g is not None and g.outcome == "rejected" {
+        return "None: the risk gate blocked this decision's order, so nothing was sent to the broker.";
+    }
+    return "No orders were placed.";
+}
+
 def Orders(trail: TrailData) -> JsxElement {
-    <Panel anchor="orders" title="6 · Orders" pad={False}>
+    aside = <Link to="/app" className="font-medium text-accent hover:underline">Every order on the Portfolio page</Link>;
+    <Panel anchor="orders" title="6 · Orders" aside={aside} pad={False}>
         <div>
             {if len(trail.orders) == 0 {
-                <p className="px-4 py-6 text-[13px] text-muted">{"No orders were placed." if trail.mode == "auto" else "Insight mode: this decision was published as a card, not traded."}</p>
+                <p data-testid="no-orders" className="px-4 py-6 text-[13px] text-muted">{no_orders(trail)}</p>
             } else {
                 <OrdersTable orders={trail.orders}/>
             }}
@@ -720,7 +857,7 @@ def:pub DecisionPage -> JsxElement {
                     <Consensus trail={trail}/>
                     <Arbiter trail={trail}/>
                 </div>
-                <Gate g={trail.gate}/>
+                <Gate g={trail.gate} decision_id={trail.decision_id}/>
                 <Orders trail={trail}/>
             </div>
         </div>

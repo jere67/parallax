@@ -110,7 +110,8 @@ def:pub StatusBadge(status: str, label: str = "") -> JsxElement {
     working = status in WORKING;
     tone = STATUS_TONES.get(status, TONE_ACCENT);
     text = label or ("working" if working else status.replace("_", " "));
-    <span className={PILL_BASE + " capitalize " + tone} title={status}>{text}</span>
+    # Sentence case, as the pages write: "Gate blocked", "Partially filled".
+    <span className={PILL_BASE + " " + tone} title={status}>{text[0:1].upper() + text[1:]}</span>
 }
 
 """A muted label and its value, on one line."""

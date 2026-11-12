@@ -6,19 +6,42 @@ import from action.executor { execute_run, keep_stops, sync_orders }
 import from action.fixtures { Call, broker_for, finished_run, market, team }
 import from action.reconcile { marks_of, reconcile }
 import from analysis.evaluation { evaluate, record_evaluation }
-import from dashboard.api { performance_view, portfolio_view, refresh_specialists, run_summaries, run_view, series, specialist_summaries, specialist_views, trail_view, view_key }
+import from agents.specialists { NO_EVIDENCE }
+import from dashboard.api {
+    execution_summary,
+    performance_view,
+    portfolio_view,
+    refresh_specialists,
+    run_summaries,
+    run_view,
+    series,
+    specialist_summaries,
+    specialist_views,
+    trail_view,
+    utc_stamp,
+    view_key
+}
 import from dashboard.cache { VIEWS }
 import from models.agents { Domain, Evidence, ResearchReport, Specialist, Stance, Vote }
+import from models.views { CoverageRow }
 import from models.graph {
+    CheckedBy,
     Concluded,
     ConsensusResult,
     Coverage,
     Covers,
     DailyMark,
+    Decided,
+    Decision,
+    Order,
+    Placed,
     Portfolio,
     Researched,
     ResearchRecord,
+    RiskCheck,
+    RiskOutcome,
     Run,
+    Sent,
     TradeAction,
     VoteRecord,
     Voted
@@ -46,7 +69,10 @@ def add_panel(run: Run) {
         domain=Domain.MARKET,
         as_of="2026-10-21T12:00:00+00:00",
         model="m",
-        body=ResearchReport(summary="Uptrend.", view=Stance.BUY, confidence=0.7, evidence=[Evidence(claim="Above its 50-day average.", source_url="https://data.alpaca.markets/v2/stocks/bars", published="2026-10-20")])
+        body=ResearchReport(summary="Uptrend.", view=Stance.BUY, confidence=0.7, evidence=[
+            Evidence(claim="Above its 50-day average.", source_url="https://data.alpaca.markets/v2/stocks/bars", published="2026-10-20"),
+            Evidence(claim="An upgrade this morning.", source_url="https://data.alpaca.markets/v1beta1/news", published="2026-10-21T09:05:00-04:00")
+        ])
     );
     for (s, stances) in [(Specialist.TECHNICAL, [Stance.BUY, Stance.STRONG_BUY]), (Specialist.FUNDAMENTALS, [Stance.SELL, Stance.HOLD])] {
         for (i, stance) in enumerate(stances) {
@@ -180,9 +206,16 @@ test "a decision trail runs from research and votes through the gate to the orde
         (portfolio, _, _) = traded(fake);
         trail = trail_view(portfolio, DAY1, "AAA");
         assert trail is not None and trail.tickers == ["AAA", "BBB"] and trail.disclaimer;
+        assert (trail.run_id, trail.decision_id) == (DAY1, f"{DAY1}/AAA");
         assert [r.domain for r in trail.research] == ["market", "news"];
         assert trail.research[0].evidence[0].host == "data.alpaca.markets";
-        assert [(s.specialist, s.weight) for s in trail.specialists] == [("fundamentals", 0.4), ("technical", 0.6)];
+        # Each source keeps the stamp it was published with, and its time in UTC when it has one.
+        assert [(e.published, e.published_at) for e in trail.research[0].evidence] == [("2026-10-20", ""), ("2026-10-21T09:05:00-04:00", "2026-10-21T13:05:00+00:00")];
+        assert trail.research[0].as_of == "2026-10-21T12:00:00+00:00";
+        # Every specialist is shown, and one the run never asked says so rather than vanishing.
+        assert [(s.specialist, s.weight, s.status) for s in trail.specialists] == [
+            ("fundamentals", 0.4, "voted"), ("technical", 0.6, "voted"), ("news", None, "not_run"), ("macro", None, "not_run"), ("flow", None, "not_run")
+        ];
         tech = trail.specialists[1];
         assert [x.signed for x in tech.samples] == [0.4, 0.8] and abs(tech.score - 0.6) < 1e-12;
         # The technical specialist reads the market report, so its cited positions name that evidence.
@@ -193,7 +226,14 @@ test "a decision trail runs from research and votes through the gate to the orde
         assert consensus is not None and decision is not None and gate is not None;
         assert consensus.samples_used == 4 and decision.action == "BUY";
         assert gate.outcome == "approved" and gate.rules and all(r.passed for r in gate.rules);
+        assert gate.checked_at == NOW1.isoformat();
         assert [o.purpose for o in trail.orders] == ["entry", "stop"];
+        # The entry carries the trail's decision ID and the client order ID the broker shows; the
+        # stop belongs to the position, not to a decision.
+        (placed, stop) = (trail.orders[0], trail.orders[1]);
+        assert (placed.client_order_id, placed.decision_id, placed.run_day) == (f"{DAY1}-AAA-entry", trail.decision_id, DAY1);
+        assert placed.broker_order_id and placed.submitted_at == NOW1.isoformat() and [f.filled_at for f in placed.fills] != [];
+        assert stop.client_order_id.startswith("AAA-") and stop.decision_id == "";
         position = trail.position;
         assert position is not None and position.closed_at and position.pnl == 200.0;
         assert trail_view(portfolio, DAY1, "ZZZ") is None and trail_view(portfolio, "2026-01-01", "AAA") is None;
@@ -230,12 +270,124 @@ test "a Flow sample that cites only data gaps shows as abstained and leaves Flow
     }
     gap = Vote(stance=Stance.HOLD, confidence=0.5, horizon_days=10, rationale="No insider data.", cited_gaps=["no insider data"]);
     buy = Vote(stance=Stance.BUY, confidence=0.8, horizon_days=10, rationale="Insiders bought.", cited_evidence=[0]);
-    [mixed] = specialist_views([record(0, gap), record(1, buy)], {"flow": 1.0});
+    mixed = specialist_views([record(0, gap), record(1, buy)], {"flow": 1.0})[4];
+    assert mixed.specialist == "flow" and mixed.status == "voted";
     assert [x.abstained for x in mixed.samples] == [True, False];
     assert [x.gaps for x in mixed.samples] == [["no insider data"], []];
     assert abs(mixed.score - 0.4) < 1e-12 and mixed.weight == 1.0;
-    [silent] = specialist_views([record(0, gap), record(1, gap)], {});
+    silent = specialist_views([record(0, gap), record(1, gap)], {})[4];
     assert silent.score == 0.0 and silent.weight is None and all(x.abstained for x in silent.samples);
+    assert silent.status == "abstained";
+}
+
+test "every specialist shows: voted, abstained for want of evidence, failed with its errors, or not run" {
+    def record(s: Specialist, sample: int, body: Vote) -> VoteRecord {
+        return VoteRecord(ticker="AAA", specialist=s, sample=sample, model="m", body=body);
+    }
+    buy = Vote(stance=Stance.BUY, confidence=0.8, horizon_days=10, rationale="Uptrend.", cited_evidence=[0]);
+    neutral = Vote(stance=Stance.HOLD, confidence=0.6, horizon_days=10, rationale="Balanced.", cited_evidence=[0]);
+    gap = Vote(stance=Stance.HOLD, confidence=0.5, horizon_days=10, rationale="No insider data.", cited_gaps=["no insider data"]);
+    timeout = "Timeout: the model did not answer within 60 seconds";
+    errors = [
+        f"technical sample 1: {timeout}",
+        f"news sample 0: {timeout}",
+        f"news sample 1: RateLimitError: 429 Too Many Requests",
+        f"fundamentals sample 0: {NO_EVIDENCE}",
+        f"fundamentals sample 1: {NO_EVIDENCE}"
+    ];
+    votes = [record(Specialist.TECHNICAL, 0, buy), record(Specialist.MACRO, 0, neutral), record(Specialist.FLOW, 0, gap), record(Specialist.FLOW, 1, gap)];
+    by_role = {s.specialist: s for s in specialist_views(votes, {"technical": 0.5, "macro": 0.5}, None, errors)};
+    assert list(by_role) == ["fundamentals", "technical", "news", "macro", "flow"];
+    # A specialist with a counted sample voted, and says why its other sample was dropped.
+    tech = by_role["technical"];
+    assert (tech.status, tech.weight, tech.errors) == ("voted", 0.5, [f"Sample 2: {timeout}"]);
+    # A neutral Hold is a vote: it counts, scores zero, and is not an abstention.
+    macro = by_role["macro"];
+    assert (macro.status, macro.score, macro.samples[0].abstained) == ("voted", 0.0, False);
+    # Missing evidence is an abstention, whether the samples cited only gaps or none were drawn.
+    assert by_role["flow"].status == "abstained" and all(x.abstained for x in by_role["flow"].samples);
+    fundamentals = by_role["fundamentals"];
+    assert (fundamentals.status, fundamentals.samples, fundamentals.weight) == ("abstained", [], None);
+    assert fundamentals.errors == [f"Sample 1: {NO_EVIDENCE}", f"Sample 2: {NO_EVIDENCE}"];
+    # A specialist whose every sample failed is a failure, with each error, not a gap in the panel.
+    news = by_role["news"];
+    assert (news.status, news.samples, news.score) == ("failed", [], 0.0);
+    assert news.errors == [f"Sample 1: {timeout}", "Sample 2: RateLimitError: 429 Too Many Requests"];
+    # With no votes and no errors, every specialist is shown as not run.
+    assert [s.status for s in specialist_views([], {})] == ["not_run"] * 5;
+}
+
+test "a failed specialist's errors reach the trail from the coverage's stored analysis errors" {
+    fake = FakeBroker();
+    try {
+        (portfolio, first, _) = traded(fake);
+        cov = coverage_of(first, "AAA");
+        cov.analysis_errors = ["news sample 0: Timeout: no answer", "news sample 1: Timeout: no answer"];
+        trail = trail_view(portfolio, DAY1, "AAA");
+        assert trail is not None;
+        news = [s for s in trail.specialists if s.specialist == "news"][0];
+        assert (news.status, news.errors) == ("failed", ["Sample 1: Timeout: no answer", "Sample 2: Timeout: no answer"]);
+    } finally {
+        fake.stop();
+    }
+}
+
+test "a decision the gate blocked has its check on the trail and no order, there or anywhere" {
+    fake = FakeBroker();
+    try {
+        broker = broker_for(fake);
+        portfolio = team();
+        fake.set_price("AAA", 100.0);
+        fake.set_price("BBB", 50.0);
+        # BBB reports earnings tomorrow, so the gate's blackout rule blocks its buy.
+        run = finished_run(portfolio, DAY1, [Call(ticker="AAA", action=TradeAction.BUY, conviction=0.5), Call(ticker="BBB", action=TradeAction.BUY, conviction=0.5, earnings_in=1)]);
+        execute_run(portfolio, run, broker, NOW1, market({"AAA": 100.0, "BBB": 50.0}, NOW1));
+        blocked = trail_view(portfolio, DAY1, "BBB");
+        assert blocked is not None;
+        gate = blocked.gate;
+        assert gate is not None and (gate.outcome, gate.approved_qty, gate.checked_at) == ("rejected", 0, NOW1.isoformat());
+        assert [r.rule for r in gate.rules if not r.passed] == ["earnings blackout"];
+        assert blocked.orders == [] and blocked.position is None;
+        # No Order node exists for it: none placed under its check, none sent by the portfolio.
+        decision = [d for d in [coverage_of(run, "BBB") ->:Decided:->[?:Decision]]][0];
+        check = [rc for rc in [decision ->:CheckedBy:->[?:RiskCheck]]][0];
+        assert check.outcome == RiskOutcome.REJECTED and [check ->:Placed:->] == [];
+        assert [o.ticker for o in [portfolio ->:Sent:->[?:Order]]] == ["AAA"];
+        assert fake.find(f"{DAY1}-BBB-entry") is None;
+        # The approved one beside it went through, under its own decision's ID.
+        sent = trail_view(portfolio, DAY1, "AAA");
+        assert sent is not None and [(o.client_order_id, o.decision_id) for o in sent.orders] == [(f"{DAY1}-AAA-entry", f"{DAY1}/AAA")];
+        # The run page says it in plain words, not the executor's raw line.
+        view = run_view(portfolio, DAY1);
+        assert view is not None and view.execution_note.startswith("2 checks, 1 approved");
+        assert (view.execution_summary, view.execution_detail) == ("1 of 2 approved", "1 working");
+        bbb = [r for r in view.rows if r.ticker == "BBB"][0];
+        assert (bbb.gate_outcome, bbb.order_status) == ("rejected", "");
+    } finally {
+        fake.stop();
+    }
+}
+
+test "the execution note reads in plain words, whatever the executor recorded" {
+    def row(status: str, reason: str = "") -> CoverageRow {
+        return CoverageRow(ticker="X", sector="", reason="screen", order_status=status, order_reject_reason=reason);
+    }
+    rows = [row("filled"), row("pending_new"), row("rejected", "insufficient buying power"), row("rejected", "not sent: its stop filled"), row("")];
+    note = "4 checks, 4 approved; AAA buy 10 @ 100.30: pending_new; BBB buy 5 @ 50.15: rejected (insufficient buying power); CCC: not sent, its stop filled";
+    assert execution_summary(note, rows) == ("4 of 4 approved", "1 filled · 1 working · 1 broker rejected · 1 not sent");
+    assert execution_summary("1 checks, 0 approved; refused: AAA buy 40: earnings blackout", []) == ("0 of 1 approved", "nothing sent");
+    assert execution_summary("0 checks, 0 approved", []) == ("No orders to check", "nothing sent");
+    assert execution_summary("2 checks, 1 approved; market data gaps: SPY quote; AAA trade", [row("filled")]) == ("1 of 2 approved", "1 filled · market data gaps");
+    assert execution_summary("orders are disabled (TRADING_AGENT_DISABLE_ORDERS=1); 3 checks recorded, nothing sent; refused: AAA buy 4: x", []) == ("3 checks, none sent", "orders are turned off");
+    assert execution_summary("", []) == ("", "");
+    assert execution_summary("something new", []) == ("Something new", "");
+}
+
+test "a source's stamp becomes a UTC time only when it carries a time of day" {
+    assert utc_stamp("2026-10-21T09:05:00-04:00") == "2026-10-21T13:05:00+00:00";
+    assert utc_stamp("2026-10-21T13:05:00Z") == "2026-10-21T13:05:00+00:00";
+    assert utc_stamp("2026-10-21 13:05") == "2026-10-21T13:05:00+00:00";
+    assert utc_stamp("2026-10-21") == "" and utc_stamp("") == "" and utc_stamp("Tuesday morning, 9:05") == "";
 }
 
 test "the refresh job rebuilds the specialists view only when a run finishes or its votes are scored" {

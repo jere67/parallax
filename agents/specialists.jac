@@ -51,6 +51,9 @@ glob MAX_EVIDENCE_PER_REPORT: int = 25;
 glob MAX_CLAIM_CHARS: int = 400;
 glob MAX_SUMMARY_CHARS: int = 1200;
 glob MAX_LIST_ITEMS: int = 6;
+# Why a sample with an empty packet is dropped unasked: missing evidence, not a model failure,
+# which the decision trail shows as an abstention (dashboard/api.jac).
+glob NO_EVIDENCE: str = "no evidence to judge";
 
 """You are a specialist analyst on an investment committee. Vote on `ticker` from your
 specialty alone, described in `focus`, using the research context and the numbered evidence.
@@ -200,7 +203,7 @@ sample with the error recorded, so one bad response never stops the panel."""
 def sample_vote(p: Packet, sample: int) -> VoteResult {
     started = time.monotonic();
     if not p.evidence and not (p.specialist == Specialist.FLOW and p.data_gaps) {
-        return VoteResult(specialist=p.specialist, sample=sample, error="no evidence to judge", seconds=time.monotonic() - started);
+        return VoteResult(specialist=p.specialist, sample=sample, error=NO_EVIDENCE, seconds=time.monotonic() - started);
     }
     shown = p.order(sample);
     (focus, evidence) = (SPECIALIST_FOCUS[p.specialist], p.render_evidence(shown));
