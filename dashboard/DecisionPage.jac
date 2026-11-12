@@ -681,7 +681,7 @@ def Gate(g: GateData | None, decision_id: str) -> JsxElement {
                             {" A failed rule stopped the order, so nothing went to the broker."}
                         </p>
                     }}
-                    <p data-testid="gate-checked" className="num border-t border-line px-4 py-2 text-[11px] text-faint">{"Checked " + stamp_et(g.checked_at) + " for decision " + decision_id + " · gate " + (g.gate_version or MISSING)}</p>
+                    <p data-testid="gate-checked" className="num border-t border-line px-4 py-2 text-[11px] text-faint">{"Checked " + stamp_et(g.checked_at) + " for decision " + decision_id + " · rules version " + (g.gate_version or MISSING)}</p>
                 </div>
             }}
         </div>
