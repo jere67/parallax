@@ -17,8 +17,10 @@ import from analysis.evaluation {
     record_evaluation,
     reliability,
     sharpe,
+    snapshot_of,
     wilson
 }
+import from models.evaluation { MIN_VOTES }
 import from models.agents { Specialist, Stance, Vote }
 import from models.graph {
     Baseline,
@@ -28,6 +30,8 @@ import from models.graph {
     CoverageReason,
     Covers,
     DailyMark,
+    Evaluated,
+    EvaluationRecord,
     Decided,
     Decision,
     Marked,
@@ -104,7 +108,9 @@ test "calibration compares the mean confidence with the hit rate, by bin, and ig
     found = calibration("technical", votes);
     assert found.votes == 3 and abs(found.hit_rate.value - 2 / 3) < 1e-12;
     assert abs(found.confidence - (0.8 + 0.8 + 0.6) / 3) < 1e-12;
-    assert abs(found.gap - (2 / 3 - 2.2 / 3)) < 1e-12 and found.within_target;
+    assert abs(found.gap - (2 / 3 - 2.2 / 3)) < 1e-12;
+    # Three votes are too few to call a specialist calibrated either way.
+    assert found.within_target is None;
     by_low = {b.low: b for b in found.bins};
     assert by_low[0.6].votes == 1 and by_low[0.6].hit_rate == 1.0;
     assert by_low[0.8].votes == 2 and by_low[0.8].hit_rate == 0.5;
@@ -140,6 +146,14 @@ test "a session with no run is missed, and a failed run or an undecided ticker i
     assert found.incomplete == ["2026-11-03: failed", "2026-11-05: 1 of 2 tickers without a decision"];
 }
 
+test "from MIN_VOTES scored votes, calibration says whether the hit rate is within 10 points" {
+    votes = [scored_vote(Specialist.TECHNICAL, Stance.BUY, 0.6, 0.01 if i % 5 else -0.01) for i in range(MIN_VOTES)];
+    found = calibration("technical", votes);
+    assert found.votes == MIN_VOTES and abs(found.hit_rate.value - 0.8) < 1e-12;
+    assert found.within_target == False;
+    assert calibration("technical", votes[:-1]).within_target is None;
+}
+
 test "an evaluation of a stored portfolio covers its sessions, baselines, screen, panel, and operations, and is stored once" {
     portfolio = team();
     days = ["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-09"];
@@ -172,10 +186,40 @@ test "an evaluation of a stored portfolio covers its sessions, baselines, screen
     record_evaluation(portfolio, again);
     stored = latest_evaluation(portfolio);
     assert stored is not None and stored.as_of == again.as_of;
+    assert len(stored.snapshot) == 8 and stored.snapshot == snapshot_of(stored);
     assert latest_evaluation(team()) is None;
+}
+
+"""The snapshot ID is what the Results page and the final report both print, so a reader can see
+they describe the same stored evaluation."""
+test "a snapshot ID follows the evaluation's figures and nothing else" {
+    portfolio = team();
+    run = finished_run(portfolio, "2026-11-02", [Call(ticker="AAA", action=TradeAction.HOLD)]);
+    portfolio +>:Marked():+> mark("2026-11-02", 100000.0);
+    first = evaluate(portfolio, ["2026-11-02"], NOW);
+    same = evaluate(portfolio, ["2026-11-02"], NOW);
+    assert snapshot_of(first) == snapshot_of(same);
+    first.snapshot = "ffffffff";
+    assert snapshot_of(first) == snapshot_of(same);
+    later = evaluate(portfolio, ["2026-11-02"], datetime(2026, 11, 21, 21, 30, tzinfo=timezone.utc));
+    assert snapshot_of(later) != snapshot_of(same);
+    assert run is not None;
+}
+
+test "an evaluation stored before snapshot IDs gets one on read, without the read changing it" {
+    portfolio = team();
+    portfolio +>:Marked():+> mark("2026-11-02", 100000.0);
+    record_evaluation(portfolio, evaluate(portfolio, ["2026-11-02"], NOW));
+    record = [portfolio ->:Evaluated:->[?:EvaluationRecord]][0];
+    named = record.body.snapshot;
+    record.body.snapshot = "";
+    found = latest_evaluation(portfolio);
+    assert found is not None and found.snapshot == named;
+    assert record.body.snapshot == "";
 }
 
 test "a portfolio with no runs has an empty evaluation" {
     found = evaluate(team(), ["2026-11-02"], NOW);
+    assert not found.demo;
     assert found.start_day == "" and found.sessions == 0 and found.series == [] and found.arbiter.verdict == "no data";
 }

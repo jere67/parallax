@@ -43,6 +43,7 @@ test "the demo history is consistent, and every page's view can be built from it
     # decisions whose windows closed, and every run as complete.
     found = latest_evaluation(portfolio);
     assert found is not None and found.sessions == DEMO_SESSIONS and [c.baseline for c in found.comparisons] == ["equal_weight", "spy"];
+    assert found.demo and len(found.snapshot) == 8;
     assert 0 < found.screen.runs < DEMO_SESSIONS and len(found.specialists) == 5 and found.reliability.share == 1.0;
     decisions = [d for r in runs for c in [r ->:Covers:->[?:Coverage]] for d in [c ->:Decided:->[?:Decision]]];
     assert 0 < len([d for d in decisions if d.excess_return is not None]) < len(decisions);

@@ -6,6 +6,14 @@ frozen once data is stored. Every figure that can be missing is None rather than
 tell "no data yet" from "zero".
 """
 
+# The fewest observations a figure is shown from. Below them the Results page, the Specialists page,
+# and the final report say "not enough data" with how many there are of how many it needs, never a
+# bare figure: a hit rate needs MIN_VOTES scored votes (a role's, or one confidence band's), and an
+# interval over sessions or runs needs MIN_SESSIONS of them. dashboard/ui/evidence.jac mirrors these
+# for the browser, and analysis/evaluation_tests.jac keeps the two equal.
+glob MIN_VOTES: int = 20;
+glob MIN_SESSIONS: int = 5;
+
 """A figure with its 95% interval. `lo` and `hi` are None when there is too little data for an
 interval; `n` is how many observations it rests on."""
 obj Estimate {
@@ -108,7 +116,9 @@ obj Operations {
 }
 
 """The whole evaluation as of `as_of` (an ISO timestamp), covering `sessions` sessions from
-`start_day` to `last_day`."""
+`start_day` to `last_day`. `snapshot` names this exact content (analysis/evaluation.jac,
+`snapshot_of`), so the Results page and the final report can show they read the same one.
+`demo` marks an evaluation of the simulated demo history, never of paper trading."""
 obj Evaluation {
     has as_of: str;
     has start_day: str = "",
@@ -121,5 +131,7 @@ obj Evaluation {
         arbiter: ArbiterResult = ArbiterResult(),
         reliability: Reliability = Reliability(),
         operations: Operations = Operations(),
-        notes: list[str] = [];
+        notes: list[str] = [],
+        snapshot: str = "",
+        demo: bool = False;
 }
