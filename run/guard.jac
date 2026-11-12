@@ -635,11 +635,42 @@ def daily_run(
         }
     }
     session.complete_in_order();
+    down = models_unavailable(session);
+    if down {
+        # Holds with no vote behind them are not a panel's verdict, whatever the Orchestrator
+        # wrote, so the run says why no one voted rather than "normal": the models were down,
+        # or the request budget ran out first.
+        status = RunStatus.FALLBACK;
+        cause = "Request budget spent" if session.requests_used() >= session.run_requests or "budget" in down else "Models unavailable";
+        session.actions.append(f"{cause.lower()}: {down}");
+        session.summary = _clip(f"{cause}: no specialist answered for any of the {len(session.analyses)} tickers ({down}), so every ticker holds and no new position was opened.", MAX_SUMMARY_CHARS);
+    }
     if not session.summary {
         session.summary = _clip(said, MAX_SUMMARY_CHARS) if said.strip() else default_summary(session, status);
     }
     record_run(portfolio, run, session, status);
     return RunOutcome(run_day=run_day, status=status, run=run, preflight=checked, session=session);
+}
+
+"""Why no specialist answered for any ticker, or "" when at least one did: the first model
+error the panel saw, else a plain statement. A run with nothing to decide is not a failure."""
+def models_unavailable(s: RunSession) -> str {
+    if not s.analyses or any(a.valid_count() > 0 for a in s.analyses.values()) {
+        return "";
+    }
+    for a in s.analyses.values() {
+        for r in a.votes {
+            if r.error {
+                return _clip(r.error, 200);
+            }
+        }
+    }
+    for a in s.analyses.values() {
+        if a.forced_hold_reason {
+            return _clip(a.forced_hold_reason, 200);
+        }
+    }
+    return "no model answered";
 }
 
 """The run summary when the Orchestrator wrote none."""

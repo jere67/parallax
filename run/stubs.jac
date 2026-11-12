@@ -13,6 +13,7 @@ import from jaclang.byllm.lib { MockLLM, MockRawResponse }
 import agents.arbiter as arbiter_module;
 import agents.research as research_module;
 import agents.specialists as specialists_module;
+import from agents.models { KILL_SWITCH_ENV, ModelsDisabledError }
 import run.guard as guard_module;
 import from models.agents { Domain }
 import from models.research { Stamp }
@@ -46,14 +47,17 @@ def stub_macro_brief(as_of: str, _inputs: MacroInputs) -> Brief {
     return brief("MARKET", Domain.MACRO, as_of);
 }
 
-def collection(symbols: list[str], held: list[str], run_day: str = RUN_DAY) -> Collection {
+"""A collection of `symbols` and the `held` names not among them. Each name's next earnings date
+is 7 sessions out unless `sessions_until` says otherwise."""
+def collection(symbols: list[str], held: list[str], run_day: str = RUN_DAY, sessions_until: dict[str, int] | None = None) -> Collection {
+    due = sessions_until or {};
     picks = [Pick(symbol=s, sector="Information Technology", reason=PickReason.SCORE, score=1.0) for s in symbols];
     picks.extend(Pick(symbol=s, sector="Energy", reason=PickReason.OPEN_POSITION, note="open position") for s in held if s not in symbols);
     return Collection(
         run_day=run_day,
         started_at=f"{run_day}T11:30:00+00:00",
         shortlist=Shortlist(picks=picks, scores=[], excluded={}),
-        tickers=[TickerInputs(pick=p, market=MarketInputs(stock=technicals(p.symbol)), fundamentals=FundamentalsInputs(), news=NewsInputs(sessions_until=7)) for p in picks],
+        tickers=[TickerInputs(pick=p, market=MarketInputs(stock=technicals(p.symbol)), fundamentals=FundamentalsInputs(), news=NewsInputs(sessions_until=due.get(p.symbol, 7))) for p in picks],
         macro_inputs=MacroInputs(),
         sessions=SESSIONS
     );
@@ -69,6 +73,14 @@ def calendar_day(day: str) -> MarketDay {
     return MarketDay(day=day, open="09:30", close="16:00", early_close=False, stamp=Stamp(source="alpaca_trading", dataset="alpaca.calendar", source_url="u", published_at=day, fetched_at=day));
 }
 
+"""A model that is down: every call fails before any request, as with the kill switch set or
+every free model withdrawn."""
+obj DownLLM(MockLLM) {
+    override def model_call_no_stream(_params: dict[str, object]) -> dict[str, object] {
+        raise ModelsDisabledError(f"{KILL_SWITCH_ENV} is set; no model requests are made");
+    }
+}
+
 """Every stub and mock a run needs, installed on the modules that look them up, and put back
 by `restore`."""
 obj Stubs {
@@ -77,6 +89,8 @@ obj Stubs {
         provider_left: int | None = 900,
         trading: bool = True,
         collect_error: str = "",
+        sessions_until: dict[str, int] = {},
+        models_down: bool = False,
         shortlist_sizes: list[int] = [];
     has research_llm: MockLLM | None = None,
         specialist_llm: MockLLM | None = None,
@@ -84,17 +98,23 @@ obj Stubs {
         saved: list[tuple[object, str, object]] = [];
 
     def install {
-        self.research_llm = MockLLM(model_name="mock-research", config={"outputs": [MockRawResponse(content=REPORT_JSON)] * 40});
-        self.specialist_llm = MockLLM(model_name="mock-specialist", config={"outputs": [MockRawResponse(content=self.vote)] * 200});
-        self.arbiter_llm = MockLLM(model_name="mock-arbiter", config={"outputs": [MockRawResponse(content=REVIEW_JSON)] * 10});
-        macro_llm = MockLLM(model_name="mock-macro", config={"outputs": [MockRawResponse(content=MACRO_JSON)]});
+        if self.models_down {
+            self.research_llm = DownLLM(model_name="down-research", config={"outputs": []});
+            self.specialist_llm = DownLLM(model_name="down-specialist", config={"outputs": []});
+            self.arbiter_llm = DownLLM(model_name="down-arbiter", config={"outputs": []});
+        } else {
+            self.research_llm = MockLLM(model_name="mock-research", config={"outputs": [MockRawResponse(content=REPORT_JSON)] * 40});
+            self.specialist_llm = MockLLM(model_name="mock-specialist", config={"outputs": [MockRawResponse(content=self.vote)] * 200});
+            self.arbiter_llm = MockLLM(model_name="mock-arbiter", config={"outputs": [MockRawResponse(content=REVIEW_JSON)] * 10});
+        }
+        macro_llm = DownLLM(model_name="down-macro", config={"outputs": []}) if self.models_down else MockLLM(model_name="mock-macro", config={"outputs": [MockRawResponse(content=MACRO_JSON)]});
         stubs = self;
         def collect(run_day: str, open_positions: list[str], config: PassConfig) -> Collection {
             stubs.shortlist_sizes.append(config.screen.shortlist_size);
             if stubs.collect_error {
                 raise RuntimeError(stubs.collect_error);
             }
-            return collection(stubs.symbols, open_positions, run_day);
+            return collection(stubs.symbols, open_positions, run_day, stubs.sessions_until);
         }
         def calendar(start: str, _end: str, _budget: object) -> list[MarketDay] {
             return [calendar_day(start)] if stubs.trading else [];
