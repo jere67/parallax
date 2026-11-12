@@ -13,9 +13,13 @@ obj CoverageView {
         with_analysts: int = 0;
 }
 
-"""One page of the screener."""
+"""One page of the screener. `decisions` holds the action the reader's agent took on each of the
+page's stocks it covered in its latest run, the one on `decided_day`, so a row can link to that
+decision's trail."""
 obj ScreenerView {
     has rows: list[dict[str, float | str | None]] = [],
+        decisions: dict[str, str] = {},
+        decided_day: str = "",
         total: int = 0,
         ready: bool = False,
         demo: bool = False,
