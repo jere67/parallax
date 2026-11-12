@@ -9,7 +9,7 @@ import from action.reconcile { marks_of }
 import from dashboard.api { performance_view, portfolio_view, run_summaries, run_view, trail_view }
 import from dashboard.demo { DEMO_SESSIONS, DemoSim, seed_demo, weekdays_before }
 import from models.agents { Specialist }
-import from models.graph { Coverage, Covers, Decided, Decision, Holds, Order, PortfolioMode, Position, Ran, Run, Sent, VoteRecord, Voted }
+import from models.graph { CheckedBy, Coverage, Covers, Decided, Decision, Holds, Order, Placed, PortfolioMode, Position, Ran, RiskCheck, RiskOutcome, Run, Sent, VoteRecord, Voted }
 
 glob TODAY: date = date(2026, 10, 22);
 
@@ -59,6 +59,16 @@ test "the demo history is consistent, and every page's view can be built from it
     # Some Flow samples abstain on the supplied gap, as live runs do, and no other specialist does.
     assert any(abstains(v.body) for v in votes if v.specialist == Specialist.FLOW);
     assert not any(abstains(v.body) for v in votes if v.specialist != Specialist.FLOW);
+
+    # The latest run shows the trail's harder states: its first screened ticker's News specialist
+    # failed every sample, another ticker's Flow specialist abstained, and somewhere in the
+    # history the gate blocked an order, which left no Order behind.
+    trails = [t for row in latest.rows for t in [trail_view(portfolio, latest.run_date, row.ticker)] if t is not None];
+    assert {"voted", "failed", "abstained"} <= {s.status for t in trails for s in t.specialists};
+    failed = [s for t in trails for s in t.specialists if s.status == "failed"];
+    assert len(failed) == 1 and failed[0].specialist == "news" and len(failed[0].errors) == 3 and failed[0].samples == [];
+    blocked = [rc for d in decisions for rc in [d ->:CheckedBy:->[?:RiskCheck]] if rc.outcome == RiskOutcome.REJECTED];
+    assert blocked and all([rc ->:Placed:->] == [] for rc in blocked);
 }
 
 test "the seed writes into an empty team portfolio once, and never over history" {

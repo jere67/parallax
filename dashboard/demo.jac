@@ -95,6 +95,12 @@ glob SAMPLES: int = 3;
 # runs on November 2 to 4, 2026 abstained on most Flow samples for want of insider data.
 glob FLOW_GAP: str = "No insider transactions or institutional holdings were reported in the window.";
 glob FLOW_GAP_SHARE: float = 0.4;
+# Every third run, counting back from the latest, the News specialist fails every sample on the
+# run's first screened ticker, as a live run does when the free model is rate limited, so the
+# decision trail can show a failed specialist beside the others.
+glob FAILURE_EVERY: int = 3;
+glob FAILED_SPECIALIST: Specialist = Specialist.NEWS;
+glob FAILURE_ERROR: str = "RateLimitError: the free model answered 429 Too Many Requests, and its retry did too";
 # Which session (counting from the first) the Orchestrator ran out of budget on.
 glob FALLBACK_SESSION: int = 9;
 
@@ -373,8 +379,9 @@ obj DemoSim {
             covered.append(self.cover(run, t, day, CoverageReason.HELD, 0.0, "open position"));
         }
         ordered = sorted(covered, key=lambda (c: Coverage) { -self.outlook(c.ticker, day); });
+        failing = covered[0].ticker if covered and (len(self.days) - 1 - i) % FAILURE_EVERY == 0 else "";
         for c in covered {
-            self.analyze(c, day, held.get(c.ticker));
+            self.analyze(c, day, held.get(c.ticker), FAILED_SPECIALIST if c.ticker == failing else None);
             publish_card(c, day, PortfolioMode.AUTO.value, run.finished_at);
         }
         buys = len([c for c in covered if self.action_of(c) in (TradeAction.BUY, TradeAction.ADD)]);
@@ -448,8 +455,10 @@ obj DemoSim {
         ));
     }
 
-    """Research, votes, consensus, and the Arbiter's decision for one coverage."""
-    def analyze(c: Coverage, day: str, position: Position | None) {
+    """Research, votes, consensus, and the Arbiter's decision for one coverage. Every sample of
+    the `failed` specialist fails: its votes are drawn, so the random sequence stays the same, but
+    not stored, and the coverage records why each was dropped, as run/analysis.jac does."""
+    def analyze(c: Coverage, day: str, position: Position | None, failed: Specialist | None = None) {
         t = c.ticker;
         s = self.stocks[t];
         signal = self.bias[t] + 0.3 * self.outlook(t, day) + self.rng.gauss(0.0, 0.25);
@@ -516,9 +525,15 @@ obj DemoSim {
                     cited_evidence=sorted(self.rng.sample(range(shown), min(shown, self.rng.randint(1, 3))))
                 );
                 mine.append(v);
+                if spec == failed {
+                    c.analysis_errors = c.analysis_errors + [f"{spec.value} sample {k}: {FAILURE_ERROR}"];
+                    continue;
+                }
                 public(c +>:Voted():+> VoteRecord(ticker=t, specialist=spec, sample=k, model=PRIMARY_MODEL, body=v));
             }
-            votes[spec] = mine;
+            if spec != failed {
+                votes[spec] = mine;
+            }
         }
 
         found = consensus(votes, f"{day}:{t}");
@@ -536,7 +551,8 @@ obj DemoSim {
             draft_action=draft,
             specialist_scores=found.specialist_scores,
             weights=found.weights,
-            samples_used=found.samples_used
+            samples_used=found.samples_used,
+            samples_dropped=len(c.analysis_errors)
         ));
         action = draft;
         verdict = "CONFIRM";
