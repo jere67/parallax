@@ -69,11 +69,22 @@ The request answers with `started: false` and a reason when:
 | The caller is signed in, but not as the admin | `Only the admin can start a run.` Other accounts start their own run with `start_my_run`. |
 | It is a weekend in New York | `2026-11-07 is a weekend; the market is closed.` |
 | The team portfolio holds demo history | `The team portfolio holds the demo history, which never runs.` |
-| The day already has a run, including a failed or skipped one | `The run for 2026-11-02 has already started (status: normal).` |
+| The day's run is working now | `The run for 2026-11-02 is running now.` |
+| The day's run has just ended and is not saved yet | `The run for 2026-11-02 has just finished and is being saved.` |
+| The day already has a run, including a skipped one or a failed one that decided something | `The run for 2026-11-02 has already started (status: normal).` |
 
 A request without a token never reaches the endpoint: `start_morning_run` is private, so the server rejects it first.
 A market holiday is not refused here.
 The run starts, finds no trading session, and is recorded as SKIPPED.
+
+## Running a lost day again
+
+A failed run that decided nothing can be run again the same day, with the same request.
+That is a run the server could not save, which is recorded as failed with a summary that starts "Lost:" ([Run Guard](/system/run-guard#a-run-the-server-could-not-save)), or one whose data collection failed with no position open.
+The new run takes over the same record, and the run's log keeps a line with what the earlier attempt said.
+A failed run that decided something, such as a failed collection that held the open positions, is not run again.
+
+While the run is working, the trading tick leaves the team portfolio alone, and the run's orders go out on the first tick after it is saved.
 
 ## How it works
 

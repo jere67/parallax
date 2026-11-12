@@ -24,7 +24,7 @@ The code is in [`run/guard.jac`](https://github.com/jere67/parallax/blob/main/ru
 | `reduced_below` | 500 | Below this many requests left today, the run is reduced. |
 | `followups_per_ticker` | 2 | Follow-up research requests per ticker. |
 | `react_iterations` | 12 | Turns of the Orchestrator's tool loop. |
-| `deadline_s` | 5400 | The run's deadline: 90 minutes. |
+| `deadline_s` | 5400 | The run's deadline: 90 minutes from the start of its research. A scheduled run also stops at 9:40 a.m. New York time when that comes first (see [The deadline](#the-deadline)). |
 | `shortlist` / `reduced_shortlist` | 15 / 10 | Tickers screened in a normal and a reduced run. |
 | `samples` / `reduced_samples` | 3 / 1 | Samples per specialist in a normal and a reduced run. |
 
@@ -80,6 +80,24 @@ The Orchestrator runs as a ReAct loop of at most 12 iterations.
 Before each iteration, a hook stops the loop with a summary when 2 or fewer requests are left in the run's budget, or when the run is past its deadline.
 The last two requests are kept back so the Orchestrator can always write its summary.
 
+## The deadline
+
+A run stops its model work at its deadline: 90 minutes after its research starts.
+A scheduled run also stops at 9:40 a.m. New York time when that comes first (`SCHEDULED_CUTOFF`), so it is recorded before the orders go out at 9:45 even when it started late in the window.
+A run started by hand has the 90 minutes only.
+
+The deadline holds at every model request, not only between the Orchestrator's steps.
+The run puts its deadline in `RUN_DEADLINE`, a context variable that its worker pool copies to every task, and the request limiter refuses any request whose turn comes after it, with `RunDeadlineError`, without sending or counting it.
+Past the deadline, the tools refuse, and the fixed-order finish sends no request at all.
+
+This matters when the models keep refusing.
+On November 12 OpenRouter answered almost every request with HTTP 429 from 8:06 a.m., and the run went on until 10:00, because the deadline was read only between the Orchestrator's steps ([#240](https://github.com/jere67/parallax/issues/240)).
+Now such a run ends at its deadline as a fallback that says so:
+
+> Ran out of time: the run passed its 90-minute deadline at 9:13 AM ET with 9 of 15 tickers still without a full panel, so they hold and no new position was opened for them. The models were refusing requests with OpenRouter's rate limit (Rate limit exceeded: free-models-per-min.).
+
+Each of those tickers holds with the deadline as its reason, such as "the run passed its 90-minute deadline at 9:13 AM ET before this ticker's research and panel finished".
+
 ## Finishing in fixed order
 
 When the Orchestrator returns, raises, or runs out of time, `complete_in_order` takes over.
@@ -88,13 +106,13 @@ It never raises.
 <Steps>
 
 1. **Research what is missing.**
-   Every ticker that lacks a market, fundamentals, or news report gets it, with no follow-ups.
+   Every ticker that lacks a market, fundamentals, or news report gets it, with no follow-ups, unless the deadline has passed.
 
 2. **Convene the missing panels.**
-   Every ticker without a decision gets its panel, as far as the budget allows.
+   Every ticker without a decision gets its panel, as far as the budget allows, unless the deadline has passed.
 
 3. **Hold the rest.**
-   A ticker it still cannot decide gets HOLD with the reason "the run could not finish its research or panel".
+   A ticker it still cannot decide gets HOLD with the reason "the run could not finish its research or panel", or the deadline's reason when the deadline cut its research or panel short.
 
 4. **Submit.**
    The decisions are submitted, with the note "submitted by the Run Guard".
@@ -106,9 +124,9 @@ It never raises.
 | Status | When |
 | --- | --- |
 | `normal` | The Orchestrator itself submitted the decisions, before the deadline. |
-| `fallback` | Anything else: the Orchestrator raised, stopped early, or ran late, and the Run Guard finished the run. Also any run where no specialist voted on any ticker, whatever the Orchestrator submitted. |
+| `fallback` | Anything else: the Orchestrator raised, stopped early, or ran late, and the Run Guard finished the run. Also any run that ran out of time, and any run where no specialist voted on any ticker, whatever the Orchestrator submitted. |
 | `skipped` | Not a trading day, or the day was already claimed. |
-| `failed` | Data collection failed. |
+| `failed` | Data collection failed, or the server could not save the run (see [A run the server could not save](#a-run-the-server-could-not-save)). |
 | `running` | The run is in progress. |
 
 If no summary was written, the Run Guard writes one, such as "15 tickers decided by the Orchestrator: 2 BUY, 13 NO_ACTION. 241 model requests."
@@ -123,10 +141,26 @@ The evaluation counts such a run as incomplete ([Evaluation](/system/evaluation)
 
 ## Recording the run
 
-Model calls run on a shared pool of 32 worker threads, and workers never touch the graph.
+Model calls run on a shared pool of 64 worker threads, and workers never touch the graph.
 When the session ends, `record_run` writes everything from the run's own thread: the macro record, one `Coverage` per ticker with its research, votes, consensus, and decision, and the insight cards.
 Each node is granted read access as it is written, so the dashboard can show it to the account whose agent wrote it.
 It also records the model versions used, the requests spent by role, and the tokens, and adds the requests to the day's count.
+
+## A run the server could not save
+
+A scheduled job's writes are saved only when the job ends, in one commit.
+If that commit fails, everything the run wrote goes with it, including the `Run` its claim made.
+On November 12 the team's run ended at 10:00 a.m. and its commit failed against the trading tick's writes (`scheduled morning_job failed: 40001`), so the Runs page said "No run" and nothing said why ([#240](https://github.com/jere67/parallax/issues/240)).
+
+`morning_run` now notes in the process when a team run starts and when its work ends ([`run/attempts.jac`](https://github.com/jere67/parallax/blob/main/run/attempts.jac)):
+
+- While a run is working, or ended less than 3 minutes ago and is not in the graph yet, the trading tick leaves the team portfolio alone, so the two never write it at once. The run's orders go out on the first tick after it is saved.
+- Neither the morning job nor a manual request starts another run for that day.
+- Once 3 minutes have passed with no run in the graph, `lost_run_job` records one as `failed`, with a summary that starts "Lost: the run worked from 7:30 AM to 10:00 AM ET, but the server could not save it" and ends with what the run had said.
+- The admin can then run the day again ([Starting a run by hand](/guide/manual-run#running-a-lost-day-again)). The schedule does not, so a run that keeps failing to save cannot loop.
+
+The note lives in the process, so it assumes one server, as the deployment does.
+A restart forgets it: a run lost just before a restart stays missing, and the evaluation counts its day as missed.
 
 ::: info Where it differs from the TDD
 [TDD §4](/design/tdd#orchestrator-tools) lists `submit_decisions(decisions)`.

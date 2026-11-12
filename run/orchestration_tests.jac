@@ -144,7 +144,7 @@ test "the morning run decides under the team policy in force" {
     saved = save_policy(PolicyScope.TEAM, Policy(buy_score=start.buy_score + 0.05), base);
     assert saved.saved;
     seen: list[tuple[Policy, int]] = [];
-    def spy(portfolio: Portfolio, day: str, driver: object, limits: RunLimits, in_force: tuple[Policy, int]) -> RunOutcome {
+    def spy(_portfolio: Portfolio, day: str, _driver: object, _limits: RunLimits, in_force: tuple[Policy, int], _cutoff: object = None, _rerun: bool = False) -> RunOutcome {
         seen.append(in_force);
         return RunOutcome(run_day=day, status=RunStatus.SKIPPED);
     }

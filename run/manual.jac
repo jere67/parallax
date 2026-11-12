@@ -26,7 +26,8 @@ import from datetime { datetime, time, timedelta }
 import from jaclang.server.identity.app_tokens { token_create, token_revoke }
 import from accounts.store { caller_is_admin }
 import from models.graph { Portfolio }
-import from run.guard { NEW_YORK, find_team_portfolio }
+import from run.attempts { attempt_for }
+import from run.guard { NEW_YORK, find_team_portfolio, rerunnable }
 import from run.orchestration { morning_run }
 import from run.trading { run_for }
 
@@ -55,11 +56,16 @@ def manual_refusal(is_admin: bool, portfolio: Portfolio | None, day: str, local:
     if portfolio is not None and portfolio.demo {
         return "The team portfolio holds the demo history, which never runs.";
     }
-    if portfolio is not None {
-        found = run_for(portfolio, day);
-        if found is not None {
-            return f"The run for {day} has already started (status: {found.status.value}).";
-        }
+    noted = attempt_for(day);
+    if noted is not None and noted.ended_at is None {
+        return f"The run for {day} is running now.";
+    }
+    found = run_for(portfolio, day) if portfolio is not None else None;
+    if found is not None and not rerunnable(found) {
+        return f"The run for {day} has already started (status: {found.status.value}).";
+    }
+    if found is None and noted is not None {
+        return f"The run for {day} has just finished and is being saved.";
     }
     return "";
 }
@@ -103,6 +109,6 @@ def manual_run_job {
         return;
     }
     LOG.info("%s manual morning run starting", day);
-    outcome = morning_run(day);
+    outcome = morning_run(day, rerun=True);
     LOG.info("%s manual morning run %s: %s", outcome.run_day, outcome.status.value, outcome.note);
 }

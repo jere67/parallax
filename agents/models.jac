@@ -108,6 +108,19 @@ with entry {
 """Raised instead of a provider request while the kill switch is on."""
 obj ModelsDisabledError(Exception) {}
 
+"""Raised instead of a provider request once the run's deadline has passed (RUN_DEADLINE)."""
+obj RunDeadlineError(Exception) {}
+
+# The `time.monotonic()` after which the work in this context sends no more model requests: the
+# Run Guard sets its run's deadline here, and the run's pool copies it to every worker
+# (run/workers.jac). Without it a run met only its deadline between steps, and one panel whose
+# every request got a 429 went on for hours (#240).
+glob RUN_DEADLINE: ContextVar[float | None] = ContextVar("parallax_run_deadline", `default=None);
+
+def deadline_passed(deadline: float | None, at: float) -> bool {
+    return deadline is not None and at >= deadline;
+}
+
 def models_disabled -> bool {
     return os.environ.get(KILL_SWITCH_ENV, "").strip().lower() in ("1", "true", "yes");
 }
@@ -205,13 +218,18 @@ obj RequestLimiter {
         self._lock = threading.Lock();
     }
 
-    """Block until the next request may go out, then count it."""
+    """Block until the next request may go out, then count it. Raises RunDeadlineError, without
+    waiting or counting, when this work's run deadline comes before the request's turn."""
     def acquire(role: str = "unknown", kind: str = "first_attempt") {
         if kind not in REQUEST_KINDS {
             raise ValueError(f"unknown model request kind: {kind}");
         }
+        deadline = RUN_DEADLINE.get();
         with self._lock {
             now = time.monotonic();
+            if deadline_passed(deadline, max(now, self._next_slot)) {
+                raise RunDeadlineError("the run passed its deadline, so it sends no more model requests");
+            }
             if self._next_slot > now {
                 time.sleep(self._next_slot - now);
                 # Space from the real wake-up, which can be late, not the scheduled slot.
@@ -248,8 +266,10 @@ obj RequestLimiter {
     }
 }
 
-# The server's own key's limiter. Each user's key has its own (limiter_now): OpenRouter's limits
-# are per key, so one agent's run never slows another's.
+# The server's own key's limiter. Each user's key has its own (limiter_now), so one agent's
+# requests never wait in another's queue. OpenRouter still caps free-model requests across all of
+# an account's keys ("Making additional accounts or API keys will not affect your rate limits"),
+# so two keys on one account share its 20 a minute (#240).
 glob LIMITER: RequestLimiter = RequestLimiter(per_minute=REQUESTS_PER_MINUTE);
 glob _LIMITERS: dict[str, RequestLimiter] = {};
 glob _LIMITERS_LOCK: threading.Lock = threading.Lock();

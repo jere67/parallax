@@ -42,6 +42,7 @@ import from research.alpaca { MarketDay, market_calendar }
 import from research.collector { run_budget }
 import from policy.store { policy_version }
 import from research.credentials { redact }
+import from run.attempts { busy }
 import from run.guard { NEW_YORK }
 import from run.switches { demo_mode }
 
@@ -231,8 +232,14 @@ def evaluation_line(portfolio: Portfolio, now: datetime, day: str, history: Hist
 }
 
 """The scheduled tick on the team portfolio. Never raises: a failure is logged and recorded
-on the day's run, and the next tick tries again."""
+on the day's run, and the next tick tries again. While the day's morning run may still write
+the team portfolio (run/attempts.jac), the tick waits, writing nothing, so the two firings never
+both write it and the run's record is not lost to the conflict (#240). The run's orders then go
+out on the first tick after it is saved."""
 def team_trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = TradingDeps()) -> list[str] {
+    if busy(portfolio, now.astimezone(NEW_YORK).date().isoformat(), now) {
+        return ["skipped: the morning run is still running"];
+    }
     if not _TICK_LOCK.acquire(blocking=False) {
         return ["skipped: the previous tick is still running"];
     }

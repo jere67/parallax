@@ -16,6 +16,7 @@ import from models.policy { Policy, PolicyScope }
 import from models.research { Stamp }
 import from policy.store { save_policy, team_policy }
 import from run.guard { NEW_YORK }
+import from run.attempts { attempt_for, begin, finish, forget }
 import from run.trading { TradingDeps, db_conflict, team_trading_tick, trading_tick }
 import from tests.fakes.broker_server { FakeBroker, FakeOrder, Scripted }
 
@@ -342,6 +343,30 @@ test "orders are sized and gated under the policy version the run decided with" 
         lines = tick_at(fake, portfolio, deps, "09:45");
         assert lines[0].startswith("execute: 2 checks, 1 approved");
     } finally {
+        fake.stop();
+    }
+}
+
+test "while the morning run may still write, the team tick waits, then trades it on the first tick after it is saved" {
+    fake = FakeBroker();
+    try {
+        deps = deps_for(fake);
+        portfolio = team();
+        fake.set_price("AAA", 100.0);
+        begin(DAY, ny("09:00"));
+        fake.now = ny("09:45").isoformat();
+        assert team_trading_tick(portfolio, ny("09:45"), deps) == ["skipped: the morning run is still running"];
+        assert fake.orders == [];
+        # The run is saved at 9:46, after the first execution minute.
+        run = finished_run(portfolio, DAY, [Call(ticker="AAA", action=TradeAction.BUY, conviction=0.5)]);
+        finish(DAY, ny("09:46"), "normal");
+        assert run.action_log == [] and not run.executed_at;
+        fake.now = ny("09:47").isoformat();
+        lines = team_trading_tick(portfolio, ny("09:47"), deps);
+        assert lines[0].startswith("execute: 1 checks, 1 approved") and run.executed_at;
+        assert attempt_for(DAY) is None;
+    } finally {
+        forget(DAY);
         fake.stop();
     }
 }
