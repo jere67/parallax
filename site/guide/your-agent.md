@@ -45,11 +45,12 @@ It places no order until you turn on paper trading.
 | OpenRouter API key | Yes | Pays for every model request: the research agents, the five specialists, and the Arbiter, plus the policy assistant. |
 | Finnhub API key | No | Supplies fundamentals, earnings dates, and analyst views. Without it, those show as data gaps, and the specialists that depend on them abstain. |
 
-Get them from the provider dashboards:
+Settings lists the steps to make each key, with a button that opens the provider's page in a new tab.
+Once a key is connected, the steps fold under "Need a new key?".
 
-- Alpaca: the paper trading dashboard, at `app.alpaca.markets/paper/dashboard/overview`.
-- OpenRouter: `openrouter.ai/keys`.
-- Finnhub: `finnhub.io/dashboard`.
+- Alpaca: sign up at `app.alpaca.markets/signup`, check that the account menu says Paper, then choose Generate New Keys on the paper dashboard, at `app.alpaca.markets/paper/dashboard/overview`. Alpaca shows the secret only once.
+- OpenRouter: choose Create Key at `openrouter.ai/settings/keys`. OpenRouter shows the key only once.
+- Finnhub: sign up at `finnhub.io/register`; the key is at the top of `finnhub.io/dashboard`.
 
 ### The OpenRouter allowance
 

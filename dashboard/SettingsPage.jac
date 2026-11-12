@@ -2,15 +2,36 @@
 trading, and change a password. Keys only ever travel from here to the server: the page shows what
 the server sends back, which is a hint and the time each was checked."""
 import from "@jac/runtime" { jacLogout, useNavigate }
-import from "lucide-react" { Check, ExternalLink }
+import from "lucide-react" { Check, ChevronDown, ExternalLink }
 import from dashboard.ui.format { stamp_et }
 import from dashboard.ui.parts { ErrorBox, Loading, Panel, TAP_BUTTON, TAP_INPUT, TAP_QUIET }
 import from dashboard.ui.rpc { get_agent_settings, remove_agent_keys, save_agent_keys, set_paper_trading, start_my_run }
 import from models.accounts { AgentReply, AgentSettings as SettingsData, KeyStatus as KeyData, KeysReply }
 
+# Where each provider makes its keys. A page that needs an account sends a signed-out visitor to
+# sign in or sign up, then back to it.
 glob ALPACA_URL: str = "https://app.alpaca.markets/paper/dashboard/overview";
-glob OPENROUTER_URL: str = "https://openrouter.ai/keys";
+glob ALPACA_SIGNUP_URL: str = "https://app.alpaca.markets/signup";
+glob OPENROUTER_URL: str = "https://openrouter.ai/settings/keys";
+glob OPENROUTER_CREDITS_URL: str = "https://openrouter.ai/settings/credits";
 glob FINNHUB_URL: str = "https://finnhub.io/dashboard";
+glob FINNHUB_SIGNUP_URL: str = "https://finnhub.io/register";
+
+"""How to make each provider's key, in order. A step's `href` is a page it names; `label` is its link text."""
+glob ALPACA_STEPS: list[dict[str, str]] = [
+    {"text": "Sign up for Alpaca, or log in.", "label": "Sign up", "href": ALPACA_SIGNUP_URL},
+    {"text": "Open the paper dashboard below. The account menu at the top left should say Paper, not Live."},
+    {"text": "Under API Keys, choose Generate New Keys. Copy the key ID and the secret; Alpaca shows the secret only once."}
+];
+glob OPENROUTER_STEPS: list[dict[str, str]] = [
+    {"text": "Open the keys page below, and sign up or log in. An account is free."},
+    {"text": "Choose Create Key, name it Parallax, and copy the key. OpenRouter shows it only once."},
+    {"text": "Optional: buy the one-time $10 credit, which raises the free-model limit from 50 to 1,000 requests a day. A full run uses about 460.", "label": "Buy credits", "href": OPENROUTER_CREDITS_URL}
+];
+glob FINNHUB_STEPS: list[dict[str, str]] = [
+    {"text": "Sign up for a free Finnhub account, and confirm your email.", "label": "Sign up", "href": FINNHUB_SIGNUP_URL},
+    {"text": "Open the dashboard below. Your API key is at the top; copy it."}
+];
 glob PASSWORD_URL: str = "/user/password";
 glob MIN_PASSWORD: int = 8;
 
@@ -52,16 +73,61 @@ def KeyInput(label: str, value: str, connected: bool, change: Callable[[str], No
     </label>
 }
 
-"""One provider's keys: what they are for, where to get them, and their state."""
-def ProviderBlock(name: str, about: str, url: str, url_label: str, required: bool, status: KeyData | None, problem: str, can_remove: bool, busy: bool, remove: Callable[[], None], children: any = None) -> JsxElement {
+"""A link that opens a provider's page in a new tab."""
+def OutLink(href: str, children: any = None) -> JsxElement {
+    <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-accent hover:underline">
+        {children}<ExternalLink size={11} strokeWidth={2} aria-hidden="true"/>
+    </a>
+}
+
+"""The numbered steps to make a provider's key, then a button to the page that makes it."""
+def KeySteps(steps: list[dict[str, str]], url: str, url_label: str) -> JsxElement {
+    <div className="flex flex-col gap-3">
+        <ol className="flex flex-col gap-2">
+            {for (i, step) in enumerate(steps) {
+                <li key={i} className="flex gap-2 text-[12px] leading-[18px] text-muted">
+                    <span className="num flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-accent/15 text-[11px] font-medium text-accent" aria-hidden="true">{str(i + 1)}</span>
+                    <span>
+                        {step["text"]}
+                        {if step.get("href") { <span>{" "}<OutLink href={step["href"]}>{step["label"]}</OutLink></span> }}
+                    </span>
+                </li>
+            }}
+        </ol>
+        <a href={url} target="_blank" rel="noopener noreferrer" className={TAP_QUIET + " w-full"}>
+            {url_label}<ExternalLink size={13} strokeWidth={2} aria-hidden="true"/>
+        </a>
+    </div>
+}
+
+"""How to get a provider's key: laid out while it has none, and folded under "Need a new key?" once
+it is connected, opening by itself when the provider reports a problem with the key."""
+def KeyGuide(steps: list[dict[str, str]], url: str, url_label: str, connected: bool, problem: str) -> JsxElement {
+    if not connected {
+        return <div className="mt-3 rounded-md border border-line bg-panel-2 p-3">
+            <p className="mb-2.5 text-[12px] font-medium text-text">How to get your key</p>
+            <KeySteps steps={steps} url={url} url_label={url_label}/>
+        </div>;
+    }
+    <details className="group mt-2" open={bool(problem)}>
+        <summary className="inline-flex min-h-6 cursor-pointer list-none items-center gap-1 text-[12px] font-medium text-accent hover:underline [&::-webkit-details-marker]:hidden">
+            Need a new key?
+            <ChevronDown size={13} strokeWidth={2} aria-hidden="true" className="transition-transform duration-150 group-open:rotate-180"/>
+        </summary>
+        <div className="mt-2 rounded-md border border-line bg-panel-2 p-3">
+            <KeySteps steps={steps} url={url} url_label={url_label}/>
+        </div>
+    </details>
+}
+
+"""One provider's keys: what they are for, how to get them, and their state."""
+def ProviderBlock(name: str, about: str, url: str, url_label: str, steps: list[dict[str, str]], required: bool, status: KeyData | None, problem: str, can_remove: bool, busy: bool, remove: Callable[[], None], children: any = None) -> JsxElement {
     connected: bool = status is not None and status.connected;
     <div role="group" aria-label={name} className="flex flex-col gap-3 border-b border-line px-4 py-4 last:border-b-0 md:flex-row md:gap-8">
         <div className="md:w-[280px] md:shrink-0">
             <h3 className="text-[14px] font-medium text-text">{name + ("" if required else " (optional)")}</h3>
             <p className="mt-1 text-[12px] leading-[18px] text-muted">{about}</p>
-            <a href={url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex min-h-6 items-center gap-1 text-[12px] font-medium text-accent hover:underline">
-                {url_label}<ExternalLink size={11} strokeWidth={2} aria-hidden="true"/>
-            </a>
+            <KeyGuide steps={steps} url={url} url_label={url_label} connected={connected} problem={problem}/>
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2.5">
             {children}
@@ -146,7 +212,8 @@ def KeysPanel(settings: SettingsData, done: Callable[[SettingsData, str], None])
                 name="Alpaca paper account"
                 about="Market data, and the paper account your agent trades. Live accounts are refused."
                 url={ALPACA_URL}
-                url_label="Get paper keys"
+                url_label="Open Alpaca's paper dashboard"
+                steps={ALPACA_STEPS}
                 required={True}
                 status={key_named(settings, "ALPACA_SECRET_KEY")}
                 problem={problems.get("alpaca", "") or settings.alpaca_problem}
@@ -161,9 +228,10 @@ def KeysPanel(settings: SettingsData, done: Callable[[SettingsData, str], None])
             </ProviderBlock>
             <ProviderBlock
                 name="OpenRouter"
-                about="The free AI models your agent thinks with. A full run uses about 460 requests, so buy OpenRouter's one-time $10 credit to raise the free limit from 50 to 1,000 a day."
+                about="The free AI models your agent thinks with."
                 url={OPENROUTER_URL}
-                url_label="Get a key"
+                url_label="Open OpenRouter's keys page"
+                steps={OPENROUTER_STEPS}
                 required={True}
                 status={key_named(settings, "OPENROUTER_API_KEY")}
                 problem={problems.get("openrouter", "")}
@@ -178,7 +246,8 @@ def KeysPanel(settings: SettingsData, done: Callable[[SettingsData, str], None])
                 name="Finnhub"
                 about="Fundamentals, earnings dates, and analyst views. Without it your agent still runs, and those show as gaps its specialists cannot vote on."
                 url={FINNHUB_URL}
-                url_label="Get a free key"
+                url_label="Open Finnhub's dashboard"
+                steps={FINNHUB_STEPS}
                 required={False}
                 status={key_named(settings, "FINNHUB_API_KEY")}
                 problem={problems.get("finnhub", "")}
