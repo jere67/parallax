@@ -53,7 +53,7 @@ glob KNOBS: list[Knob] = [
     Knob(name="regime_gross_limit", label="Most invested in a risk-off market", group="Limits", low=0.0, high=0.50, step=0.05, unit="share", help="The cap on positions when SPY is below its 200-day average and volatile, or either figure is missing."),
     Knob(name="new_positions_per_day", label="New positions a day", group="Limits", low=0.0, high=5.0, step=1.0, unit="count", help="At most this many new stocks are bought in one day, highest conviction first.", int_valued=True),
     Knob(name="turnover_limit", label="Daily turnover", group="Limits", low=0.02, high=0.50, step=0.01, unit="share", help="Orders in one day may trade at most this share of the portfolio, sells first."),
-    Knob(name="drawdown_halt", label="Drawdown that halts buying", group="Limits", low=0.02, high=0.20, step=0.01, unit="share", help="No new buys once the portfolio is this far below its peak; sells and stops still run."),
+    Knob(name="drawdown_halt", label="Drawdown that halts buying", group="Limits", low=0.02, high=0.20, step=0.01, unit="share", help="No new buys once the portfolio is this far below its highest close of the last three months; sells and stops still run."),
     Knob(name="earnings_blackout_sessions", label="Earnings blackout", group="Limits", low=1.0, high=10.0, step=1.0, unit="sessions", help="No new entry this many trading sessions or fewer before an earnings release.", int_valued=True),
     Knob(name="stop_atr_multiple", label="Protective stop distance", group="Limits", low=1.0, high=4.0, step=0.25, unit="multiple", help="Every entry gets a stop this many ATR(14) below its price.")
 ];

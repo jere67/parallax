@@ -29,6 +29,7 @@ import from models.graph {
 import from models.research { RegimeInputs, Stamped }
 import from research.alpaca { BarSeries, daily_bars, market_calendar }
 import from research.alpaca_news { Article, articles }
+import from research.asof { as_of_day, as_of_time, reported_periods }
 import from research.briefs {
     Brief,
     FundamentalsInputs,
@@ -53,9 +54,9 @@ import from research.finnhub {
 import from research.indicators { BOND_BENCHMARKS, BOND_ETFS, SECTOR_ETFS, Technicals, summarize }
 import from research.holdings { HoldingsBatch, institutional_holdings }
 import from research.screener { Pick, PickReason, ScreenConfig, Shortlist, gather, screen }
-import from research.sec { cik_map, earnings_release, eight_ks, filings, fundamentals, insider_trades }
+import from research.sec { Filing, cik_map, earnings_release, eight_ks, filings, fundamentals, insider_trades }
 import from research.sources { DATASETS, Dataset, SOURCES_VERSION }
-import from research.wikipedia { Constituent, constituents }
+import from research.wikipedia { Constituent, constituents, index_changes, members_on }
 import from run.public { public }
 import from run.workers { NETWORK }
 
@@ -200,15 +201,16 @@ def research_pass(run_day: str, open_positions: list[str], config: PassConfig = 
 }
 
 """Screen the S&P 500 and collect every shortlisted ticker's data and the macro inputs, with
-no model calls. Never touches the graph."""
+no model calls. Never touches the graph. In a replay (research/asof.jac) the clock is the
+decision time and the index is its members on `run_day`."""
 def collect_pass(run_day: str, open_positions: list[str], config: PassConfig = PassConfig(), requested_ticker: str = "") -> Collection {
-    now = utc_now();
+    now = as_of_time() or utc_now();
     phases: dict[str, float] = {};
     budget = run_budget();
     gaps: list[str] = [];
 
     clock = time.monotonic();
-    members = constituents(budget);
+    members = index_members(run_day, budget, gaps);
     shortlist: Shortlist;
     if requested_ticker {
         selected = [m for m in members if m.symbol == requested_ticker];
@@ -220,7 +222,22 @@ def collect_pass(run_day: str, open_positions: list[str], config: PassConfig = P
         shortlist = screen(candidates, open_positions, config.screen);
     }
     phases["screen"] = time.monotonic() - clock;
+    return collect_shortlist(run_day, shortlist, members, config, PassStart(now=now, budget=budget, gaps=gaps, phases=phases));
+}
 
+"""Where a pass stands when its shortlist is set: the clock freshness is judged at, the run's
+source budget, and the gaps and phase timings so far."""
+obj PassStart {
+    has now: datetime,
+        budget: RunBudget;
+    has gaps: list[str] = [],
+        phases: dict[str, float] = {};
+}
+
+"""Collect every ticker on `shortlist` and the macro inputs for a run on `run_day`, adding to
+what the pass found before (`start`)."""
+def collect_shortlist(run_day: str, shortlist: Shortlist, members: list[Constituent], config: PassConfig, start: PassStart) -> Collection {
+    (now, budget, gaps, phases) = (start.now, start.budget, start.gaps, start.phases);
     clock = time.monotonic();
     day = date.fromisoformat(run_day);
     sessions = [
@@ -329,7 +346,12 @@ def collect_ticker(pick: Pick, release: EarningsDate | None, cik: str, ctx: Pass
     funda = FundamentalsInputs(insider_since=ctx.since(config.insider_days));
     funda.holdings = ctx.holdings.values.get(symbol);
     funda.gaps.extend(ctx.holdings.gaps.get(symbol, [f"sec.13f: no issuer name for {symbol} in the index constituents"]));
-    funda.metrics = tries.run("finnhub.metrics", funda.gaps, lambda { key_metrics(symbol, budget); });
+    if as_of_day() {
+        # Finnhub keeps only today's figures, which would leak the future into a replay.
+        funda.gaps.append(f"finnhub.metrics: only today's snapshot exists, so a replay of {ctx.run_day} leaves it out");
+    } else {
+        funda.metrics = tries.run("finnhub.metrics", funda.gaps, lambda { key_metrics(symbol, budget); });
+    }
     (funda.trends, trend_gaps) = current(tries.run("finnhub.recommendations", funda.gaps, lambda { recommendation_trends(symbol, budget); }) or [], DATASETS["finnhub.recommendations"], ctx.now);
     (funda.surprises, surprise_gaps) = current(tries.run("finnhub.eps_surprises", funda.gaps, lambda { eps_surprises(symbol, budget); }) or [], DATASETS["finnhub.eps_surprises"], ctx.now);
     funda.gaps.extend(trend_gaps + surprise_gaps);
@@ -347,9 +369,11 @@ def collect_ticker(pick: Pick, release: EarningsDate | None, cik: str, ctx: Pass
         tries.errors.append(f"sec: no CIK for {symbol}");
         funda.gaps.append(f"sec: no CIK for {symbol}, so there are no filings or reported figures");
         news.gaps.append(f"sec: no CIK for {symbol}, so there are no 8-K events or earnings release");
+        bound_surprises(funda, None);
         return TickerInputs(pick=pick, market=market, fundamentals=funda, news=news, fetch_errors=tries.errors);
     }
     listed = tries.run("sec.submissions", news.gaps, lambda { filings(symbol, cik, budget); });
+    bound_surprises(funda, listed[1] if listed is not None else None);
     if listed is not None {
         company_filings = listed[1];
         news.events = eight_ks(company_filings, ctx.since(config.events_days));
@@ -371,6 +395,54 @@ def collect_ticker(pick: Pick, release: EarningsDate | None, cik: str, ctx: Pass
         funda.gaps.extend(facts[1]);
     }
     return TickerInputs(pick=pick, market=market, fundamentals=funda, news=news, fetch_errors=tries.errors);
+}
+
+"""In a replay, keep only the EPS surprises whose quarter was reported before the decision: one an
+Item 2.02 earnings release filed after the quarter ended and before the replayed day covers
+(research/asof.jac). Finnhub dates a surprise by its quarter's end, not by when it was reported,
+so its own date cannot tell. Without the company's filings none can be checked, so none is kept.
+Nothing changes for a live run."""
+def bound_surprises(funda: FundamentalsInputs, company_filings: list[Filing] | None) {
+    if not as_of_day() or not funda.surprises {
+        return;
+    }
+    if company_filings is None {
+        funda.surprises = [];
+        funda.gaps.append("finnhub.eps_surprises: no SEC filings to tell which quarters were reported before the replayed day, so none is shown");
+        return;
+    }
+    releases = [f.filed for f in company_filings if f.form in ("8-K", "8-K/A") and "2.02" in f.items];
+    known = reported_periods([s.period for s in funda.surprises], releases);
+    dropped = [s.period for s in funda.surprises if s.period not in known];
+    funda.surprises = [s for s in funda.surprises if s.period in known];
+    if dropped {
+        funda.gaps.append(f"finnhub.eps_surprises: quarters {', '.join(sorted(dropped))} were not reported before the replayed day, so they were left out");
+    }
+}
+
+"""The index's members for a run on `run_day`: today's constituents table, or in a replay its
+members on that day (research/wikipedia.jac, `members_on`). A member that has left the index
+since keeps the name the change table gives it, but no sector or SEC number."""
+def index_members(run_day: str, budget: RunBudget, gaps: list[str]) -> list[Constituent] {
+    members = constituents(budget);
+    if not as_of_day() or not members {
+        return members;
+    }
+    (changes, _unreadable) = index_changes(budget);
+    on = members_on(run_day, members, changes);
+    gaps.extend(f"wikipedia.history: {g}" for g in on.gaps);
+    known = {m.symbol: m for m in members};
+    names = {c.removed: c.removed_name for c in changes if c.removed};
+    found: list[Constituent] = [];
+    for symbol in on.symbols {
+        if symbol in known {
+            found.append(known[symbol]);
+        } else {
+            found.append(Constituent(symbol=symbol, name=names.get(symbol, symbol), sector="", sub_industry="", cik="", date_added="", stamp=members[0].stamp));
+            gaps.append(f"wikipedia.history: {symbol} was a member on {run_day} but has left the index, so it has no sector or SEC number");
+        }
+    }
+    return found;
 }
 
 """A history kept whole when its newest item is fresh for `dataset`, and dropped with a gap

@@ -95,7 +95,7 @@ def:pub InstallHint -> JsxElement {
     if dismissed or (offer is None and not is_ios()) {
         return <></>;
     }
-    <p className="mt-2 flex flex-wrap items-center gap-x-3 md:hidden" data-testid="install-hint">
+    <p className="mt-2 flex flex-wrap items-center gap-x-3 lg:hidden" data-testid="install-hint">
         {<button type="button" onClick={install} className="press min-h-11 font-medium text-accent">Install the app</button> if offer is not None else <span>On iPhone, tap Share, then Add to Home Screen, to install the app.</span>}
         <button type="button" onClick={dismiss} className="press min-h-11 text-faint hover:text-text">Not now</button>
     </p>

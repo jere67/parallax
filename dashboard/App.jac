@@ -11,6 +11,7 @@ import from dashboard.NotFound { NotFound }
 import from dashboard.PolicyPage { PolicyPage }
 import from dashboard.PortfolioPage { PortfolioPage }
 import from dashboard.ReportsPage { ReportsPage }
+import from dashboard.ResultsPage { ResultsPage }
 import from dashboard.RunPage { RunPage }
 import from dashboard.SettingsPage { SettingsPage }
 import from dashboard.SpecialistsPage { SpecialistsPage }
@@ -59,6 +60,7 @@ def:pub App -> JsxElement {
                     <Route path="policy" element={<PolicyPage/>}/>
                     <Route path="reports" element={<ReportsPage/>}/>
                     <Route path="specialists" element={<SpecialistsPage/>}/>
+                    <Route path="results" element={<ResultsPage/>}/>
                     <Route path="settings" element={<SettingsPage/>}/>
                     <Route path="runs" element={<RunPage/>}/>
                     <Route path="runs/:day" element={<RunPage/>}/>

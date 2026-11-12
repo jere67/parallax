@@ -8,6 +8,7 @@ import json;
 import from urllib.parse { urlencode }
 import from models.research { Stamped }
 import from research.alpaca { alpaca_data_client }
+import from research.asof { as_of_end }
 import from research.collector { RunBudget, SourceClient }
 import from research.sources { DATASETS, SOURCES }
 import from research.text { cap, html_to_text, untrusted_block }
@@ -44,7 +45,8 @@ obj Article(Stamped) {
 }
 
 """How many articles since `start` (an ISO date or timestamp) name each symbol, for the
-screener's news score. A symbol with none counts 0. Returns the counts and any gap."""
+screener's news score. A symbol with none counts 0. Returns the counts and any gap. In a
+replay the count ends at the decision time (research/asof.jac)."""
 def article_counts(
     symbols: list[str],
     start: str,
@@ -66,6 +68,9 @@ def article_counts(
         if token {
             params["page_token"] = token;
         }
+        if as_of_end() {
+            params["end"] = as_of_end();
+        }
         page = json.loads(data.get(DATASETS["alpaca.news"], "/v1beta1/news", budget, params=params, check=_check_news).body);
         for row in page["news"] {
             for symbol in row.get("symbols") or [] {
@@ -85,7 +90,8 @@ def article_counts(
     );
 }
 
-"""The newest `limit` articles naming `symbol` since `start`, with capped plain text."""
+"""The newest `limit` articles naming `symbol` since `start`, with capped plain text. In a replay
+they end at the decision time (research/asof.jac)."""
 def articles(
     symbol: str,
     start: str,
@@ -93,17 +99,21 @@ def articles(
     client: SourceClient | None = None,
     limit: int = 20
 ) -> list[Article] {
+    params: dict[str, str | int | float] = {
+        "symbols": symbol,
+        "start": start,
+        "limit": min(limit, ARTICLES_PER_PAGE),
+        "include_content": "true",
+        "sort": "desc"
+    };
+    if as_of_end() {
+        params["end"] = as_of_end();
+    }
     fetched = (client or alpaca_data_client()).get(
         DATASETS["alpaca.news"],
         "/v1beta1/news",
         budget,
-        params={
-            "symbols": symbol,
-            "start": start,
-            "limit": min(limit, ARTICLES_PER_PAGE),
-            "include_content": "true",
-            "sort": "desc"
-        },
+        params=params,
         symbol=symbol,
         check=_check_news
     );

@@ -98,7 +98,8 @@ It needs HTTPS to install anywhere but `localhost`, which is a browser rule.
 A user's agent runs by itself on a weekday between 7:30 and 9:15 a.m. New York time, up to three at a time and the oldest account first, or when its owner presses "Start today's run" in Settings.
 A run takes about half an hour.
 
-The admin's team agent starts by itself only between 7:30 and 7:45 a.m. New York time, so a server that was down then has no team run that day.
+The admin's team agent starts by itself in the same window: at 7:30, or at the first minute after 7:30 that the server is up and awake, until 9:15.
+A server that was down or asleep for that whole window has no team run that day.
 The admin account (`admin`, with the `ADMIN_PASSWORD` it was created with) can start it later:
 
 ```bash

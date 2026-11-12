@@ -70,7 +70,8 @@ const system: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'Agents and models', link: '/system/agents' },
       { text: 'Stochastic consensus', link: '/system/consensus' },
-      { text: 'Vote scoring', link: '/system/scoring' }
+      { text: 'Vote scoring', link: '/system/scoring' },
+      { text: 'Evaluation', link: '/system/evaluation' }
     ]
   },
   {
@@ -169,6 +170,10 @@ const design: DefaultTheme.SidebarItem[] = [
       { text: 'Free models', link: '/design/spike-free-models' },
       { text: 'Alpaca order rules', link: '/design/spike-alpaca-order-rules' }
     ]
+  },
+  {
+    text: 'Evaluation',
+    items: [{ text: 'Screen backtest', link: '/design/eval-screen-backtest' }]
   },
   {
     text: 'Exit runs',

@@ -307,12 +307,6 @@ body {
     }
 }
 
-@media (min-width: 768px) {
-    .news-sheet {
-        bottom: 0;
-    }
-}
-
 /* On a wide screen the feed and the story scroll side by side, each inside its box, under the
  * page's heading and filters. */
 @media (min-width: 1024px) {

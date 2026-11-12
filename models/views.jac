@@ -112,7 +112,8 @@ obj PortfolioView {
         drift: int = 0,
         positions: list[PositionView] = [],
         closed: list[PositionView] = [],
-        orders: list[OrderView] = [];
+        orders: list[OrderView] = [],
+        live_at: str = "";
 }
 
 """The macro brief and the market figures the regime filter reads."""
@@ -246,10 +247,12 @@ obj SpecialistVoteView {
         hit: bool | None = None;
 }
 
-"""One role's record over the most recent runs. Only scored directional votes count as hits."""
+"""One role's record over the most recent runs (`runs` of them). Only scored directional votes
+count as hits."""
 obj SpecialistSummaryView {
     has specialist: str;
-    has votes: int = 0,
+    has runs: int = 0,
+        votes: int = 0,
         scored: int = 0,
         hits: int = 0,
         hit_rate: float | None = None,

@@ -16,7 +16,7 @@ import from models.policy { Policy, PolicyScope }
 import from models.research { Stamp }
 import from policy.store { save_policy, team_policy }
 import from run.guard { NEW_YORK }
-import from run.trading { TradingDeps, team_trading_tick, trading_tick }
+import from run.trading { TradingDeps, db_conflict, team_trading_tick, trading_tick }
 import from tests.fakes.broker_server { FakeBroker, FakeOrder, Scripted }
 
 glob DAY: str = "2026-10-21";
@@ -85,7 +85,11 @@ test "a trading day: execute at 9:45, stop each fill, cancel the rest at 3:50, r
         fake.set_price("AAA", 101.0);
         lines = tick_at(fake, portfolio, deps, "16:30");
         assert lines[0].startswith("reconcile:") and "0 drift, 0 bypasses" in lines[0];
-        assert lines[-1] == "score: 0 votes scored, 0 without prices, 0 still open" and run.votes_scored_at;
+        assert lines[-3:] == [
+            "score: 0 votes scored, 0 without prices, 0 still open, 0 decisions scored",
+            "score: 0 screens scored, 0 without prices, 1 still open",
+            "evaluate: 1 session from 2026-10-21, 0 baselines compared, 0 screens and 0 votes scored"
+        ] and run.votes_scored_at and run.evaluated_at;
         mark = marks_of(portfolio)[DAY];
         assert mark.open_positions == 2 and mark.drift == [] and mark.bypasses == [];
         assert abs(mark.equity - (100000.0 - 40 * 100.2 - 30 * 50.1 + 40 * 101.0 + 30 * 50.0)) < 0.01;
@@ -181,6 +185,45 @@ test "reconciliation adopts a position the record lacks, closes one Alpaca lacks
     }
 }
 
+"""What Postgres raises when a concurrent transaction won: the driver's error dict carries SQLSTATE
+40001, as the PgWireError at the 2026-11-11 9:45 execution did."""
+obj SerializationFailure(Exception) {}
+
+def conflicting_view(_tickers: list[str]) -> MarketView {
+    raise SerializationFailure({"S": "ERROR", "C": "40001", "M": "could not serialize access due to concurrent update"});
+}
+
+test "a conflict is recognized by its SQLSTATE, also when another error wraps it" {
+    assert db_conflict(SerializationFailure({"C": "40001"})) and db_conflict(SerializationFailure({"C": "40P01"}));
+    assert not db_conflict(SerializationFailure({"C": "23505"})) and not db_conflict(RuntimeError("40001"));
+    wrapped = RuntimeError("the tick failed");
+    wrapped.__cause__ = SerializationFailure({"C": "40001"});
+    assert db_conflict(wrapped);
+}
+
+test "a database conflict is left to the runtime to replay, not logged as the run's error" {
+    fake = FakeBroker();
+    try {
+        deps = deps_for(fake);
+        deps.view = conflicting_view;
+        portfolio = team();
+        fake.set_price("AAA", 100.0);
+        run = finished_run(portfolio, DAY, [Call(ticker="AAA", action=TradeAction.BUY)]);
+        fake.now = ny("09:45").isoformat();
+        raised = False;
+        try {
+            team_trading_tick(portfolio, ny("09:45"), deps);
+        } except SerializationFailure {
+            raised = True;
+        }
+        assert raised and not any("error" in line for line in run.action_log);
+        # The runtime rolls the whole attempt back and replays it; nothing here is half-done.
+        assert fake.orders == [];
+    } finally {
+        fake.stop();
+    }
+}
+
 test "a failing tick is logged on the run and the next tick tries again" {
     fake = FakeBroker();
     try {
@@ -210,7 +253,11 @@ test "insight mode trades nothing but scores the panel's votes after the close, 
         cov +>:Voted():+> cast;
         today = finished_run(portfolio, "2026-10-22", [Call(ticker="AAA", action=TradeAction.BUY)]);
         assert tick_at(fake, portfolio, deps, "09:45", "2026-10-22") == [] and tick_at(fake, portfolio, deps, "16:29", "2026-10-22") == [];
-        assert tick_at(fake, portfolio, deps, "16:30", "2026-10-22") == ["score: 1 votes scored, 0 without prices, 0 still open"];
+        assert tick_at(fake, portfolio, deps, "16:30", "2026-10-22") == [
+            "score: 1 votes scored, 0 without prices, 0 still open, 0 decisions scored",
+            "score: 0 screens scored, 0 without prices, 2 still open",
+            "evaluate: 2 sessions from 2026-10-21, 0 baselines compared, 0 screens and 1 votes scored"
+        ];
         assert cast.excess_return is not None and abs(cast.excess_return - 0.03) < 1e-12 and today.votes_scored_at and not yesterday.votes_scored_at;
         assert tick_at(fake, portfolio, deps, "16:31", "2026-10-22") == [] and fake.orders == [];
     } finally {
