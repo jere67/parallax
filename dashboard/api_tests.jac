@@ -5,6 +5,7 @@ import from datetime { datetime, timezone }
 import from action.executor { execute_run, keep_stops, sync_orders }
 import from action.fixtures { Call, broker_for, finished_run, market, team }
 import from action.reconcile { marks_of, reconcile }
+import from analysis.evaluation { evaluate, record_evaluation }
 import from dashboard.api { performance_view, portfolio_view, refresh_specialists, run_summaries, run_view, series, specialist_summaries, specialist_views, trail_view, view_key }
 import from dashboard.cache { VIEWS }
 import from models.agents { Domain, Evidence, ResearchReport, Specialist, Stance, Vote }
@@ -86,13 +87,18 @@ test "specialist summaries count scored directional votes and link recent output
             v.scored_at = "2026-10-29T20:30:00+00:00";
             v.excess_return = 0.05;
         }
+        record_evaluation(portfolio, evaluate(portfolio, [DAY1, DAY2], CLOSE2));
         by_role = {s.specialist: s for s in specialist_summaries(portfolio)};
         assert len(by_role) == 5;
         technical = by_role["technical"];
         assert (technical.runs, technical.votes, technical.scored, technical.hits, technical.hit_rate) == (2, 2, 2, 2, 1.0);
+        # The bands are the stored evaluation's, so this page and the Results page agree.
+        assert len(technical.calibration) == 1;
+        assert (technical.calibration[0].count, technical.calibration[0].mean_confidence, technical.calibration[0].hit_rate) == (2, 0.8, 1.0);
         assert [(v.run_date, v.ticker, v.sample) for v in technical.recent] == [(DAY1, "AAA", 0), (DAY1, "AAA", 1)];
         fundamentals = by_role["fundamentals"];
         assert (fundamentals.votes, fundamentals.scored, fundamentals.hits, fundamentals.hit_rate) == (2, 1, 0, 0.0);
+        assert len(fundamentals.calibration) == 1 and fundamentals.calibration[0].count == 1;
         assert fundamentals.recent[1].hit is None;
         assert by_role["macro"].votes == 0 and by_role["macro"].hit_rate is None;
     } finally {

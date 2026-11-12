@@ -76,6 +76,7 @@ import from models.views {
     SampleView,
     Series,
     SpecialistView,
+    CalibrationBinView,
     SpecialistSummaryView,
     SpecialistVoteView,
     TrailView
@@ -445,6 +446,20 @@ def specialist_summaries(portfolio: Portfolio) -> list[SpecialistSummaryView] {
     }
     for row in by_role.values() {
         row.hit_rate = row.hits / row.scored if row.scored else None;
+    }
+    # Calibration bands come from the stored evaluation (analysis/evaluation.jac `calibration`), so
+    # this page and the Results page read the same numbers rather than binning votes twice.
+    stored = latest_evaluation(portfolio);
+    for found in (stored.specialists if stored is not None else []) {
+        row = by_role.get(found.specialist);
+        if row is None {
+            continue;
+        }
+        for b in found.bins {
+            if b.votes > 0 and b.confidence is not None and b.hit_rate is not None {
+                row.calibration.append(CalibrationBinView(low=b.low, high=b.high, count=b.votes, mean_confidence=b.confidence, hit_rate=b.hit_rate));
+            }
+        }
     }
     return [by_role[s.value] for s in SPECIALIST_ROLES];
 }
