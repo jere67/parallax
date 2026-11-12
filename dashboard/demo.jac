@@ -16,7 +16,6 @@ server.
 """
 import logging;
 import math;
-import os;
 import random;
 import statistics;
 import threading;
@@ -77,7 +76,7 @@ import from models.graph {
 import from models.research { RegimeInputs }
 import from research.alpaca { Bar }
 import from run.analysis { DEFAULT_HORIZON_DAYS, trading_day_after }
-import from accounts.store { DEMO_ENV }
+import from run.switches { demo_mode }
 import from run.guard { NEW_YORK, TEAM_PORTFOLIO }
 import from run.public { public }
 
@@ -135,7 +134,7 @@ takes about a minute and commits only when its job ends, so the next minute's jo
 one is running rather than find an empty graph and seed a second team portfolio."""
 @schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * *")
 def demo_job {
-    if os.environ.get(DEMO_ENV, "").strip() != "1" or not _SEEDING.acquire(blocking=False) {
+    if not demo_mode() or not _SEEDING.acquire(blocking=False) {
         return;
     }
     try {

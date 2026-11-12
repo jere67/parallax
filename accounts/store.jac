@@ -16,9 +16,9 @@ import from research.collector { utc_now }
 import from research.credentials { ALPACA_KEY, ALPACA_SECRET, Credentials, OPENROUTER_KEY }
 import from accounts.vault { unseal }
 import from run.guard { find_team_portfolio }
+import from run.switches { DEMO_ENV, demo_mode }
 
 glob AGENT_PORTFOLIO: str = "agent";
-glob DEMO_ENV: str = "TRADING_AGENT_DEMO";
 glob MAX_AGENTS_ENV: str = "PARALLAX_MAX_AGENTS";
 # Three agents run at a time from 7:30 a.m. and each takes about half an hour, so ten are done
 # with time to spare before orders go out at 9:45 (run/agents.jac).
@@ -30,10 +30,6 @@ glob USER_PAGE: int = 100;
 # it walks the user table.
 glob ROLE_TTL_S: float = 60.0;
 glob _ROLES: dict[str, tuple[bool, float]] = {};
-
-def demo_mode -> bool {
-    return os.environ.get(DEMO_ENV, "").strip() == "1";
-}
 
 def max_agents -> int {
     try {

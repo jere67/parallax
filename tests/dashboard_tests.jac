@@ -4,7 +4,7 @@ import os;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.testing.testing { JacTestClient }
-import from market.demo { DEMO_ENV }
+import from run.switches { DEMO_ENV }
 
 glob APP: str = str(Path(__file__).resolve().parent / "fixtures" / "dashboard_app.jac");
 

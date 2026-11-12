@@ -16,7 +16,6 @@ import from market.state { EarningsDates, MarketState, summary_of }
 import from models.research { Stamp }
 import from research.alpaca { Bar, BarSeries }
 
-glob DEMO_ENV: str = "TRADING_AGENT_DEMO";
 glob HISTORY_START: date = date(2016, 1, 4);
 glob STATS_SESSIONS: int = 320;
 glob BENCHMARK: str = "SPY";
