@@ -43,6 +43,7 @@ import from research.collector { run_budget }
 import from policy.store { policy_version }
 import from research.credentials { redact }
 import from run.guard { NEW_YORK }
+import from run.switches { demo_mode }
 
 glob EXECUTION_START: time = time(9, 45);
 glob FAST_POLL_UNTIL: time = time(10, 0);
@@ -163,7 +164,7 @@ def start_due(portfolio: Portfolio, run: Run | None, now: datetime, day: str, de
 Nothing is ever due on the local demo history: its orders, positions, and votes are made up,
 so trading, reconciling, or scoring them against Alpaca would be wrong (dashboard/demo.jac)."""
 def trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = TradingDeps()) -> list[str] {
-    if portfolio.demo {
+    if portfolio.demo or demo_mode() {
         return [];
     }
     local = now.astimezone(NEW_YORK);

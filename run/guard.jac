@@ -54,6 +54,7 @@ import from policy.facts { MarketFacts, stock_facts, stock_from_technicals }
 import from run.analysis { DecisionRule, Holding, TickerAnalysis, analyze, record_analysis, settle }
 import from run.public { public }
 import from run.research { COVERAGE_REASONS, Collection, PassConfig, briefs_for, collect_pass }
+import from run.switches { DEMO_ENV, demo_mode }
 import from run.workers { NETWORK }
 
 glob NEW_YORK: ZoneInfo = ZoneInfo("America/New_York");
@@ -594,8 +595,8 @@ def daily_run(
     limits: RunLimits = RunLimits(),
     in_force: tuple[Policy, int] = (Policy(), 0)
 ) -> RunOutcome {
-    if portfolio.demo {
-        return RunOutcome(run_day=run_day, status=RunStatus.SKIPPED, note="the portfolio holds the demo history");
+    if portfolio.demo or demo_mode() {
+        return RunOutcome(run_day=run_day, status=RunStatus.SKIPPED, note="the portfolio holds the demo history" if portfolio.demo else f"the server runs with {DEMO_ENV}=1, so no agent runs");
     }
     checked = preflight(run_day, portfolio, limits);
     run = claim_run(portfolio, run_day);
