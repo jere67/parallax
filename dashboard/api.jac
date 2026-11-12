@@ -455,6 +455,11 @@ def specialist_summaries(portfolio: Portfolio) -> list[SpecialistSummaryView] {
         if row is None {
             continue;
         }
+        row.evaluated = found.votes;
+        row.evaluated_hit_rate = found.hit_rate.value;
+        row.evaluated_lo = found.hit_rate.lo;
+        row.evaluated_hi = found.hit_rate.hi;
+        row.snapshot = stored.snapshot if stored is not None else "";
         for b in found.bins {
             if b.votes > 0 and b.confidence is not None and b.hit_rate is not None {
                 row.calibration.append(CalibrationBinView(low=b.low, high=b.high, count=b.votes, mean_confidence=b.confidence, hit_rate=b.hit_rate));
