@@ -890,6 +890,11 @@ def morning_window(local: datetime) -> bool {
     return local.weekday() < 5 and MORNING_START <= minute < MORNING_END;
 }
 
+"""When a scheduled run for `run_day` stops its model work: SCHEDULED_CUTOFF, New York time."""
+def scheduled_cutoff(run_day: str) -> datetime {
+    return datetime.combine(date.fromisoformat(run_day), datetime.min.time(), NEW_YORK) + timedelta(minutes=SCHEDULED_CUTOFF);
+}
+
 """Today's date in New York, the trading date a morning run decides."""
 def trading_date_now -> str {
     return datetime.now(NEW_YORK).date().isoformat();

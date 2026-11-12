@@ -16,7 +16,7 @@ a team portfolio that holds the local demo history (dashboard/demo.jac).
 """
 import from datetime { datetime, timezone }
 import from models.graph { Portfolio }
-import from run.guard { NEW_YORK, find_team_portfolio, morning_window, team_portfolio }
+import from run.guard { NEW_YORK, find_team_portfolio, morning_window, scheduled_cutoff, team_portfolio }
 import from run.orchestration { morning_run }
 import from run.trading { run_for, team_trading_tick }
 
@@ -34,8 +34,9 @@ def morning_due(portfolio: Portfolio | None, local: datetime) -> bool {
 in daylight and standard time alike; `morning_due` decides."""
 @schedule(trigger=ScheduleTrigger.STATIC, cron="* 11-14 * * 0-4")
 def morning_job {
-    if morning_due(find_team_portfolio(), datetime.now(NEW_YORK)) {
-        morning_run();
+    local = datetime.now(NEW_YORK);
+    if morning_due(find_team_portfolio(), local) {
+        morning_run(local.date().isoformat(), scheduled_cutoff(local.date().isoformat()));
     }
 }
 

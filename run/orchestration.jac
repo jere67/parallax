@@ -6,6 +6,7 @@ one the fallback meets. Its loop stops with a summary when the run's request bud
 to the reserve for that summary, or the run's deadline has passed; the Run Guard then
 finishes whatever is left in fixed order and marks the run fallback.
 """
+import from datetime { datetime }
 import from jaclang.byllm.types { IterationAction, IterationContext }
 import from agents.orchestrator { Committee }
 import from policy.store { team_policy }
@@ -32,9 +33,9 @@ def orchestrate(s: RunSession) -> str {
 }
 
 """The team's morning run for `run_day` (today in New York by default), under the team policy
-in force."""
-def morning_run(run_day: str = "") -> RunOutcome {
-    return daily_run(team_portfolio(), run_day or trading_date_now(), orchestrate, RunLimits(), team_policy());
+in force, stopping its model work at `cutoff` when that comes before its deadline."""
+def morning_run(run_day: str = "", cutoff: datetime | None = None) -> RunOutcome {
+    return daily_run(team_portfolio(), run_day or trading_date_now(), orchestrate, RunLimits(), team_policy(), cutoff);
 }
 
 """The daily pipeline as a walker (TDD §3, code sketch). It is not an endpoint: main.jac does
