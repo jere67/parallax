@@ -10,14 +10,15 @@ the guard makes sure every covered ticker ends with a decision before the run is
 Model calls run on worker threads, which lose the graph context, so the session only holds
 values; `record_run` writes everything afterwards, on the caller's thread (TDD §3, rule 6).
 """
+import re;
 import threading;
 import time;
 import from concurrent.futures { Future }
-import from datetime { date, datetime }
+import from datetime { date, datetime, timedelta }
 import from zoneinfo { ZoneInfo }
 import from action.insights { publish_card }
 import from agents.catalog { resolve_models }
-import from agents.models { CHAIN, FREE_REQUESTS_PER_DAY, RequestLimiter, limiter_now, model_error, provider_requests_left, request_total }
+import from agents.models { CHAIN, FREE_REQUESTS_PER_DAY, RUN_DEADLINE, RequestLimiter, limiter_now, model_error, provider_requests_left, request_total }
 import from agents.research { MacroResult, ResearchResult, fallback, macro_research, research }
 import from analysis.consensus { CONSENSUS_VERSION, ConsensusConfig }
 import from analysis.policy { Facts, POLICY_ENGINE_VERSION, consensus_config }
@@ -65,6 +66,11 @@ glob TEAM_PORTFOLIO: str = "team";
 # go out at 9:45 (run/trading.jac). A server that was asleep or down at 7:30 still runs the day.
 glob MORNING_START: int = 7 * 60 + 30;
 glob MORNING_END: int = 9 * 60 + 15;
+# A scheduled run stops its model work by 9:40, whenever it started, so it is recorded before the
+# orders go out at 9:45 and its record never races the trading tick's (#240).
+glob SCHEDULED_CUTOFF: int = 9 * 60 + 40;
+# How a model request the deadline stopped reads in an error (agents/models.jac).
+glob DEADLINE_ERROR: str = "RunDeadlineError";
 
 # Tool results and stored text are capped (TDD §3, rule 12).
 glob MAX_QUESTION_CHARS: int = 500;
@@ -205,6 +211,15 @@ obj RunSession {
         actions: list[str] = [],
         started: float = 0.0,
         requests_at_start: int = 0;
+    # A wall-clock time the run must stop its model work by, when sooner than its deadline.
+    has cutoff: datetime | None = None;
+    # Set at the start: when the run stops sending model requests (`time.monotonic()`), what that
+    # limit is called, and the New York time it falls at. `timed_out` lists the tickers the
+    # deadline left without a full panel.
+    has deadline_at: float = 0.0,
+        deadline_word: str = "",
+        deadline_clock: str = "",
+        timed_out: list[str] = [];
     has request_counts_at_start: dict[str, dict[str, int]] = {};
     has _lock: threading.RLock | None = None;
     has limiter: RequestLimiter postinit;
@@ -217,6 +232,17 @@ obj RunSession {
         self.limiter = limiter_now();
         self.request_counts_at_start = self.limiter.snapshot();
         self.requests_at_start = request_total(self.request_counts_at_start);
+        budget = self.limits.deadline_s;
+        self.deadline_word = f"its {_duration(budget)} deadline";
+        if self.cutoff is not None {
+            left = (self.cutoff - datetime.now(self.cutoff.tzinfo)).total_seconds();
+            if left < budget {
+                budget = max(0.0, left);
+                self.deadline_word = f"its {_clock(self.cutoff)} cutoff";
+            }
+        }
+        self.deadline_at = self.started + budget;
+        self.deadline_clock = _clock(datetime.now(NEW_YORK) + timedelta(seconds=budget));
     }
 
     def tickers -> list[str] {
@@ -237,7 +263,25 @@ obj RunSession {
     }
 
     def overdue -> bool {
-        return time.monotonic() - self.started > self.limits.deadline_s;
+        return time.monotonic() >= self.deadline_at;
+    }
+
+    """Why a ticker holds when the deadline cut its research or panel short."""
+    def deadline_hold -> str {
+        return f"the run passed {self.deadline_word} at {self.deadline_clock} ET before this ticker's research and panel finished";
+    }
+
+    """True when the deadline stopped a model request for `ticker`'s research or panel."""
+    def cut_by_deadline(ticker: str) -> bool {
+        errors = [r.error for (r, _) in self.history.get(ticker, [])];
+        if ticker in self.analyses {
+            errors.extend(v.error for v in self.analyses[ticker].votes);
+        }
+        return any(DEADLINE_ERROR in (e or "") for e in errors);
+    }
+
+    def past_deadline -> str {
+        return f"Refused: the run passed {self.deadline_word}; the Run Guard holds what is left.";
     }
 
     """Run the Macro sub-agent once, before anything reads the macro brief."""
@@ -271,6 +315,9 @@ obj RunSession {
     again. Returns each ticker's research status."""
     def dispatch_research(tickers: list[str], domains: list[str]) -> str {
         with self._lock {
+            if self.overdue() {
+                return self.past_deadline();
+            }
             notes: list[str] = [];
             wanted: list[Domain] = [];
             for name in domains {
@@ -325,6 +372,9 @@ obj RunSession {
     input order; an empty list does nothing."""
     def request_followup(followups: list[Followup]) -> str {
         with self._lock {
+            if self.overdue() {
+                return self.past_deadline();
+            }
             replies = ["" for _ in followups];
             jobs: list[tuple[int, str, Domain, str, Brief]] = [];
             room = self.requests_left();
@@ -406,6 +456,9 @@ obj RunSession {
     whose research is in. Each ticker is convened once. Returns each ticker's decision."""
     def convene_panel(tickers: list[str]) -> str {
         with self._lock {
+            if self.overdue() {
+                return self.past_deadline();
+            }
             notes: list[str] = [];
             ready: dict[str, dict[Domain, ResearchResult]] = {};
             for ticker in _unique(tickers) {
@@ -484,15 +537,17 @@ obj RunSession {
 
     """Finish every phase the run still owes, in fixed order and with no follow-ups: research
     for every ticker that lacks it, the panel for every ticker without a decision, and the
-    submission (TDD §4, fallback). Never raises; a ticker it cannot decide holds."""
+    submission (TDD §4, fallback). Past the deadline it sends no model request: every ticker
+    without a decision holds, and so does one whose panel the deadline cut short, each with the
+    deadline as its reason (#240). Never raises; a ticker it cannot decide holds."""
     def complete_in_order {
         try {
             unresearched = [t for t in self.tickers() if any(d not in self.latest.get(t, {}) for d in TICKER_DOMAINS)];
-            if unresearched {
+            if unresearched and not self.overdue() {
                 self.dispatch_research(unresearched, [d.value for d in TICKER_DOMAINS]);
             }
             undecided = [t for t in self.tickers() if t not in self.analyses];
-            if undecided {
+            if undecided and not self.overdue() {
                 self.convene_panel(undecided);
             }
         } except Exception as e {
@@ -500,8 +555,18 @@ obj RunSession {
         }
         for t in self.tickers() {
             if t not in self.analyses {
-                self.analyses[t] = self.held_back(t, "the run could not finish its research or panel");
+                late = self.overdue() or self.cut_by_deadline(t);
+                self.analyses[t] = self.held_back(t, self.deadline_hold() if late else "the run could not finish its research or panel");
+                if late {
+                    self.timed_out.append(t);
+                }
+            } elif self.analyses[t].forced_hold_reason and t not in self.timed_out and self.cut_by_deadline(t) {
+                self.analyses[t].forced_hold_reason = _clip(f"{self.deadline_hold()}: {self.analyses[t].forced_hold_reason}", MAX_REASON_CHARS);
+                self.timed_out.append(t);
             }
+        }
+        if self.timed_out {
+            self.actions.append(f"deadline: {len(self.timed_out)} tickers held at {self.deadline_clock} ET");
         }
         if not self.submitted {
             self.submit_decisions("submitted by the Run Guard");
@@ -593,7 +658,8 @@ def daily_run(
     run_day: str,
     driver: Callable[[RunSession], str] | None = None,
     limits: RunLimits = RunLimits(),
-    in_force: tuple[Policy, int] = (Policy(), 0)
+    in_force: tuple[Policy, int] = (Policy(), 0),
+    cutoff: datetime | None = None
 ) -> RunOutcome {
     if portfolio.demo or demo_mode() {
         return RunOutcome(run_day=run_day, status=RunStatus.SKIPPED, note="the portfolio holds the demo history" if portfolio.demo else f"the server runs with {DEMO_ENV}=1, so no agent runs");
@@ -621,22 +687,31 @@ def daily_run(
         return RunOutcome(run_day=run_day, status=RunStatus.FAILED, run=run, preflight=checked, note=reason);
     }
     config = consensus_config(policy, min(limits.reduced_samples, limits.samples), 0) if checked.reduced else consensus_config(policy, limits.samples);
-    session = RunSession(run_day=run_day, collection=collection, holdings=holdings, config=config, limits=limits, run_requests=checked.run_requests, policy=policy, policy_version=version);
-    session.write_macro();
+    session = RunSession(run_day=run_day, collection=collection, holdings=holdings, config=config, limits=limits, run_requests=checked.run_requests, policy=policy, policy_version=version, cutoff=cutoff);
     (status, said) = (RunStatus.FALLBACK, "");
-    if driver is not None {
-        try {
-            said = driver(session);
-            if session.submitted and not session.overdue() {
-                status = RunStatus.NORMAL;
+    # Every model request the run makes, on this thread or the pool's, stops at the deadline.
+    deadline = RUN_DEADLINE.set(session.deadline_at);
+    try {
+        session.write_macro();
+        if driver is not None {
+            try {
+                said = driver(session);
+                if session.submitted and not session.overdue() {
+                    status = RunStatus.NORMAL;
+                }
+            } except Exception as e {
+                session.actions.append(f"orchestrator error: {model_error(e)}");
             }
-        } except Exception as e {
-            session.actions.append(f"orchestrator error: {model_error(e)}");
         }
+        session.complete_in_order();
+    } finally {
+        RUN_DEADLINE.reset(deadline);
     }
-    session.complete_in_order();
     down = models_unavailable(session);
-    if down {
+    if session.timed_out {
+        status = RunStatus.FALLBACK;
+        session.summary = out_of_time(session);
+    } elif down {
         # Holds with no vote behind them are not a panel's verdict, whatever the Orchestrator
         # wrote, so the run says why no one voted rather than "normal": the models were down,
         # or the request budget ran out first.
@@ -650,6 +725,33 @@ def daily_run(
     }
     record_run(portfolio, run, session, status);
     return RunOutcome(run_day=run_day, status=status, run=run, preflight=checked, session=session);
+}
+
+"""The summary of a run the deadline cut short: when it stopped, how many tickers it left
+holding, and what the models were answering if they were refusing (#240)."""
+def out_of_time(s: RunSession) -> str {
+    held = len(s.timed_out);
+    total = len(s.tickers());
+    text = f"Ran out of time: the run passed {s.deadline_word} at {s.deadline_clock} ET with {held} of {total} tickers still without a full panel, so they hold and no new position was opened for them.";
+    refused = model_refusal(s);
+    if refused {
+        text += f" The models were refusing requests with OpenRouter's rate limit ({refused}).";
+    }
+    return _clip(text, MAX_SUMMARY_CHARS);
+}
+
+"""OpenRouter's words for the first rate-limit refusal the run's research or panel met, or ""
+when none was refused."""
+def model_refusal(s: RunSession) -> str {
+    errors = [r.error for found in s.history.values() for (r, _) in found];
+    errors.extend(v.error for a in s.analyses.values() for v in a.votes);
+    for e in errors {
+        if e and ("RateLimitError" in e or " 429" in e or "rate limit" in e.lower()) {
+            said = re.search(r'"message":\s*"([^"]+)"', e);
+            return _clip(said.group(1) if said else e, 160);
+        }
+    }
+    return "";
 }
 
 """Why no specialist answered for any ticker, or "" when at least one did: the first model
@@ -830,6 +932,17 @@ def _unique(items: list[str]) -> list[str] {
         }
     }
     return kept;
+}
+
+"""`seconds` as a length people read: "90-minute" or "2-second"."""
+def _duration(seconds: float) -> str {
+    return f"{round(seconds / 60)}-minute" if seconds >= 60 else f"{seconds:g}-second";
+}
+
+"""A time of day in New York, as "9:13 AM"."""
+def _clock(at: datetime) -> str {
+    local = at.astimezone(NEW_YORK);
+    return f"{local.hour % 12 or 12}:{local.minute:02d} {'AM' if local.hour < 12 else 'PM'}";
 }
 
 def _clip(text: str, limit: int) -> str {

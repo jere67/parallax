@@ -22,11 +22,13 @@ import from research.briefs { Brief, FundamentalsInputs, MacroInputs, MarketInpu
 import from research.indicators { Technicals }
 import from research.screener { Pick, PickReason, Shortlist }
 import from run.research { Collection, PassConfig, TickerInputs }
+import from run.workers { ContextPool }
 
 glob RUN_DAY: str = "2026-10-16";
 glob SOURCE: str = "https://example.com/source";
 glob SESSIONS: list[str] = ["2026-10-15", "2026-10-16", "2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30"];
-glob ONE_WORKER: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1);
+# Copies the caller's context into the worker, as the run's own pool does (run/workers.jac).
+glob ONE_WORKER: ThreadPoolExecutor = ContextPool(max_workers=1);
 
 glob REPORT_JSON: str = json.dumps({"summary": "Fine.", "view": "BUY", "confidence": 0.6, "evidence": [{"claim": "A fact.", "source_url": SOURCE, "published": "x"}], "risks": ["Rates."], "data_gaps": []});
 glob MACRO_JSON: str = json.dumps({"summary": "Calm.", "regime": "NEUTRAL", "confidence": 0.5, "evidence": [{"claim": "SPY rose.", "source_url": SOURCE, "published": "x"}], "risks": [], "data_gaps": []});
@@ -92,6 +94,9 @@ obj Stubs {
         sessions_until: dict[str, int] = {},
         models_down: bool = False,
         shortlist_sizes: list[int] = [];
+    # One model for every role, in place of the scripted mocks, such as a LimitedModel against a
+    # fake OpenRouter.
+    has llm: object | None = None;
     has research_llm: MockLLM | None = None,
         specialist_llm: MockLLM | None = None,
         arbiter_llm: MockLLM | None = None,
@@ -107,7 +112,7 @@ obj Stubs {
             self.specialist_llm = MockLLM(model_name="mock-specialist", config={"outputs": [MockRawResponse(content=self.vote)] * 200});
             self.arbiter_llm = MockLLM(model_name="mock-arbiter", config={"outputs": [MockRawResponse(content=REVIEW_JSON)] * 10});
         }
-        macro_llm = DownLLM(model_name="down-macro", config={"outputs": []}) if self.models_down else MockLLM(model_name="mock-macro", config={"outputs": [MockRawResponse(content=MACRO_JSON)]});
+        macro_llm: object = self.llm if self.llm is not None else (DownLLM(model_name="down-macro", config={"outputs": []}) if self.models_down else MockLLM(model_name="mock-macro", config={"outputs": [MockRawResponse(content=MACRO_JSON)]}));
         stubs = self;
         def collect(run_day: str, open_positions: list[str], config: PassConfig) -> Collection {
             stubs.shortlist_sizes.append(config.screen.shortlist_size);
@@ -135,9 +140,9 @@ obj Stubs {
         self._swap(guard_module, "macro_brief", stub_macro_brief);
         self._swap(guard_module, "macro_research", macro_research);
         self._swap(guard_module, "NETWORK", ONE_WORKER);
-        self._swap(research_module, "research_llm", self.research_llm);
-        self._swap(specialists_module, "specialist_llm", self.specialist_llm);
-        self._swap(arbiter_module, "arbiter_llm", self.arbiter_llm);
+        self._swap(research_module, "research_llm", self.llm or self.research_llm);
+        self._swap(specialists_module, "specialist_llm", self.llm or self.specialist_llm);
+        self._swap(arbiter_module, "arbiter_llm", self.llm or self.arbiter_llm);
     }
 
     def _swap(module: object, name: str, value: object) {
