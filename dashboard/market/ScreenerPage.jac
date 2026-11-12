@@ -233,24 +233,26 @@ def SymbolCell(row: dict[str, float | str | None], starred: bool, star: Callable
             >
                 <Star size={14} strokeWidth={1.75} fill={"currentColor" if starred else "none"} aria-hidden="true"/>
             </button>
-            <Link to={"/app/stocks/" + symbol} className="group/link flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:gap-2">
-                <span className="font-semibold text-text group-hover/link:text-accent">{symbol}</span>
-                <span className="truncate text-[11px] leading-4 text-muted sm:text-[12px]">{str(row.get("name") or "")}</span>
-                {if row.get("kind") == "adr" {
-                    <span className="hidden shrink-0 text-[10px] font-medium text-faint sm:inline" title="American depositary receipt">ADR</span>
-                }}
-            </Link>
-            {if action and day {
-                <Link
-                    to={"/app/runs/" + day + "/" + symbol}
-                    data-testid="screener-decision"
-                    className="ml-auto shrink-0 rounded-full hover:opacity-80"
-                    title={"Your agent's decision on " + symbol + ", " + day_short(day) + ": " + action_label(action) + ". Open the decision trail."}
-                    aria-label={"Decision trail for " + symbol + " on " + day_short(day)}
-                >
-                    <ActionBadge action={action}/>
+            <div className="flex min-w-0 flex-1 flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
+                <Link to={"/app/stocks/" + symbol} className="group/link flex min-w-0 max-w-full flex-col sm:flex-row sm:items-baseline sm:gap-2">
+                    <span className="font-semibold text-text group-hover/link:text-accent">{symbol}</span>
+                    <span className="truncate text-[11px] leading-4 text-muted sm:text-[12px]">{str(row.get("name") or "")}</span>
+                    {if row.get("kind") == "adr" {
+                        <span className="hidden shrink-0 text-[10px] font-medium text-faint sm:inline" title="American depositary receipt">ADR</span>
+                    }}
                 </Link>
-            }}
+                {if action and day {
+                    <Link
+                        to={"/app/runs/" + day + "/" + symbol}
+                        data-testid="screener-decision"
+                        className="shrink-0 rounded-full hover:opacity-80 sm:ml-auto"
+                        title={"Your agent's decision on " + symbol + ", " + day_short(day) + ": " + action_label(action) + ". Open the decision trail."}
+                        aria-label={"Decision trail for " + symbol + " on " + day_short(day)}
+                    >
+                        <ActionBadge action={action}/>
+                    </Link>
+                }}
+            </div>
         </div>
     </td>
 }
