@@ -19,7 +19,7 @@ description: How Parallax screens the S&P 500, researches a shortlist, decides t
 <div class="hero-code vp-doc">
 
 ```bash
-# Jac 0.37.12, then from the repo root
+# Jac 0.39.2, then from the repo root
 set -a && source .env && set +a
 jac install
 TRADING_AGENT_DEMO=1 TRADING_AGENT_DISABLE_ORDERS=1 \

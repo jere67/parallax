@@ -21,10 +21,10 @@ Work is tracked in [issues](https://github.com/jere67/eecs449-project/issues), g
 
 ## Quickstart
 
-Install Jac 0.37.12, the version this project pins:
+Install Jac 0.39.2, the version this project pins:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version 0.37.12
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version 0.39.2
 jac --version
 ```
 
@@ -142,7 +142,7 @@ Moving a source deployment to another folder, or switching it to the bundle, lea
 A rebuilt bundle, or new code pulled into the same folder, keeps reading it.
 
 `jac check .` prints "may be undefined" warnings for JSX tags and "never used" warnings for component state setters.
-These are false positives from checking client modules in isolation in Jac 0.37.12; the same warnings appear in a fresh `jac create` scaffold.
+These are false positives from checking client modules in isolation in Jac; the same warnings appear in a fresh `jac create` scaffold.
 
 The dashboard's end-to-end check loads every page in a real browser on each device in the matrix (TDD §10): desktop Chrome, a 360-pixel phone, Android Chrome, and iOS Safari.
 It needs a server with the demo data running (above), started against the fake providers in `e2e/fake-providers.js` (OpenRouter, Alpaca, and Finnhub) with `OPENROUTER_API_BASE`, `ALPACA_BASE_URL`, and `FINNHUB_BASE_URL` all set to `http://127.0.0.1:8399`, `PARALLAX_KEYS_SECRET` set, and `PARALLAX_MAX_AGENTS=1000`, since each run connects new agents to the same database and the default limit is 10.
