@@ -11,11 +11,11 @@ export async function makeAccount(page, name) {
   const username = `${name}-${process.pid}-${accounts.n}-${Date.now()}@example.test`;
   const credential = { type: "password", password: PASSWORD };
   const made = await page.request.post("/user/register", {
-    data: { identities: [{ type: "username", value: username }], credential },
+    data: { identities: [{ type: "email", value: username }], credential },
   });
   expect(made.ok(), await made.text()).toBeTruthy();
   const reply = await page.request.post("/user/login", {
-    data: { identity: { type: "username", value: username }, credential },
+    data: { identity: { type: "email", value: username }, credential },
   });
   expect(reply.ok(), await reply.text()).toBeTruthy();
   return { username, password: PASSWORD, token: (await reply.json()).data.token };
