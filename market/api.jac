@@ -251,7 +251,7 @@ def decisions_on(symbols: set[str]) -> tuple[str, dict[str, str]] {
     return ("", {});
 }
 
-def profile_view(listing_cik: str,record: CompanyRecord | None, website: str, ipo: str) -> ProfileView {
+def profile_view(listing_cik: str, record: CompanyRecord | None, website: str, ipo: str) -> ProfileView {
     profile = record.profile if record else None;
     place = ", ".join(p for p in [profile.city, profile.region] if p) if profile else "";
     return ProfileView(
