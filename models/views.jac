@@ -256,8 +256,10 @@ obj CalibrationBinView {
         hit_rate: float;
 }
 
-"""One role's record over the most recent runs (`runs` of them). Only scored directional votes
-count as hits."""
+"""One role's record. `votes`, `scored`, `hits`, and `hit_rate` count the most recent runs (`runs`
+of them); `evaluated`, `evaluated_hit_rate` with its interval, and `calibration` come from the
+stored evaluation named by `snapshot`, the same figures the Results page shows. Only scored
+directional votes count as hits."""
 obj SpecialistSummaryView {
     has specialist: str;
     has runs: int = 0,
@@ -265,6 +267,11 @@ obj SpecialistSummaryView {
         scored: int = 0,
         hits: int = 0,
         hit_rate: float | None = None,
+        evaluated: int = 0,
+        evaluated_hit_rate: float | None = None,
+        evaluated_lo: float | None = None,
+        evaluated_hi: float | None = None,
+        snapshot: str = "",
         calibration: list[CalibrationBinView] = [],
         recent: list[SpecialistVoteView] = [];
 }

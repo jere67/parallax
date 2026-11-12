@@ -16,7 +16,11 @@ The code lives in [`analysis/evaluation.jac`](https://github.com/jere67/parallax
 
 The trading tick's evening steps run 30 minutes after the close on a day with a run ([The trading day](/system/trading-day#the-trading-tick)).
 After scoring votes, decisions, and screens and marking the baselines, it computes the evaluation and stores it as the portfolio's single `EvaluationRecord`, replacing the one before.
-The Results page (`/app/results`) and the final report read that record, so neither recomputes anything.
+The Results page (`/app/results`), the Specialists page, and the final report read that record, so none of them recomputes anything.
+
+Each stored evaluation has a snapshot ID: the first 8 hex digits of a SHA-256 hash of its figures.
+The Results page shows it beside the time the evaluation was stored, and the final report prints the same ID, so a reader can check that both describe the same stored evaluation.
+The same figures always give the same ID, and new figures give a new one.
 
 ## What it measures
 
@@ -44,8 +48,19 @@ Every figure with an interval shows a 95% range, and a verdict only when the ran
 - **The Arbiter's trades** resample one trade at a time.
 - **Hit rates** use the Wilson interval, which stays inside 0 and 1 even for a handful of votes.
 
-With fewer than 5 observations there is no interval, and the page says so.
 Every resample uses the same seed, so the same data always gives the same ranges.
+
+## Too few observations
+
+A figure resting on a handful of observations would look like a result and mean nothing, so the pages and the report share one rule, set in [`models/evaluation.jac`](https://github.com/jere67/parallax/blob/main/models/evaluation.jac):
+
+| Figure | Shown from | Below that |
+|---|---|---|
+| A comparison with a baseline, the screen's spread, the Arbiter's downgrades | 5 matched sessions or scored runs | "Not enough data: 3 of 5 matched sessions", and no verdict |
+| A specialist's hit rate and calibration gap | 20 scored BUY or SELL votes | "Not enough data: 12 of 20 scored votes", and no calibrated or not |
+| The LLM replay's hit rate | 20 directional votes | The same, in the report |
+
+The count is always shown, so a reader can see how far each figure is from showing.
 
 A verdict of **Not clear yet** is the expected result for weeks.
 A month of daily returns rarely separates two portfolios that both hold large US stocks; the range narrows roughly with the square root of the number of sessions.
@@ -54,6 +69,15 @@ A month of daily returns rarely separates two portfolios that both hold large US
 
 [`analysis/final_report.jac`](https://github.com/jere67/parallax/blob/main/analysis/final_report.jac) builds `docs/evaluation/report.md` from three inputs: the stored evaluation and equity curves, read from a running server as the admin, the screen backtest (`docs/evaluation/backtest.json`), and the LLM replay (`docs/evaluation/llm-replay.json`).
 It answers first, then shows each part with its intervals, and draws its figures as SVG files in `docs/evaluation/figures/`.
+
+Each section names where its figures come from:
+
+- **Forward test: live paper trading.** The only result: the agent's real decisions, marked each close. An evaluation of the [demo history](/guide/demo-data) is stored with `demo` set, and the report titles it **Forward test: simulated demo data** and says it is not a result.
+- **Screen backtest: historical, no model.** The screen's rules over past years, with no language model in the loop.
+- **LLM replay.** The full panel on past days. While the replay is still running, the section is titled **LLM replay (partial)**, says it is not a benchmark, and the opening answer quotes none of its figures.
+
+The report is a function of its three input files alone: it reads no clock, fetches no price, and calls no model.
+Rebuilding it from the same files gives the same report, byte for byte, and it prints the evaluation's snapshot ID and the time the evaluation was stored rather than the time it was built.
 
 ```sh
 ADMIN_PASSWORD=... PARALLAX_FINAL_REPORT=1 jac run --no-takeover analysis/final_report.jac

@@ -31,7 +31,7 @@ On a server in demo mode, every account sees the same demo history.
 | `/app/stocks/:symbol/:tab` | One section of a stock's page |
 | `/app/policy` | [Your policy](/guide/policies) |
 | `/app/reports` | On-demand reports |
-| `/app/specialists` | Specialists, each role's recent votes and hit rate |
+| `/app/specialists` | Specialists, each role's recent votes, hit rate, and calibration |
 | `/app/settings` | [Your agent](/guide/your-agent): keys, paper trading, and the password |
 
 The old addresses `/news...`, `/runs...`, `/policy`, `/reports`, `/screener`, and `/stocks...` redirect to `/app/...` once you are signed in.
@@ -91,6 +91,8 @@ The Activity panel has two tabs: recent **Orders** with their fills, and **Close
 The Results page answers: is the agent beating the baselines, and where does the result come from?
 It shows the evaluation the evening review stored after the last close, so it changes once a day.
 Until the first evening review after a run, it says that no results exist yet.
+The header labels the figures as live paper trading (or simulated demo data, on a server showing the [demo history](/guide/demo-data)), and names the evaluation's snapshot ID and when it was stored; the final report prints the same ID.
+A figure with too few observations behind it reads **Not enough data**, with how many there are of how many it needs ([Too few observations](/system/evaluation#too-few-observations)).
 
 - **Against the baselines.** For SPY and the equal-weight shortlist: your agent's total return minus the baseline's, its 95% interval, and the gap in Sharpe ratios. The verdict reads **Ahead** or **Behind** only when the interval leaves out zero, and **Not clear yet** otherwise, which is normal with a few weeks of data.
 - **Screen.** How the screen's picks did over the next ten sessions against the rest of the S&P 500, both against SPY.
@@ -102,7 +104,8 @@ On a phone, the **Results** tab also covers the Specialists page.
 
 ## Specialists
 
-The Specialists page shows each of the five specialists' most recent votes, with the stance, confidence, and the start of the rationale, and its hit rate on scored directional votes over the last runs.
+The Specialists page shows each of the five specialists' most recent votes, with the stance, confidence, and the start of the rationale.
+Each card leads with the specialist's hit rate and 95% interval from the stored evaluation, the same figure the Results page and the final report show, or **Not enough data** below 20 scored votes; under it, how many of its scored votes in the last runs were right.
 Each vote links to its decision trail, where the full rationale and evidence are.
 
 ## News

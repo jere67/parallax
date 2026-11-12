@@ -147,9 +147,19 @@ test("results: the forward test against both baselines, and where the result cam
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
   }
   await expect(page.getByText(/The shortlist beat the rest in \d+ of \d+ runs?\./)).toBeVisible();
+  // The figures say where they came from (this server shows the demo history), and which stored
+  // evaluation they are.
+  await expect(page.getByText("Simulated demo data", { exact: true })).toBeVisible();
+  await expect(page.getByText("Live paper trading", { exact: true })).toHaveCount(0);
+  const stamp = page.getByText(/^Snapshot [0-9a-f]{8}, stored /);
+  await expect(stamp).toBeVisible();
+  const snapshot = (await stamp.innerText()).match(/Snapshot ([0-9a-f]{8})/)[1];
   await fitsWidth(page);
   await page.getByRole("link", { name: "Recent votes" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Specialists" })).toBeVisible();
+  // The Specialists page reads the same stored evaluation.
+  await page.getByText("Calibration · confidence versus hit rate").first().click();
+  await expect(page.getByText(`From evaluation snapshot ${snapshot}.`, { exact: false }).first()).toBeVisible();
 });
 
 test("news: the feed filters by address, and a story opens beside it or over it", async ({ page }) => {

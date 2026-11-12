@@ -12,8 +12,12 @@ Intervals are 95%:
 - The Arbiter's trades resample one trade at a time.
 - Hit rates use the Wilson interval.
 Every resample uses the same seed, so an evaluation of the same data always gives the same
-intervals.
+intervals. A stored evaluation carries a snapshot ID made from its content, which the Results page
+and the final report both show.
 """
+import copy;
+import hashlib;
+import json;
 import math;
 import random;
 import statistics;
@@ -28,6 +32,8 @@ import from models.evaluation {
     Comparison,
     Estimate,
     Evaluation,
+    MIN_SESSIONS,
+    MIN_VOTES,
     Operations,
     Reliability,
     ScreenResult,
@@ -59,8 +65,6 @@ glob TRADING_DAYS: int = 252;
 glob BLOCK_SESSIONS: int = 5;
 glob RESAMPLES: int = 2000;
 glob SEED: int = 449;
-# The fewest observations an interval is drawn from; below it the figure stands alone.
-glob MIN_INTERVAL: int = 5;
 glob CALIBRATION_TARGET: float = 0.10;
 glob LATENCY_TARGET_MINUTES: float = 120.0;
 glob CALIBRATION_BINS: list[tuple[float, float]] = [(0.0, 0.5), (0.5, 0.6), (0.6, 0.7), (0.7, 0.8), (0.8, 1.0)];
@@ -126,10 +130,10 @@ def block_resample(n: int, block: int, rng: random.Random) -> list[int] {
 }
 
 """The 2.5th and 97.5th percentiles of `statistic` over moving-block resamples of n
-observations, or None when there are fewer than MIN_INTERVAL observations or no resample gives
+observations, or None when there are fewer than MIN_SESSIONS observations or no resample gives
 a value."""
 def interval(n: int, statistic: Callable[[list[int]], float | None], block: int = BLOCK_SESSIONS) -> tuple[float, float] | None {
-    if n < MIN_INTERVAL {
+    if n < MIN_SESSIONS {
         return None;
     }
     rng = random.Random(SEED);
@@ -271,7 +275,8 @@ def calibration(specialist: str, votes: list[VoteRecord]) -> SpecialistCalibrati
     }
     found.confidence = statistics.fmean(v.body.confidence for v in scored);
     found.gap = found.hit_rate.value - found.confidence if found.hit_rate.value is not None else None;
-    found.within_target = abs(found.gap) <= CALIBRATION_TARGET if found.gap is not None else None;
+    # Too few votes say nothing about calibration either way.
+    found.within_target = abs(found.gap) <= CALIBRATION_TARGET if found.gap is not None and len(scored) >= MIN_VOTES else None;
     for (i, (low, high)) in enumerate(CALIBRATION_BINS) {
         last = i == len(CALIBRATION_BINS) - 1;
         inside = [v for v in scored if v.body.confidence >= low and (v.body.confidence <= high if last else v.body.confidence < high)];
@@ -365,7 +370,7 @@ through `last_day` (the latest mark, or the latest run without marks)."""
 def evaluate(portfolio: Portfolio, sessions: list[str], now: datetime) -> Evaluation {
     runs = sorted([portfolio ->:Ran:->[?:Run]], key=lambda (r: Run) { r.run_date; });
     start = start_of(portfolio, runs);
-    found = Evaluation(as_of=now.isoformat(), start_day=start, series=[], comparisons=[], specialists=[], notes=[]);
+    found = Evaluation(as_of=now.isoformat(), start_day=start, series=[], comparisons=[], specialists=[], notes=[], demo=portfolio.demo);
     if not start {
         found.screen = ScreenResult(spread=Estimate());
         found.arbiter = ArbiterResult(blocked_excess=Estimate(), confirmed_excess=Estimate(), verdict="no data");
@@ -404,8 +409,31 @@ def evaluate(portfolio: Portfolio, sessions: list[str], now: datetime) -> Evalua
     return found;
 }
 
-"""Store `body` as `portfolio`'s latest evaluation, replacing the one before."""
+"""`v` as plain JSON values: an object as its fields, by name."""
+def plain(v: object) -> object {
+    if isinstance(v, (list, tuple)) {
+        return [plain(x) for x in v];
+    }
+    if isinstance(v, dict) {
+        return {str(k): plain(x) for (k, x) in v.items()};
+    }
+    if hasattr(v, "__dict__") {
+        return {k: plain(x) for (k, x) in vars(v).items() if not k.startswith("_")};
+    }
+    return v;
+}
+
+"""A short ID for `body`'s content: the first 8 hex digits of the SHA-256 of its fields as sorted
+JSON, leaving out the ID itself. The same figures always give the same ID."""
+def snapshot_of(body: Evaluation) -> str {
+    content = {k: plain(v) for (k, v) in vars(body).items() if not k.startswith("_") and k != "snapshot"};
+    return hashlib.sha256(json.dumps(content, sort_keys=True, `default=str).encode("utf-8")).hexdigest()[:8];
+}
+
+"""Store `body` as `portfolio`'s latest evaluation, replacing the one before, named by its
+snapshot ID."""
 def record_evaluation(portfolio: Portfolio, body: Evaluation) -> EvaluationRecord {
+    body.snapshot = snapshot_of(body);
     for found in [portfolio ->:Evaluated:->[?:EvaluationRecord]] {
         found.as_of = body.as_of;
         found.body = body;
@@ -414,10 +442,16 @@ def record_evaluation(portfolio: Portfolio, body: Evaluation) -> EvaluationRecor
     return public(portfolio +>:Evaluated():+> EvaluationRecord(as_of=body.as_of, body=body));
 }
 
-"""`portfolio`'s latest stored evaluation, or None before the first evening review."""
+"""`portfolio`'s latest stored evaluation, or None before the first evening review. One stored
+before snapshot IDs gets its ID here, on a copy, so a read never writes."""
 def latest_evaluation(portfolio: Portfolio) -> Evaluation | None {
     for found in [portfolio ->:Evaluated:->[?:EvaluationRecord]] {
-        return found.body;
+        if found.body.snapshot {
+            return found.body;
+        }
+        named = copy.copy(found.body);
+        named.snapshot = snapshot_of(found.body);
+        return named;
     }
     return None;
 }

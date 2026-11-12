@@ -11,6 +11,13 @@ it is safe beside the live server:
 admin) the account. The fetched evaluation and equity curves are saved to
 docs/evaluation/forward-test.json, and `REPORT_OFFLINE=1` rebuilds the report from the saved
 files without a server. A missing input leaves its section saying so rather than failing.
+
+The report is a pure function of those three files: it reads no clock, fetches no price, and calls
+no model, so rebuilding it from the same files gives the same report, byte for byte. It prints the
+evaluation's snapshot ID, the one the Results page shows for the same stored evaluation. Each
+section names where its figures came from (live paper trading, a historical backtest, or an LLM
+replay), a replay still under way is never quoted as a result, and a figure with too few
+observations behind it says so, by the rule in models/evaluation.jac.
 """
 import json;
 import os;
@@ -19,6 +26,7 @@ import math;
 import httpx;
 import from datetime { datetime, timezone }
 import from pathlib { Path }
+import from models.evaluation { MIN_SESSIONS, MIN_VOTES }
 
 glob RUN_ENV: str = "PARALLAX_FINAL_REPORT";
 glob OUT_DIR: str = "docs/evaluation";
@@ -138,6 +146,11 @@ def table(head: list[str], rows: list[list[str]]) -> str {
 
 def plural(n: int, word: str) -> str {
     return f"{n} {word}" if n == 1 else f"{n} {word}s";
+}
+
+"""What the report writes in place of a figure with too few observations behind it."""
+def thin(have: int, need: int, unit: str) -> str {
+    return f"not enough data ({have} of {need} {unit})";
 }
 
 # --- Figures ------------------------------------------------------------------------------
@@ -370,8 +383,17 @@ def forward_lines(performance: dict[str, object]) -> list[Line] {
 def headline(evaluation: dict[str, object] | None, backtest: dict[str, object] | None, replay: dict[str, object] | None) -> list[str] {
     found: list[str] = [];
     if evaluation is not None {
+        if flag(evaluation, "demo") {
+            found.append("- **Demo data.** The forward test here is the simulated demo history, not paper trading, so its figures are not results.");
+        }
         for c in records(evaluation, "comparisons") {
-            found.append(f"- **Against {AGAINST.get(text(c, 'baseline'), text(c, 'label'))}**, Parallax is {verdict_words(text(c, 'verdict'))}: {estimate(record(c, 'excess_return'))} over {plural(whole(c, 'sessions'), 'session')}.");
+            against = AGAINST.get(text(c, 'baseline'), text(c, 'label'));
+            sessions = whole(c, "sessions");
+            if sessions < MIN_SESSIONS {
+                found.append(f"- **Against {against}**, there is {thin(sessions, MIN_SESSIONS, 'matched sessions')} for a verdict.");
+            } else {
+                found.append(f"- **Against {against}**, Parallax is {verdict_words(text(c, 'verdict'))}: {estimate(record(c, 'excess_return'))} over {plural(sessions, 'matched session')}.");
+            }
         }
         if not records(evaluation, "comparisons") {
             found.append("- The forward test has no baseline to compare against yet.");
@@ -387,14 +409,24 @@ def headline(evaluation: dict[str, object] | None, backtest: dict[str, object] |
     }
     if replay is not None {
         s = record(replay, "summary");
-        found.append(f"- **The LLM replay** called {pct(number(s, 'hit_rate'), False, 0)} of {whole(s, 'directional_votes')} directional votes right (95% interval {span(pair(s, 'hit_rate_ci'), False, 0)}) on {days_phrase(replay)}.");
+        directional = whole(s, "directional_votes");
+        if not replay_complete(replay) {
+            found.append(f"- **The LLM replay** is still under way ({days_phrase(replay)}), so it is not a benchmark; its figures so far are under [LLM replay](#llm-replay-partial).");
+        } elif directional < MIN_VOTES {
+            found.append(f"- **The LLM replay** finished on {days_phrase(replay)}, with {thin(directional, MIN_VOTES, 'directional votes')} for a hit rate.");
+        } else {
+            found.append(f"- **The LLM replay** called {pct(number(s, 'hit_rate'), False, 0)} of {directional} directional votes right (95% interval {span(pair(s, 'hit_rate_ci'), False, 0)}) on {days_phrase(replay)}.");
+        }
     }
     return found;
 }
 
 def forward_section(forward: dict[str, object] | None, figures: dict[str, str]) -> list[str] {
-    out = ["## Forward test", ""];
     evaluation = record(forward, "evaluation") if forward is not None else {};
+    out = ["## Forward test: simulated demo data" if flag(evaluation, "demo") else "## Forward test: live paper trading", ""];
+    if flag(evaluation, "demo") {
+        out.extend(["**Demo data.** This evaluation is of the simulated demo history, with made-up prices and votes. Nothing in it was traded, so it is not a result.", ""]);
+    }
     if not evaluation {
         out.extend(["No evaluation is stored yet: the server writes one after the first evening review that follows a run.", ""]);
         return out;
@@ -415,8 +447,16 @@ def forward_section(forward: dict[str, object] | None, figures: dict[str, str]) 
     if comparisons {
         out.append("The comparison pairs the sessions both portfolios marked and resamples their daily returns in blocks of five sessions, so a verdict appears only when the 95% interval leaves out zero.");
         out.append("");
-        crow = [[series_label(text(c, "baseline"), text(c, "label")), str(whole(c, "sessions")), estimate(record(c, "excess_return")), estimate(record(c, "sharpe_difference"), True, True), verdict_words(text(c, "verdict"))] for c in comparisons];
-        out.extend([table(["Baseline", "Sessions", "Excess return", "Sharpe difference", "Verdict"], crow), ""]);
+        crow: list[list[str]] = [];
+        for c in comparisons {
+            sessions = whole(c, "sessions");
+            if sessions < MIN_SESSIONS {
+                crow.append([series_label(text(c, "baseline"), text(c, "label")), str(sessions), thin(sessions, MIN_SESSIONS, "sessions"), "n/a", "not enough data"]);
+            } else {
+                crow.append([series_label(text(c, "baseline"), text(c, "label")), str(sessions), estimate(record(c, "excess_return")), estimate(record(c, "sharpe_difference"), True, True), verdict_words(text(c, "verdict"))]);
+            }
+        }
+        out.extend([table(["Baseline", "Matched sessions", "Excess return", "Sharpe difference", "Verdict"], crow), ""]);
     }
     out.extend(attribution(evaluation, figures));
     out.extend(operations_section(evaluation));
@@ -427,7 +467,9 @@ def attribution(evaluation: dict[str, object], figures: dict[str, str]) -> list[
     out = ["### Where the result came from", ""];
     screen = record(evaluation, "screen");
     runs = whole(screen, "runs");
-    if runs {
+    if 0 < runs < MIN_SESSIONS {
+        out.append(f"**Screen.** There is {thin(runs, MIN_SESSIONS, 'scored runs')}; a run's screen is scored ten sessions after it.");
+    } elif runs {
         out.append(f"**Screen.** Over {plural(runs, 'scored run')}, the shortlisted names returned {pct(number(screen, 'picks_excess'), True, 2)} against SPY over the next ten sessions, and the rest of the S&P 500 {pct(number(screen, 'rest_excess'), True, 2)}.");
         out.append(f"The spread is {estimate(record(screen, 'spread'))}, and the picks led in {whole(screen, 'positive_runs')} of {runs} runs.");
     } else {
@@ -436,7 +478,9 @@ def attribution(evaluation: dict[str, object], figures: dict[str, str]) -> list[
     out.append("");
     arbiter = record(evaluation, "arbiter");
     blocked = whole(arbiter, "blocked");
-    if blocked {
+    if 0 < blocked < MIN_SESSIONS {
+        out.append(f"**Arbiter.** There is {thin(blocked, MIN_SESSIONS, 'scored blocked buys')} to say whether blocking them helped.");
+    } elif blocked {
         out.append(f"**Arbiter.** The {plural(blocked, 'buy')} it downgraded would have returned {estimate(record(arbiter, 'blocked_excess'))} against SPY over ten sessions, {arbiter_words(text(arbiter, 'verdict'))}.");
         out.append(f"The {plural(whole(arbiter, 'confirmed'), 'buy')} it confirmed returned {estimate(record(arbiter, 'confirmed_excess'))}.");
     } else {
@@ -445,7 +489,7 @@ def attribution(evaluation: dict[str, object], figures: dict[str, str]) -> list[
     out.append("");
     specialists = records(evaluation, "specialists");
     if specialists {
-        out.append("**Specialist calibration.** A specialist is calibrated when its hit rate on BUY and SELL votes is within 10 points of its mean stated confidence.");
+        out.append(f"**Specialist calibration.** A specialist is calibrated when its hit rate on BUY and SELL votes is within 10 points of its mean stated confidence; a hit rate shows from {MIN_VOTES} scored votes.");
         out.append("");
         srows: list[list[str]] = [];
         chart: list[CalibrationRow] = [];
@@ -453,7 +497,12 @@ def attribution(evaluation: dict[str, object], figures: dict[str, str]) -> list[
             hit = record(s, "hit_rate");
             within = flag(s, "within_target");
             label = SPECIALIST_LABELS.get(text(s, "specialist"), text(s, "specialist").title());
-            srows.append([label, str(whole(s, "votes")), pct(number(s, "confidence"), False, 0), estimate(hit, False), pct(number(s, "gap"), True, 0), "yes" if within else ("no" if within is not None else "n/a")]);
+            votes = whole(s, "votes");
+            if votes < MIN_VOTES {
+                srows.append([label, str(votes), pct(number(s, "confidence"), False, 0), thin(votes, MIN_VOTES, "scored votes") if votes else "n/a", "n/a", "n/a"]);
+                continue;
+            }
+            srows.append([label, str(votes), pct(number(s, "confidence"), False, 0), estimate(hit, False), pct(number(s, "gap"), True, 0), "yes" if within else ("no" if within is not None else "n/a")]);
             (conf, rate) = (number(s, "confidence"), number(hit, "value"));
             if conf is not None and rate is not None {
                 chart.append(CalibrationRow(label=label, confidence=conf, hit_rate=rate, lo=number(hit, "lo"), hi=number(hit, "hi"), votes=whole(s, "votes")));
@@ -464,6 +513,8 @@ def attribution(evaluation: dict[str, object], figures: dict[str, str]) -> list[
         if svg {
             figures["calibration.svg"] = svg;
             out.extend(["![Each specialist's mean stated confidence against its hit rate](figures/calibration.svg)", ""]);
+        } else {
+            out.extend([f"No specialist has {MIN_VOTES} scored votes yet, so there is no calibration chart.", ""]);
         }
     } else {
         out.extend(["**Specialist calibration.** No directional vote has been scored yet.", ""]);
@@ -503,7 +554,7 @@ def portfolio_row(name: str, period: str, p: dict[str, object]) -> list[str] {
 }
 
 def backtest_section(backtest: dict[str, object] | None, figures: dict[str, str]) -> list[str] {
-    out = ["## Screen backtest", ""];
+    out = ["## Screen backtest: historical, no model", ""];
     if backtest is None {
         out.extend([f"Not available: `{OUT_DIR}/{BACKTEST_FILE}` is missing.", ""]);
         return out;
@@ -559,16 +610,25 @@ def replay_days(replay: dict[str, object]) -> tuple[list[str], int] {
     return (done, len(texts(replay, "days")));
 }
 
+"""True when the replay finished every day it planned."""
+def replay_complete(replay: dict[str, object]) -> bool {
+    (done, planned) = replay_days(replay);
+    return len(done) >= planned;
+}
+
 def days_phrase(replay: dict[str, object]) -> str {
     (done, planned) = replay_days(replay);
     return plural(len(done), "past day") if len(done) >= planned else f"{len(done)} of {plural(planned, 'planned past day')}, so far";
 }
 
 def replay_section(replay: dict[str, object] | None) -> list[str] {
-    out = ["## LLM replay", ""];
     if replay is None {
-        out.extend([f"Not available: `{OUT_DIR}/{REPLAY_FILE}` is missing.", ""]);
-        return out;
+        return ["## LLM replay", "", f"Not available: `{OUT_DIR}/{REPLAY_FILE}` is missing.", ""];
+    }
+    complete = replay_complete(replay);
+    out = ["## LLM replay" + ("" if complete else " (partial)"), ""];
+    if not complete {
+        out.extend([f"**Partial.** The replay is still under way: it has run on {days_phrase(replay)}. Its figures describe only those days and are not a benchmark.", ""]);
     }
     s = record(replay, "summary");
     (days, _) = replay_days(replay);
@@ -579,7 +639,7 @@ def replay_section(replay: dict[str, object] | None) -> list[str] {
     rows = [
         ["Ticker-days that finished with a valid decision", f"{whole(s, 'complete')} of {whole(s, 'pairs')}"],
         ["Votes that parsed", f"{whole(s, 'valid_votes')} of {whole(s, 'votes')}"],
-        ["Directional votes right over ten sessions", f"{pct(number(s, 'hit_rate'), False, 0)} of {whole(s, 'directional_votes')} (95% interval {span(pair(s, 'hit_rate_ci'), False, 0)})"],
+        ["Directional votes right over ten sessions", f"{pct(number(s, 'hit_rate'), False, 0)} of {whole(s, 'directional_votes')} (95% interval {span(pair(s, 'hit_rate_ci'), False, 0)})" if whole(s, "directional_votes") >= MIN_VOTES else thin(whole(s, "directional_votes"), MIN_VOTES, "directional votes")],
         ["Buys and their mean excess return over SPY", f"{whole(s, 'buys')}, {pct(number(s, 'buy_mean_excess'), True, 2)}"],
         ["Evidence dated after the decision time", str(whole(s, "late_evidence_count"))],
         ["Model requests and wall time", f"{whole(replay, 'requests_used')}, {number(replay, 'wall_minutes') or 0.0:.0f} minutes"]
@@ -609,13 +669,19 @@ def limits_section(forward: dict[str, object] | None, backtest: dict[str, object
     return out;
 }
 
-"""The report's Markdown and its SVG figures by file name. Every input may be None."""
-def render(forward: dict[str, object] | None, backtest: dict[str, object] | None, replay: dict[str, object] | None, built_at: str) -> tuple[str, dict[str, str]] {
+"""The report's Markdown and its SVG figures by file name, from the inputs alone: the same inputs
+always give the same report. Every input may be None."""
+def render(forward: dict[str, object] | None, backtest: dict[str, object] | None, replay: dict[str, object] | None) -> tuple[str, dict[str, str]] {
     figures: dict[str, str] = {};
     evaluation = record(forward, "evaluation") if forward is not None else {};
     out = ["# Parallax final evaluation", ""];
-    as_of = text(evaluation, "last_day");
-    out.append(f"Built on {built_at[:10]}" + (f" from the forward test through {as_of}" if as_of else "") + ", the screen backtest, and the LLM replay.");
+    last_day = text(evaluation, "last_day");
+    snapshot = text(evaluation, "snapshot");
+    if last_day {
+        out.append(f"Built from the forward test's stored evaluation through the {last_day} close" + (f" (snapshot `{snapshot}`, stored {text(evaluation, 'as_of')}, the ID the Results page shows)" if snapshot else f" (stored {text(evaluation, 'as_of')})") + ", the screen backtest, and the LLM replay.");
+    } else {
+        out.append("Built from the screen backtest and the LLM replay; the forward test has no stored evaluation yet.");
+    }
     out.append(f"Rebuild it with `{REBUILD}`; the module's docstring lists the settings.");
     out.append("");
     out.extend(["## Answer first", ""] + headline(evaluation or None, backtest, replay) + [""]);
@@ -672,7 +738,7 @@ with entry {
             forward = fetch(os.environ.get("REPORT_URL", "http://localhost:8100"), os.environ.get("REPORT_USERNAME", "admin"), password);
             (out_dir / FORWARD_FILE).write_text(json.dumps(forward, indent=1) + "\n");
         }
-        (markdown, figures) = render(load(out_dir / FORWARD_FILE), load(out_dir / BACKTEST_FILE), load(out_dir / REPLAY_FILE), datetime.now(timezone.utc).isoformat());
+        (markdown, figures) = render(load(out_dir / FORWARD_FILE), load(out_dir / BACKTEST_FILE), load(out_dir / REPLAY_FILE));
         write_report(out_dir, markdown, figures);
         sys.stdout.write(f"wrote {out_dir / REPORT_FILE} with {len(figures)} figures\n");
     }

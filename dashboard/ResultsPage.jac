@@ -1,11 +1,14 @@
 """The Results page (TDD §13, metrics): how the agent did in the forward test against both
 baselines, and where the result came from (the screen, the specialists, the Arbiter), with how
 reliably it ran. It reads the evaluation the evening review stored (analysis/evaluation.jac), so
-every figure is as of the last close, and every interval is 95%."""
+every figure is as of the last close, every interval is 95%, and the snapshot ID it shows is the one
+the final report prints when it was built from the same evaluation. A figure with too few
+observations behind it says so (dashboard/ui/evidence.jac) instead of showing a number."""
 import from "@jac/runtime" { Link }
 import from dashboard.ui.rpc { get_evaluation }
 import from dashboard.ui.format { MISSING, count, day_long, day_short, num, pct, signed, signed_pct, stamp_et, title, tone }
 import from dashboard.ui.parts { Empty, ErrorBox, Loading, Overline, PILL_BASE, Panel, ROW, TD, TD_NUM, TH, TH_NUM, TONE_DOWN, TONE_QUIET, TONE_UP }
+import from dashboard.ui.evidence { Provenance, Thin, enough, sessions_needed, votes_needed }
 # Aliased: the endpoint bridge declares the wire classes under their own names.
 import from models.evaluation {
     ArbiterResult as ArbiterData,
@@ -25,7 +28,8 @@ glob VERDICTS: dict[str, tuple[str, str]] = {
     "helped": ("Helped", TONE_UP),
     "hurt": ("Hurt", TONE_DOWN),
     "unclear": ("Not clear yet", TONE_QUIET),
-    "no data": ("No data yet", TONE_QUIET)
+    "no data": ("No data yet", TONE_QUIET),
+    "too few": ("Not enough data", TONE_QUIET)
 };
 glob SHORT_LABELS: dict[str, str] = {"team": "Your agent", "equal_weight": "Equal-weight", "spy": "SPY"};
 # How a comparison names its baseline mid-sentence.
@@ -57,18 +61,31 @@ def Verdict(word: str) -> JsxElement {
     <span className={PILL_BASE + " " + tone_}>{label}</span>
 }
 
-"""The system against one baseline: its excess return and Sharpe gap, and the verdict."""
+"""The interval of `e` alone, as "(-0.40% to +1.10%)"."""
+def interval_pct(e: EstimateData) -> str {
+    return "(" + signed_pct(e.lo) + " to " + signed_pct(e.hi) + ")" if e.lo is not None and e.hi is not None else MISSING;
+}
+
+"""The system against one baseline, always with the sessions it rests on: its excess return with
+its interval and Sharpe gap, and the verdict, or "not enough data" below the sessions an interval
+needs."""
 def ComparisonRow(c: ComparisonData) -> JsxElement {
+    ready = enough(c.sessions, sessions_needed());
     <div className="flex flex-col gap-2 border-t border-line px-4 py-4 first:border-t-0 sm:flex-row sm:items-center sm:gap-6">
         <div className="min-w-0 sm:w-56">
             <div className="text-[13px] text-muted">{"Against " + AGAINST.get(c.baseline, c.label)}</div>
-            <div className={"num mt-1 text-[22px] font-medium leading-7 " + tone(c.excess_return.value)}>{signed_pct(c.excess_return.value)}</div>
+            {if ready {
+                <div className={"num mt-1 text-[22px] font-medium leading-7 " + tone(c.excess_return.value)}>{signed_pct(c.excess_return.value)}</div>
+            } else {
+                <Thin have={c.sessions} need={sessions_needed()} unit="matched sessions" className="num mt-1 block text-[13px] leading-7"/>
+            }}
         </div>
-        <dl className="num grid min-w-0 flex-1 grid-cols-1 gap-1 text-[12px] text-muted sm:grid-cols-2">
-            <div><dt className="inline">Interval </dt><dd className="inline text-text">{ranged_pct(c.excess_return).replace(signed_pct(c.excess_return.value) + " ", "") if c.excess_return.lo is not None else "Too few sessions"}</dd></div>
-            <div><dt className="inline">Sharpe gap </dt><dd className="inline text-text">{ranged_num(c.sharpe_difference)}</dd></div>
+        <dl className="num grid min-w-0 flex-1 grid-cols-1 gap-1 text-[12px] text-muted sm:grid-cols-3">
+            <div><dt className="inline">Matched sessions </dt><dd className="inline text-text">{str(c.sessions)}</dd></div>
+            <div><dt className="inline">Interval </dt><dd className="inline text-text">{interval_pct(c.excess_return) if ready else MISSING}</dd></div>
+            <div><dt className="inline">Sharpe gap </dt><dd className="inline text-text">{ranged_num(c.sharpe_difference) if ready else MISSING}</dd></div>
         </dl>
-        <div className="shrink-0"><Verdict word={c.verdict}/></div>
+        <div className="shrink-0"><Verdict word={c.verdict if ready else "too few"}/></div>
     </div>
 }
 
@@ -125,6 +142,8 @@ def Screen(s: ScreenData) -> JsxElement {
     <Panel title="Screen" aside={count(s.runs, "run") + " scored"}>
         {if s.runs == 0 {
             <p className="text-[13px] text-muted">A run's screen is scored ten sessions after it, against the rest of the S&P 500.</p>
+        } elif not enough(s.runs, sessions_needed()) {
+            <p className="num text-[13px] text-muted"><Thin have={s.runs} need={sessions_needed()} unit="scored runs" className="block text-text"/>A run's screen is scored ten sessions after it, against the rest of the S&P 500.</p>
         } else {
             <div className="flex flex-col gap-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -140,9 +159,12 @@ def Screen(s: ScreenData) -> JsxElement {
 }
 
 def Arbiter(a: ArbiterData) -> JsxElement {
-    <Panel title="Arbiter" aside={<Verdict word={a.verdict}/>}>
+    ready = enough(a.blocked, sessions_needed());
+    <Panel title="Arbiter" aside={<Verdict word={a.verdict if ready else "too few"}/>}>
         {if a.blocked == 0 and a.confirmed == 0 {
             <p className="text-[13px] text-muted">No buy the Arbiter reviewed has been scored yet. A decision is scored ten sessions after its run.</p>
+        } elif not ready {
+            <p className="num text-[13px] text-muted"><Thin have={a.blocked} need={sessions_needed()} unit="scored blocked buys" className="block text-text"/>{"Blocking helps when the blocked buys lag SPY. " + str(a.confirmed) + " confirmed buys are scored so far."}</p>
         } else {
             <div className="flex flex-col gap-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -165,7 +187,7 @@ def gap_text(c: CalibrationData) -> str {
 }
 
 def Specialists(rows: list[CalibrationData]) -> JsxElement {
-    <Panel title="Specialist calibration" aside={<Link to="/app/specialists" className="text-accent hover:underline">Recent votes</Link>} pad={False}>
+    <Panel title="Specialist calibration" anchor="calibration" aside={<Link to="/app/specialists" className="text-accent hover:underline">Recent votes</Link>} pad={False}>
         {if len(rows) == 0 {
             <p className="px-4 py-4 text-[13px] text-muted">No vote has been scored yet. Votes are scored when their window closes, usually ten sessions after the run.</p>
         } else {
@@ -189,13 +211,17 @@ def Specialists(rows: list[CalibrationData]) -> JsxElement {
                                 </td>
                                 <td className={TD_NUM + " max-sm:hidden"}>{str(c.votes)}</td>
                                 <td className={TD_NUM}>{pct(c.confidence, 0)}</td>
-                                <td className={TD_NUM}>
-                                    {pct(c.hit_rate.value, 0)}
-                                    {if c.hit_rate.lo is not None {
-                                        <span className="text-faint max-sm:block max-sm:text-[11px]">{" (" + pct(c.hit_rate.lo, 0) + " to " + pct(c.hit_rate.hi, 0) + ")"}</span>
-                                    }}
-                                </td>
-                                <td className={TD_NUM + (" text-up" if c.within_target else (" text-down" if c.within_target is not None else ""))}>{gap_text(c)}</td>
+                                {if enough(c.votes, votes_needed()) {
+                                    <td className={TD_NUM}>
+                                        {pct(c.hit_rate.value, 0)}
+                                        {if c.hit_rate.lo is not None {
+                                            <span className="text-faint max-sm:block max-sm:text-[11px]">{" (" + pct(c.hit_rate.lo, 0) + " to " + pct(c.hit_rate.hi, 0) + ")"}</span>
+                                        }}
+                                    </td>
+                                } else {
+                                    <td className={TD_NUM + " whitespace-normal"}><Thin have={c.votes} need={votes_needed()} unit="scored votes" className="text-[12px]"/></td>
+                                }}
+                                <td className={TD_NUM + (" text-up" if c.within_target else (" text-down" if c.within_target is not None else ""))}>{gap_text(c) if enough(c.votes, votes_needed()) else MISSING}</td>
                             </tr>
                         }}
                     </tbody>
@@ -203,7 +229,7 @@ def Specialists(rows: list[CalibrationData]) -> JsxElement {
             </div>
         }}
         <p className="border-t border-line px-4 py-2.5 text-[12px] text-faint">
-            A well-calibrated specialist is right about as often as it says: the gap between its hit rate and its mean confidence stays within 10 points. Only directional votes count.
+            {"A well-calibrated specialist is right about as often as it says: the gap between its hit rate and its mean confidence stays within 10 points. Only directional votes count, and a hit rate shows from " + str(votes_needed()) + " scored votes."}
         </p>
     </Panel>
 }
@@ -260,6 +286,10 @@ def:pub ResultsPage -> JsxElement {
         <header className="flex flex-col gap-2">
             <Overline className="num">{"Forward test · through " + day_long(found.last_day) + " close"}</Overline>
             <h1 className="display text-[36px] leading-10 text-text">Results</h1>
+            <div className="num flex flex-wrap items-center gap-2 text-[12px] text-faint">
+                <Provenance kind={"demo" if found.demo else "live"}/>
+                {if found.snapshot { <span>{"Snapshot " + found.snapshot + ", stored " + stamp_et(found.as_of)}</span> }}
+            </div>
             <p className="max-w-[640px] text-[13px] leading-5 text-muted">
                 How your agent did against SPY and an equal-weight basket of the same shortlist, and where the result came from.
                 Intervals are 95%; with a few weeks of data most will be wide.
@@ -272,6 +302,6 @@ def:pub ResultsPage -> JsxElement {
         </div>
         <Specialists rows={found.specialists}/>
         <Operations r={found.reliability} o={found.operations}/>
-        <p className="num text-[12px] text-faint">{"Updated " + stamp_et(found.as_of) + "."}</p>
+        <p className="num text-[12px] text-faint">{"Updated " + stamp_et(found.as_of) + (". The final report built from this evaluation prints snapshot " + found.snapshot + "." if found.snapshot else ".")}</p>
     </div>
 }

@@ -28,6 +28,7 @@ def forward -> dict[str, object] {
     }
     evaluation: dict[str, object] = {
         "as_of": "2026-11-04T21:30:00+00:00",
+        "snapshot": "a1b2c3d4",
         "start_day": "2026-11-02",
         "last_day": "2026-11-04",
         "sessions": 3,
@@ -133,23 +134,26 @@ test "the calibration chart puts each specialist's confidence and hit rate on on
     assert calibration_chart([]) == "";
 }
 
-test "with every input, the report answers first and draws three figures" {
-    (markdown, figures) = render(forward(), backtest(True), replay(), "2026-11-11T12:00:00+00:00");
-    assert sorted(figures) == ["backtest-validation.svg", "calibration.svg", "forward-test.svg"];
+test "with every input, the report answers first and draws its figures" {
+    (markdown, figures) = render(forward(), backtest(True), replay());
+    assert sorted(figures) == ["backtest-validation.svg", "forward-test.svg"];
+    assert "No specialist has 20 scored votes yet, so there is no calibration chart." in markdown;
     assert markdown.startswith("# Parallax final evaluation\n");
-    assert "through 2026-11-04" in markdown;
+    assert "through the 2026-11-04 close (snapshot `a1b2c3d4`, stored 2026-11-04T21:30:00+00:00, the ID the Results page shows)" in markdown;
+    assert "## Forward test: live paper trading" in markdown and "## Screen backtest: historical, no model" in markdown and "## LLM replay\n" in markdown;
     answer = markdown.split("## Answer first")[1].split("## Forward test")[0];
-    assert "**Against SPY buy-and-hold**, Parallax is not clear yet: +0.8% (too little data for an interval) over 3 sessions." in answer;
+    assert "**Against SPY buy-and-hold**, there is not enough data (3 of 5 matched sessions) for a verdict." in answer;
+    assert "| SPY buy-and-hold | 3 | not enough data (3 of 5 sessions) | n/a | not enough data |" in markdown;
     assert "chose screen `V2` with a 2.0 ATR stop; the screen was adopted." in answer;
     assert "60% of 30 directional votes right (95% interval 42% to 75%) on 2 past days." in answer;
     assert "| Parallax | +1.2% | 1.50 | 0.4% | 3 |" in markdown;
-    assert "| Technical | 12 | 70% | 50.0% (95% interval 25.0% to 75.0%) | -20% | no |" in markdown;
+    assert "| Technical | 12 | 70% | not enough data (12 of 20 scored votes) | n/a | n/a |" in markdown;
     assert "| News | 0 | n/a | n/a | n/a | n/a |" in markdown;
     assert "2 of 3 trading sessions (67%)" in markdown and "Sessions without a run: 2026-11-03." in markdown;
     assert "median of 41 minutes" in markdown and "470 of the 1000 allowed" in markdown;
     assert "| `V2` | train | 300 | +0.40% | +0.00% to +0.80% | 0.80 | 22.0% |" in markdown;
     assert "| Finnhub key metrics | dropped | current-only snapshot |" in markdown;
-    assert "against SPY over ten sessions, so whether blocking them helped is not clear yet." in markdown;
+    assert "**Arbiter.** There is not enough data (2 of 5 scored blocked buys) to say whether blocking them helped." in markdown;
     assert "- Delisted names without bars are left out." in markdown.split("## Limits")[1];
     assert "Run details:\n\n- Ten days are too few to judge skill." in markdown.split("## LLM replay")[1].split("## Limits")[0];
     assert "ran on 2 past days (2025-09-02 to 2025-09-15)" in markdown;
@@ -160,8 +164,12 @@ test "with every input, the report answers first and draws three figures" {
 test "a replay still under way says how many of its days are done" {
     partial = replay();
     partial["decisions"] = [{"day": "2025-09-02", "ticker": "AAA"}];
-    (markdown, _) = render(None, None, partial, "2026-11-11T12:00:00+00:00");
-    assert "on 1 of 2 planned past days, so far." in markdown and "ran on 1 of 2 planned past days, so far (2025-09-02) for" in markdown;
+    (markdown, _) = render(None, None, partial);
+    assert "ran on 1 of 2 planned past days, so far (2025-09-02) for" in markdown;
+    assert "**The LLM replay** is still under way (1 of 2 planned past days, so far), so it is not a benchmark;" in markdown;
+    assert "## LLM replay (partial)" in markdown and "**Partial.** The replay is still under way" in markdown;
+    answer = markdown.split("## ")[1];
+    assert "60%" not in answer and "hit rate" not in answer.lower();
 }
 
 test "a day with no request count leaves out the busiest-day figure" {
@@ -171,13 +179,13 @@ test "a day with no request count leaves out the busiest-day figure" {
     operations = record["operations"];
     assert isinstance(operations, dict);
     operations["peak_daily_requests"] = 0;
-    (markdown, _) = render(found, None, None, "2026-11-11T12:00:00+00:00");
+    (markdown, _) = render(found, None, None);
     assert "averaged 452 per run (at most 470)." in markdown and "busiest day" not in markdown;
     assert "is missing.\n\n## LLM replay" in markdown;
 }
 
 test "a backtest that adopts nothing says so and draws only the current settings against SPY" {
-    (markdown, figures) = render(None, backtest(False), None, "2026-11-11T12:00:00+00:00");
+    (markdown, figures) = render(None, backtest(False), None);
     assert "nothing beat the current settings on validation, so nothing was adopted." in markdown;
     assert "Chosen settings" not in figures["backtest-validation.svg"];
     assert "The forward test's evaluation is missing" in markdown;
@@ -185,7 +193,7 @@ test "a backtest that adopts nothing says so and draws only the current settings
 }
 
 test "with no inputs, every section says what is missing and no figure is drawn" {
-    (markdown, figures) = render(None, None, None, "2026-11-11T12:00:00+00:00");
+    (markdown, figures) = render(None, None, None);
     assert figures == {};
     assert "No evaluation is stored yet" in markdown and "`docs/evaluation/backtest.json` is missing" in markdown;
 }
@@ -193,12 +201,54 @@ test "with no inputs, every section says what is missing and no figure is drawn"
 test "writing the report replaces figures it no longer draws" {
     with tempfile.TemporaryDirectory() as tmp {
         out = Path(tmp);
-        (markdown, figures) = render(forward(), backtest(True), None, "2026-11-11T12:00:00+00:00");
+        (markdown, figures) = render(forward(), backtest(True), None);
         write_report(out, markdown, figures);
         assert (out / "figures" / "backtest-validation.svg").exists();
-        (markdown, figures) = render(forward(), None, None, "2026-11-11T12:00:00+00:00");
+        (markdown, figures) = render(forward(), None, None);
         write_report(out, markdown, figures);
         assert not (out / "figures" / "backtest-validation.svg").exists();
         assert (out / "figures" / "forward-test.svg").exists() and (out / "report.md").read_text() == markdown;
     }
+}
+
+"""A figure with enough observations behind it shows, by the same rule the Results page uses."""
+test "with enough sessions and votes, the report shows the figures and verdicts" {
+    found = forward();
+    evaluation = found["evaluation"];
+    assert isinstance(evaluation, dict);
+    evaluation["comparisons"] = [{"baseline": "spy", "label": "SPY buy-and-hold", "sessions": 8, "excess_return": est(0.008, -0.002, 0.018, 8), "sharpe_difference": est(0.6), "verdict": "unclear"}];
+    evaluation["specialists"] = [{"specialist": "technical", "votes": 24, "confidence": 0.7, "hit_rate": est(0.5, 0.3, 0.7, 24), "gap": -0.2, "within_target": False, "bins": []}];
+    (markdown, figures) = render(found, None, None);
+    assert "**Against SPY buy-and-hold**, Parallax is not clear yet: +0.8% (95% interval -0.2% to +1.8%) over 8 matched sessions." in markdown;
+    assert "| Technical | 24 | 70% | 50.0% (95% interval 30.0% to 70.0%) | -20% | no |" in markdown;
+    assert "calibration.svg" in figures;
+}
+
+"""A finished replay with too few directional votes gives no hit rate."""
+test "a finished replay with few directional votes says so instead of a hit rate" {
+    few = replay();
+    summary = few["summary"];
+    assert isinstance(summary, dict);
+    summary["directional_votes"] = 8;
+    (markdown, _) = render(None, None, few);
+    assert "with not enough data (8 of 20 directional votes) for a hit rate." in markdown;
+    assert "| Directional votes right over ten sessions | not enough data (8 of 20 directional votes) |" in markdown;
+}
+
+"""The report reads no clock and fetches nothing, so the same files give the same report: reopening
+it reproduces its numbers."""
+test "rendering the same inputs twice gives the same report" {
+    first = render(forward(), backtest(True), replay());
+    assert render(forward(), backtest(True), replay()) == first;
+}
+
+"""An evaluation of the demo history says so wherever its figures appear."""
+test "an evaluation of the demo history is labeled demo data, not paper trading" {
+    found = forward();
+    evaluation = found["evaluation"];
+    assert isinstance(evaluation, dict);
+    evaluation["demo"] = True;
+    (markdown, _) = render(found, None, None);
+    assert "## Forward test: simulated demo data" in markdown and "live paper trading" not in markdown;
+    assert "- **Demo data.** The forward test here is the simulated demo history" in markdown.split("## ")[1];
 }
