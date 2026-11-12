@@ -606,7 +606,7 @@ def counted(n: int, noun: str) -> str {
 
 """What the risk gate and the broker did with a run's decisions, in plain words, from the
 executor's note (which counts the checks, held stocks the run did not cover among them) and the
-rows' orders as they stand now: ("2 of 3 checks approved", "1 filled · 1 broker rejected"). An
+rows' orders as they stand now: ("2 of 3 approved", "1 filled · 1 broker rejected"). An
 empty note gives empty text, and a note this cannot read is shown as the executor wrote it."""
 def execution_summary(note: str, rows: list[CoverageRow]) -> tuple[str, str] {
     if not note {
@@ -635,7 +635,7 @@ def execution_summary(note: str, rows: list[CoverageRow]) -> tuple[str, str] {
     if "market data gaps" in note {
         detail.append("market data gaps");
     }
-    head = "No orders to check" if checks == 0 else f"{approved} of {counted(checks, 'check')} approved";
+    head = "No orders to check" if checks == 0 else f"{approved} of {checks} approved";
     return (head, " · ".join(detail));
 }
 

@@ -172,7 +172,7 @@ obj RunSummary {
 }
 
 """A run. `execution_summary` and `execution_detail` say in plain words what the risk gate and the
-broker did with its decisions ("2 of 3 checks approved", "1 filled · 1 broker rejected");
+broker did with its decisions ("2 of 3 approved", "1 filled · 1 broker rejected");
 `execution_note` keeps the executor's raw line."""
 obj RunView {
     has run_date: str,

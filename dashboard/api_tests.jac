@@ -360,7 +360,7 @@ test "a decision the gate blocked has its check on the trail and no order, there
         # The run page says it in plain words, not the executor's raw line.
         view = run_view(portfolio, DAY1);
         assert view is not None and view.execution_note.startswith("2 checks, 1 approved");
-        assert (view.execution_summary, view.execution_detail) == ("1 of 2 checks approved", "1 working");
+        assert (view.execution_summary, view.execution_detail) == ("1 of 2 approved", "1 working");
         bbb = [r for r in view.rows if r.ticker == "BBB"][0];
         assert (bbb.gate_outcome, bbb.order_status) == ("rejected", "");
     } finally {
@@ -374,10 +374,10 @@ test "the execution note reads in plain words, whatever the executor recorded" {
     }
     rows = [row("filled"), row("pending_new"), row("rejected", "insufficient buying power"), row("rejected", "not sent: its stop filled"), row("")];
     note = "4 checks, 4 approved; AAA buy 10 @ 100.30: pending_new; BBB buy 5 @ 50.15: rejected (insufficient buying power); CCC: not sent, its stop filled";
-    assert execution_summary(note, rows) == ("4 of 4 checks approved", "1 filled · 1 working · 1 broker rejected · 1 not sent");
-    assert execution_summary("1 checks, 0 approved; refused: AAA buy 40: earnings blackout", []) == ("0 of 1 check approved", "nothing sent");
+    assert execution_summary(note, rows) == ("4 of 4 approved", "1 filled · 1 working · 1 broker rejected · 1 not sent");
+    assert execution_summary("1 checks, 0 approved; refused: AAA buy 40: earnings blackout", []) == ("0 of 1 approved", "nothing sent");
     assert execution_summary("0 checks, 0 approved", []) == ("No orders to check", "nothing sent");
-    assert execution_summary("2 checks, 1 approved; market data gaps: SPY quote; AAA trade", [row("filled")]) == ("1 of 2 checks approved", "1 filled · market data gaps");
+    assert execution_summary("2 checks, 1 approved; market data gaps: SPY quote; AAA trade", [row("filled")]) == ("1 of 2 approved", "1 filled · market data gaps");
     assert execution_summary("orders are disabled (TRADING_AGENT_DISABLE_ORDERS=1); 3 checks recorded, nothing sent; refused: AAA buy 4: x", []) == ("3 checks, none sent", "orders are turned off");
     assert execution_summary("", []) == ("", "");
     assert execution_summary("something new", []) == ("Something new", "");

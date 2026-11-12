@@ -195,6 +195,7 @@ test("decision: every specialist shows, and a failure or missing evidence is not
   const news = panel.locator("[data-specialist=news]");
   await expect(news).toHaveAttribute("data-status", "failed");
   await expect(news.getByText("Failed", { exact: true })).toBeVisible();
+  await expect(news.getByText("3 samples failed, so it did not vote.")).toBeVisible();
   await news.getByRole("button").click();
   await expect(news.getByText(/^Sample 1: RateLimitError/)).toBeVisible();
   await fitsWidth(page);
@@ -242,7 +243,7 @@ test("run: the risk gate's card reads in plain words, not the executor's note", 
   await logIn(page);
   await page.goto("/app/runs");
   const card = page.getByRole("region", { name: "Run", exact: true });
-  await expect(card.getByText(/^\d+ of \d+ checks? approved$/)).toBeVisible();
+  await expect(card.getByText(/^\d+ of \d+ approved$/)).toBeVisible();
   await expect(card).not.toContainText(/pending_new|; /);
 });
 

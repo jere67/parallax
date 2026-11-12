@@ -436,7 +436,7 @@ def SampleRow(s: SampleData) -> JsxElement {
 """What a specialist with no score did instead, in a line beside its tag."""
 def status_note(s: SpecialistData) -> str {
     if s.status == "failed" {
-        return s.errors[0] if len(s.errors) > 0 else "Every sample failed.";
+        return (count(len(s.errors), "sample") + " failed, so it did not vote.") if len(s.errors) > 0 else "Every sample failed.";
     }
     if s.status == "abstained" {
         return "Cited only data gaps." if len(s.samples) > 0 else "Had no evidence to judge, so no sample was drawn.";
