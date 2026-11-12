@@ -99,6 +99,19 @@ test("screener: a starred stock joins the watchlist and stays after a reload", a
   await expect(firstSymbol(page)).toContainText("NVDA");
 });
 
+test("screener: a stock the agent decided on links to that decision's trail", async ({ page }) => {
+  await page.goto("/app/screener");
+  const decision = table(page).getByTestId("screener-decision").first();
+  await expect(decision).toBeVisible();
+  const href = await decision.getAttribute("href");
+  expect(href).toMatch(/^\/app\/runs\/\d{4}-\d{2}-\d{2}\/[A-Z.]+$/);
+  await fitsWidth(page);
+  await decision.click();
+  await expect(page).toHaveURL(new RegExp(`${href}$`));
+  await expect(page.getByRole("navigation", { name: "Decision trail" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: href.split("/").pop() })).toBeVisible();
+});
+
 test("stock: the header, the chart, its ranges, and its key figures", async ({ page }) => {
   await page.goto("/app/screener");
   await firstSymbol(page).click();
