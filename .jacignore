@@ -1,5 +1,6 @@
-# Left out of a deploy upload: the docs site, the browser tests, and the evaluation write-ups.
-# The server reads none of them.
+# Left out of a deploy upload: the docs site, the browser tests, the evaluation write-ups, and
+# the phone app. The server reads none of them.
 site/
 e2e/
 docs/
+mobile/
