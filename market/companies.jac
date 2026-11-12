@@ -94,8 +94,12 @@ def submissions(cik: str, budget: RunBudget, client: SourceClient | None = None)
     return json.loads((client or sec_data_client()).get(DATASETS["sec.market_submissions"], f"/submissions/CIK{padded_cik(cik)}.json", budget, check=_check_keys("filings", "name")).body);
 }
 
-def company_facts(cik: str, budget: RunBudget, client: SourceClient | None = None) -> dict[str, any] {
-    return json.loads((client or sec_data_client()).get(DATASETS["sec.market_companyfacts"], f"/api/xbrl/companyfacts/CIK{padded_cik(cik)}.json", budget, check=_check_keys("facts")).body);
+"""The company's XBRL facts, or None when it files none. SEC answers some such filers, closed-end
+funds among them, with an empty object instead of a 404."""
+def company_facts(cik: str, budget: RunBudget, client: SourceClient | None = None) -> dict[str, any] | None {
+    body = (client or sec_data_client()).get(DATASETS["sec.market_companyfacts"], f"/api/xbrl/companyfacts/CIK{padded_cik(cik)}.json", budget, check=_check_facts).body;
+    parsed = json.loads(body);
+    return parsed if parsed else None;
 }
 
 """A company's profile from its submissions."""
@@ -334,6 +338,15 @@ def wants_facts(found: dict[str, any], earlier: CompanyRecord | None) -> bool {
     }
     (_, report_filed) = filings_of(earlier.cik, found);
     return report_filed > earlier.facts_filed;
+}
+
+def _check_facts(body: str) -> str {
+    try {
+        empty = json.loads(body) == {};
+    } except ValueError {
+        empty = False;
+    }
+    return "" if empty else _check_keys("facts")(body);
 }
 
 def _check_keys(*keys: str) -> Callable[[str], str] {

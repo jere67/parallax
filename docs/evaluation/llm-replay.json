@@ -1,0 +1,637 @@
+{
+ "generated_at": "2026-11-11T11:03:59+00:00",
+ "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+ "model_cutoff": "2025-12",
+ "cutoff_source": "NVIDIA's model card for Nemotron 3.5 Super VL (huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16): foundation data collection period 2013 to December 2025; listed on OpenRouter on October 15, 2026. The fallback, Dots3-Note Preview, was listed on August 14, 2026, so its data ends before then.",
+ "days": [
+  "2026-10-15",
+  "2026-10-16",
+  "2026-10-19",
+  "2026-10-20",
+  "2026-10-21",
+  "2026-10-22",
+  "2026-10-23",
+  "2026-10-26",
+  "2026-10-27",
+  "2026-10-28"
+ ],
+ "tickers": [
+  "MRNA",
+  "MDT",
+  "META",
+  "MSFT",
+  "NVDA"
+ ],
+ "samples": 1,
+ "requests_used": 58,
+ "wall_minutes": 8.7,
+ "audit": [
+  {
+   "source": "Alpaca daily bars (stock, SPY, sector and bond ETFs)",
+   "treatment": "bounded",
+   "detail": "The query ends at the last session before the replayed day, and a series stamped at or after the decision time is dropped. Bars are split- and dividend-adjusted with today's factors, so price levels can differ from what was shown then; returns and indicators do not."
+  },
+  {
+   "source": "Alpaca news (articles and the screen's counts)",
+   "treatment": "bounded",
+   "detail": "Every query ends at the decision time, and an article published at or after it is dropped."
+  },
+  {
+   "source": "Finnhub company news",
+   "treatment": "bounded",
+   "detail": "Ends on the replayed day; an article published at or after the decision time is dropped."
+  },
+  {
+   "source": "Finnhub key metrics",
+   "treatment": "dropped",
+   "detail": "Finnhub serves only today's snapshot, so it is not read; the Fundamentals brief records a gap and relies on SEC figures."
+  },
+  {
+   "source": "Finnhub EPS surprises",
+   "treatment": "stripped",
+   "detail": "Finnhub dates a quarter by its end, not by when it was reported, so a quarter is kept only when an Item 2.02 earnings release filed after it ended and before the replayed day covers it."
+  },
+  {
+   "source": "Finnhub recommendation trends",
+   "treatment": "stripped",
+   "detail": "The decision's own month is left out, since its counts kept changing after the decision; earlier months are kept."
+  },
+  {
+   "source": "Finnhub earnings calendar (next release, and the screen's earnings flag)",
+   "treatment": "stripped",
+   "detail": "A release on or after the replayed day keeps its date and estimates but loses its actual EPS and revenue. The date shown is the one the calendar holds today, which can differ from the schedule known then."
+  },
+  {
+   "source": "SEC submissions (8-K events, earnings release, Form 4)",
+   "treatment": "bounded",
+   "detail": "Only filings dated before the replayed day are listed, so every event, release, and insider trade read from them was public."
+  },
+  {
+   "source": "SEC XBRL company facts",
+   "treatment": "bounded",
+   "detail": "A fact filed on or after the replayed day is left out, so neither a new quarter nor a later restatement leaks in."
+  },
+  {
+   "source": "SEC 13F holdings",
+   "treatment": "bounded",
+   "detail": "Only filing windows that closed before the replayed day are used. SEC's listing does not give when each archive was posted, which the brief already notes as a gap."
+  },
+  {
+   "source": "Wikipedia S&P 500 membership",
+   "treatment": "bounded",
+   "detail": "The members on the replayed day are rebuilt from today's list by undoing every later change in the historical-components table."
+  },
+  {
+   "source": "Alpaca assets (the screen's tradability check)",
+   "treatment": "dropped",
+   "detail": "Alpaca lists only today's assets, so every member counts as tradable rather than drop one delisted since."
+  },
+  {
+   "source": "Macro and regime inputs (SPY, sector and bond ETFs)",
+   "treatment": "bounded",
+   "detail": "Computed from the bounded daily bars."
+  },
+  {
+   "source": "Market calendar",
+   "treatment": "bounded",
+   "detail": "The exchange schedule is published in advance, so the sessions around the day were known then."
+  }
+ ],
+ "decisions": [
+  {
+   "day": "2026-10-15",
+   "ticker": "MDT",
+   "action": "BUY",
+   "draft_action": "BUY",
+   "score": 0.297,
+   "agreement": 1.0,
+   "ci_low": 0.29,
+   "ci_high": 0.304,
+   "arbiter_verdict": "CONFIRM",
+   "arbiter_model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+   "downgrade_reason": "",
+   "forced_hold_reason": "",
+   "research": [
+    {
+     "domain": "market",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "HOLD",
+     "confidence": 0.68,
+     "error": ""
+    },
+    {
+     "domain": "fundamentals",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "HOLD",
+     "confidence": 0.64,
+     "error": ""
+    },
+    {
+     "domain": "news",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "HOLD",
+     "confidence": 0.45,
+     "error": ""
+    }
+   ],
+   "votes": [
+    {
+     "specialist": "fundamentals",
+     "stance": "BUY",
+     "confidence": 0.6,
+     "horizon_days": 90,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": 0.0023154725697707157,
+     "hit": true
+    },
+    {
+     "specialist": "technical",
+     "stance": "BUY",
+     "confidence": 0.62,
+     "horizon_days": 20,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": 0.0023154725697707157,
+     "hit": true
+    },
+    {
+     "specialist": "news",
+     "stance": "BUY",
+     "confidence": 0.6,
+     "horizon_days": 30,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": 0.0023154725697707157,
+     "hit": true
+    },
+    {
+     "specialist": "macro",
+     "stance": "BUY",
+     "confidence": 0.6,
+     "horizon_days": 30,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": 0.0023154725697707157,
+     "hit": true
+    },
+    {
+     "specialist": "flow",
+     "stance": "BUY",
+     "confidence": 0.55,
+     "horizon_days": 30,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": 0.0023154725697707157,
+     "hit": true
+    }
+   ],
+   "excess_return": 0.0023154725697707157,
+   "errors": [],
+   "late_evidence": [],
+   "requests": 11.4,
+   "seconds": 440.9
+  },
+  {
+   "day": "2026-10-15",
+   "ticker": "META",
+   "action": "NO_ACTION",
+   "draft_action": "NO_ACTION",
+   "score": -0.06,
+   "agreement": 0.4,
+   "ci_low": -0.18,
+   "ci_high": 0.06,
+   "arbiter_verdict": "CONFIRM",
+   "arbiter_model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+   "downgrade_reason": "",
+   "forced_hold_reason": "",
+   "research": [
+    {
+     "domain": "market",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "HOLD",
+     "confidence": 0.65,
+     "error": ""
+    },
+    {
+     "domain": "fundamentals",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "HOLD",
+     "confidence": 0.6,
+     "error": ""
+    },
+    {
+     "domain": "news",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "HOLD",
+     "confidence": 0.6,
+     "error": ""
+    }
+   ],
+   "votes": [
+    {
+     "specialist": "fundamentals",
+     "stance": "HOLD",
+     "confidence": 0.5,
+     "horizon_days": 60,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.17307143586616547,
+     "hit": null
+    },
+    {
+     "specialist": "technical",
+     "stance": "HOLD",
+     "confidence": 0.6,
+     "horizon_days": 15,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.17307143586616547,
+     "hit": null
+    },
+    {
+     "specialist": "news",
+     "stance": "BUY",
+     "confidence": 0.6,
+     "horizon_days": 4,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.17307143586616547,
+     "hit": false
+    },
+    {
+     "specialist": "macro",
+     "stance": "SELL",
+     "confidence": 0.6,
+     "horizon_days": 10,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.17307143586616547,
+     "hit": true
+    },
+    {
+     "specialist": "flow",
+     "stance": "SELL",
+     "confidence": 0.6,
+     "horizon_days": 30,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.17307143586616547,
+     "hit": true
+    }
+   ],
+   "excess_return": -0.17307143586616547,
+   "errors": [],
+   "late_evidence": [],
+   "requests": 11.4,
+   "seconds": 440.9
+  },
+  {
+   "day": "2026-10-15",
+   "ticker": "MRNA",
+   "action": "NO_ACTION",
+   "draft_action": "BUY",
+   "score": 0.182,
+   "agreement": 0.6,
+   "ci_low": 0.12,
+   "ci_high": 0.246,
+   "arbiter_verdict": "DOWNGRADE",
+   "arbiter_model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+   "downgrade_reason": "Consensus is only weakly positive (C = +0.182; 80% interval [+0.120, +0.246]) with fundamentals and news neutral at 0.00, and the research view is explicitly HOLD. The price is extremely extended (+200% vs the 200-day MA, RSI 69.1, 88.6% annualized realized volatility, 99% of the 52-week range), fundamentals show deep GAAP losses and negative cash flow, Goldman Sachs is Neutral with a $137 target below the market price, and the latest data is stale (no 2026-10-15 bar).",
+   "forced_hold_reason": "",
+   "research": [
+    {
+     "domain": "market",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "HOLD",
+     "confidence": 0.65,
+     "error": ""
+    },
+    {
+     "domain": "fundamentals",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "HOLD",
+     "confidence": 0.58,
+     "error": ""
+    },
+    {
+     "domain": "news",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "HOLD",
+     "confidence": 0.58,
+     "error": ""
+    }
+   ],
+   "votes": [
+    {
+     "specialist": "fundamentals",
+     "stance": "HOLD",
+     "confidence": 0.6,
+     "horizon_days": 90,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.057144818388189966,
+     "hit": null
+    },
+    {
+     "specialist": "technical",
+     "stance": "BUY",
+     "confidence": 0.62,
+     "horizon_days": 20,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.057144818388189966,
+     "hit": false
+    },
+    {
+     "specialist": "news",
+     "stance": "HOLD",
+     "confidence": 0.6,
+     "horizon_days": 16,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.057144818388189966,
+     "hit": null
+    },
+    {
+     "specialist": "macro",
+     "stance": "BUY",
+     "confidence": 0.6,
+     "horizon_days": 30,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.057144818388189966,
+     "hit": false
+    },
+    {
+     "specialist": "flow",
+     "stance": "BUY",
+     "confidence": 0.6,
+     "horizon_days": 20,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.057144818388189966,
+     "hit": false
+    }
+   ],
+   "excess_return": -0.057144818388189966,
+   "errors": [],
+   "late_evidence": [],
+   "requests": 11.4,
+   "seconds": 440.9
+  },
+  {
+   "day": "2026-10-15",
+   "ticker": "MSFT",
+   "action": "BUY",
+   "draft_action": "BUY",
+   "score": 0.275,
+   "agreement": 0.8,
+   "ci_low": 0.2,
+   "ci_high": 0.355,
+   "arbiter_verdict": "CONFIRM",
+   "arbiter_model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+   "downgrade_reason": "",
+   "forced_hold_reason": "",
+   "research": [
+    {
+     "domain": "market",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "BUY",
+     "confidence": 0.7,
+     "error": ""
+    },
+    {
+     "domain": "fundamentals",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "HOLD",
+     "confidence": 0.7,
+     "error": ""
+    },
+    {
+     "domain": "news",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "HOLD",
+     "confidence": 0.55,
+     "error": ""
+    }
+   ],
+   "votes": [
+    {
+     "specialist": "fundamentals",
+     "stance": "BUY",
+     "confidence": 0.8,
+     "horizon_days": 126,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.008542951548371258,
+     "hit": false
+    },
+    {
+     "specialist": "technical",
+     "stance": "BUY",
+     "confidence": 0.7,
+     "horizon_days": 15,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.008542951548371258,
+     "hit": false
+    },
+    {
+     "specialist": "news",
+     "stance": "HOLD",
+     "confidence": 0.35,
+     "horizon_days": 9,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.008542951548371258,
+     "hit": null
+    },
+    {
+     "specialist": "macro",
+     "stance": "BUY",
+     "confidence": 0.65,
+     "horizon_days": 20,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.008542951548371258,
+     "hit": false
+    },
+    {
+     "specialist": "flow",
+     "stance": "BUY",
+     "confidence": 0.6,
+     "horizon_days": 30,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.008542951548371258,
+     "hit": false
+    }
+   ],
+   "excess_return": -0.008542951548371258,
+   "errors": [],
+   "late_evidence": [],
+   "requests": 11.4,
+   "seconds": 440.9
+  },
+  {
+   "day": "2026-10-15",
+   "ticker": "NVDA",
+   "action": "NO_ACTION",
+   "draft_action": "NO_ACTION",
+   "score": 0.133,
+   "agreement": 0.6,
+   "ci_low": -0.004999999999999993,
+   "ci_high": 0.274,
+   "arbiter_verdict": "DOWNGRADE (not applied to NO_ACTION)",
+   "arbiter_model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+   "downgrade_reason": "",
+   "forced_hold_reason": "",
+   "research": [
+    {
+     "domain": "market",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "HOLD",
+     "confidence": 0.6,
+     "error": ""
+    },
+    {
+     "domain": "fundamentals",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "HOLD",
+     "confidence": 0.58,
+     "error": ""
+    },
+    {
+     "domain": "news",
+     "complete": true,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "view": "HOLD",
+     "confidence": 0.6,
+     "error": ""
+    }
+   ],
+   "votes": [
+    {
+     "specialist": "fundamentals",
+     "stance": "BUY",
+     "confidence": 0.7,
+     "horizon_days": 60,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.03027232649069511,
+     "hit": false
+    },
+    {
+     "specialist": "technical",
+     "stance": "HOLD",
+     "confidence": 0.55,
+     "horizon_days": 15,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.03027232649069511,
+     "hit": null
+    },
+    {
+     "specialist": "news",
+     "stance": "BUY",
+     "confidence": 0.68,
+     "horizon_days": 20,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.03027232649069511,
+     "hit": false
+    },
+    {
+     "specialist": "macro",
+     "stance": "BUY",
+     "confidence": 0.55,
+     "horizon_days": 20,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.03027232649069511,
+     "hit": false
+    },
+    {
+     "specialist": "flow",
+     "stance": "SELL",
+     "confidence": 0.6,
+     "horizon_days": 20,
+     "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+     "valid": true,
+     "excess_return": -0.03027232649069511,
+     "hit": true
+    }
+   ],
+   "excess_return": -0.03027232649069511,
+   "errors": [],
+   "late_evidence": [],
+   "requests": 11.4,
+   "seconds": 440.9
+  }
+ ],
+ "summary": {
+  "pairs": 5,
+  "planned_pairs": 50,
+  "complete": 5,
+  "valid_votes": 25,
+  "votes": 25,
+  "directional_votes": 19,
+  "hit_rate": 0.4211,
+  "hit_rate_ci": [
+   0.2314,
+   0.6372
+  ],
+  "buys": 2,
+  "buy_mean_excess": -0.00311,
+  "late_evidence_count": 0,
+  "screen_gaps": [
+   "wikipedia.history: KVUE was a member on 2026-10-15 but has left the index, so it has no sector or SEC number",
+   "screener: a replay of 2026-10-15 takes every member as tradable, since Alpaca lists only today's assets"
+  ],
+  "discarded": {
+   "pairs": [
+    "2026-10-15:MDT",
+    "2026-10-15:META",
+    "2026-10-15:MRNA",
+    "2026-10-15:MSFT",
+    "2026-10-15:NVDA",
+    "2026-10-16:MDT",
+    "2026-10-16:META",
+    "2026-10-16:MRNA",
+    "2026-10-16:MSFT",
+    "2026-10-16:NVDA",
+    "2026-10-19:MDT",
+    "2026-10-19:META",
+    "2026-10-19:MRNA",
+    "2026-10-19:MSFT",
+    "2026-10-19:NVDA"
+   ],
+   "requests": 205,
+   "reason": "the next-earnings snapshot was dated when it was read (today), not as of the replayed decision",
+   "note": "OpenRouter's free count fell by 263 from 03:34 to 04:30 New York, of which the clean pass recorded 58; the other 205 went to the first pass, including a day stopped midway"
+  },
+  "notes": [
+   "stances of valid votes: {\"BUY\": 16, \"HOLD\": 6, \"SELL\": 3}",
+   "confidence of valid votes: 0.35 to 0.80",
+   "answers by model: {\"openrouter/nvidia/nemotron-3.5-super-vl:free\": 40}",
+   "actions: {\"BUY\": 2, \"NO_ACTION\": 3}",
+   "pairs held without a panel: 0",
+   "pairs with any error: 0"
+  ]
+ }
+}

@@ -38,6 +38,14 @@ const test = base.extend({
   ],
 });
 
+// The More button in whichever navigation the screen shows: the top bar, or a phone's tab bar.
+async function openMore(page) {
+  const more = page.locator("button:visible", { hasText: /^More$/ });
+  await more.click();
+  await expect(more).toHaveAttribute("aria-expanded", "true");
+  return more;
+}
+
 // Against the device's width, not window.innerWidth: a phone browser widens its layout viewport
 // to fit content that overflows, so innerWidth grows with the overflow it should reveal.
 async function fitsWidth(page) {
@@ -55,6 +63,39 @@ test("portfolio: headline figures, equity curve, positions, and activity", async
   await expect(page.getByRole("heading", { name: "Open positions" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Activity" })).toBeVisible();
   await expect(page.getByText(/educational student project/i)).toBeVisible();
+  await fitsWidth(page);
+});
+
+test("moving to another page starts it at the top, not where the last page was scrolled", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/app");
+  await expect(page.getByRole("heading", { name: "Activity" })).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
+  await page.locator("a[href='/app/runs']:visible").first().click();
+  await expect(page).toHaveURL(/\/app\/runs$/);
+  await expect(page.getByRole("heading", { name: "Shortlist" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+});
+
+test("more: Reports and Specialists sit behind More, which closes on Escape or a click elsewhere", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/app");
+  await expect(page.getByRole("heading", { level: 1, name: "Your portfolio" })).toBeVisible();
+  for (const name of ["Reports", "Specialists"]) {
+    await expect(page.getByRole("link", { name, exact: true })).toHaveCount(0);
+  }
+  let more = await openMore(page);
+  await page.keyboard.press("Escape");
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("link", { name: "Reports", exact: true })).toHaveCount(0);
+  more = await openMore(page);
+  await page.getByRole("heading", { level: 1, name: "Your portfolio" }).click();
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await openMore(page);
+  await page.getByRole("link", { name: "Specialists", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Specialists" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Specialists", exact: true })).toHaveCount(0);
   await fitsWidth(page);
 });
 
@@ -94,6 +135,21 @@ test("specialists: five roles show recent votes and scoring context", async ({ p
   }
   await expect(page.getByText(/hit rate|awaiting scored directional votes/i).first()).toBeVisible();
   await fitsWidth(page);
+});
+
+test("results: the forward test against both baselines, and where the result came from", async ({ page }) => {
+  await logIn(page, "results");
+  await page.goto("/app/results");
+  await expect(page.getByRole("heading", { level: 1, name: "Results" })).toBeVisible();
+  await expect(page.getByText("Against the equal-weight shortlist")).toBeVisible();
+  await expect(page.getByText("Against SPY buy-and-hold")).toBeVisible();
+  for (const name of ["Against the baselines", "Screen", "Arbiter", "Specialist calibration", "Reliability"]) {
+    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  }
+  await expect(page.getByText(/The shortlist beat the rest in \d+ of \d+ runs?\./)).toBeVisible();
+  await fitsWidth(page);
+  await page.getByRole("link", { name: "Recent votes" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Specialists" })).toBeVisible();
 });
 
 test("news: the feed filters by address, and a story opens beside it or over it", async ({ page }) => {
@@ -195,6 +251,8 @@ test("news: going back from a story returns to the same place in the feed", asyn
   await page.goto("/app/news");
   const rows = page.locator("a.news-row");
   await expect(rows.nth(20)).toBeAttached();
+  // The feed rises 12px into place as it loads, so scrolling before that ends lands 12px off.
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState === "finished"));
   await rows.nth(20).scrollIntoViewIfNeeded();
   const scrolled = await page.evaluate(() => window.scrollY);
   expect(scrolled).toBeGreaterThan(0);
@@ -295,7 +353,9 @@ test("account: sign up, connect keys, log out, and log back in to where you were
   await connect.click();
   await expect(page.getByRole("alert")).toContainText(/paper/i);
 
-  await alpaca.getByLabel("API key ID").fill("PKE2EGOODKEY0001");
+  // A paper key of this run's own, since no two agents may trade one account.
+  const paperKey = `PKE2EGOOD${Date.now()}`;
+  await alpaca.getByLabel("API key ID").fill(paperKey);
   await openrouter.getByLabel("API key").fill("sk-or-e2e-good-key-1");
   await connect.click();
   await expect(alpaca.getByText(/Connected/)).toBeVisible();
@@ -304,7 +364,7 @@ test("account: sign up, connect keys, log out, and log back in to where you were
   await expect(alpaca.getByLabel("API key ID")).toHaveValue("");
   await page.reload();
   await expect(alpaca.getByText(/Connected/)).toBeVisible();
-  await expect(page.locator("body")).not.toContainText("PKE2EGOODKEY0001");
+  await expect(page.locator("body")).not.toContainText(paperKey);
   await expect(page.locator("body")).not.toContainText("sk-or-e2e-good-key-1");
   await fitsWidth(page);
 
@@ -409,7 +469,8 @@ test("reports: request a cached insight, and keep a private history", async ({ p
   await page.goto("/app/runs");
   const latestTicker = page.locator('a[href^="/app/runs/"][href*="/"]').filter({ hasText: /^[A-Z.]+$/ }).first();
   const symbol = (await latestTicker.textContent()).trim();
-  await page.getByRole("link", { name: "Reports", exact: true }).first().click();
+  await openMore(page);
+  await page.getByRole("link", { name: "Reports", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Stock reports", exact: true })).toBeVisible();
   const request = page.getByRole("button", { name: "Request report", exact: true });
   await expect(request).toBeEnabled({ timeout: 90_000 });
@@ -622,7 +683,7 @@ test("mobile: the bottom tabs reach each page, and targets are a thumb's size", 
   await logIn(page);
   await page.goto("/app");
   const tabs = page.getByRole("navigation", { name: "Main" });
-  if (page.viewportSize().width >= 768) {
+  if (page.viewportSize().width >= 1024) {
     await expect(tabs).toBeHidden();
     return;
   }
@@ -631,7 +692,6 @@ test("mobile: the bottom tabs reach each page, and targets are a thumb's size", 
     ["News", "/app/news", "News"],
     ["Runs", "/app/runs", "Shortlist"],
     ["Policy", "/app/policy", "In plain English"],
-    ["Reports", "/app/reports", "Stock reports"],
     ["Portfolio", "/app", "Open positions"],
   ]) {
     const tab = tabs.getByRole("link", { name, exact: true });
@@ -643,6 +703,19 @@ test("mobile: the bottom tabs reach each page, and targets are a thumb's size", 
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
     await fitsWidth(page);
   }
+  // Reports and Specialists sit behind More, which opens upward and lights while one is open.
+  const more = tabs.getByRole("button", { name: "More", exact: true });
+  await more.click();
+  await expect(more).toHaveAttribute("aria-expanded", "true");
+  for (const name of ["Reports", "Specialists"]) {
+    const box = await tabs.getByRole("link", { name, exact: true }).boundingBox();
+    expect(box.height, `${name} item height`).toBeGreaterThanOrEqual(44);
+  }
+  await tabs.getByRole("link", { name: "Specialists", exact: true }).click();
+  await expect(page).toHaveURL(/\/app\/specialists$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Specialists" })).toBeVisible();
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await expect(more).toHaveClass(/text-accent/);
 });
 
 // Nothing inside the page scrolls sideways either, which would hide a column off the edge.

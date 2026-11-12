@@ -101,7 +101,7 @@ Both trade only on an Alpaca paper account: the broker client refuses any other 
 Set `TRADING_AGENT_DISABLE_ORDERS=1` to keep every order off while you experiment.
 :::
 
-A server that was down at 7:30 a.m. has no team run that day.
+A server that was down or asleep at 7:30 a.m. starts the run as soon as it is back, until 9:15; one that is down for that whole window has no team run that day.
 The admin can [start it by hand](/guide/manual-run), and a user can press **Start today's run** in Settings.
 
 ## Next steps

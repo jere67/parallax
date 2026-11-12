@@ -4,6 +4,7 @@ Each check spends no model request and places no order. It answers in words a us
 never with the key, and treats a provider that cannot be reached differently from one that
 refused: the first is worth trying again, the second is a wrong key.
 """
+import hashlib;
 import os;
 import httpx;
 import from action.broker { Account, Broker, BrokerError, NotPaper }
@@ -16,11 +17,19 @@ glob FULL_RUN_REQUESTS: int = 460;
 glob CHECK_TIMEOUT_S: float = 15.0;
 
 """What a check found: `problem` is empty when the key works, `hint` is what a reader may see of
-it, and `note` is anything worth telling its owner."""
+it, `note` is anything worth telling its owner, and `account` is the Alpaca account the keys
+open (`account_fingerprint`)."""
 obj KeyCheck {
     has problem: str = "",
         hint: str = "",
-        note: str = "";
+        note: str = "",
+        account: str = "";
+}
+
+"""A digest of an Alpaca account number: enough to tell two agents on one account apart from two
+on their own, without storing the number."""
+def account_fingerprint(number: str) -> str {
+    return hashlib.sha256(number.encode()).hexdigest()[:16] if number else "";
 }
 
 """The last four characters, which identify a key without giving it away."""
@@ -55,7 +64,7 @@ def check_alpaca(key: str, secret: str) -> KeyCheck {
         if found.trading_blocked {
             return KeyCheck(problem="Alpaca has blocked trading on this paper account. Reset it from Alpaca's dashboard, then connect it again.");
         }
-        return KeyCheck(hint=tail_of(found.number));
+        return KeyCheck(hint=tail_of(found.number), account=account_fingerprint(found.number));
     } except BrokerError as e {
         return KeyCheck(problem=alpaca_words(e));
     }

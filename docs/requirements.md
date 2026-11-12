@@ -227,7 +227,7 @@ The following user needs are the basis for the functional requirements and user 
 | Gross exposure | No more than 90%; maintain at least 10% cash. |
 | New positions | No more than 3 new positions per day; retain the highest-conviction three if more qualify. |
 | Daily turnover | No more than 25% of portfolio value; scale down as required, with exits prioritized. |
-| Drawdown breaker | When portfolio drawdown reaches 10% from peak, halt new buys; exits and protective stops remain active. |
+| Drawdown breaker | When portfolio equity is 10% below its highest close of the last 63 sessions, halt new buys; exits and protective stops remain active. |
 | Market-regime cap | When SPY is below its 200-day average and its 20-day realized volatility, annualized, is above 30%, cap gross exposure at 50%. |
 | Earnings blackout | Reject new entries within 2 trading days before earnings and publish them as insight-only opportunities. |
 | Liquidity | Any order shall be no larger than 1% of 20-day average daily volume. |

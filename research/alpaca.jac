@@ -187,7 +187,7 @@ def assets(budget: RunBudget, client: SourceClient | None = None) -> dict[str, A
             fractionable=bool(row.get("fractionable")),
             shortable=bool(row.get("shortable")),
             easy_to_borrow=bool(row.get("easy_to_borrow")),
-            stamp=fetched.stamp(fetched.fetched_at)
+            stamp=fetched.snapshot()
         )
         for row in json.loads(fetched.body)
     };
@@ -213,7 +213,7 @@ def market_calendar(
             open=row["open"],
             close=row["close"],
             early_close=row["close"] < REGULAR_CLOSE,
-            stamp=fetched.stamp(fetched.fetched_at)
+            stamp=fetched.snapshot()
         )
         for row in json.loads(fetched.body)
     ];

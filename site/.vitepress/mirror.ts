@@ -42,6 +42,13 @@ export const DOCS: MirroredDoc[] = [
     description: "Every order sequence the executor uses, tried on the team's Alpaca paper account."
   },
   {
+    file: 'docs/evaluation/screen-backtest.md',
+    route: '/design/eval-screen-backtest',
+    title: 'Screen backtest',
+    eyebrow: 'Evaluation',
+    description: 'The screen, sizing, and risk gate replayed on 2016 to 2026 with point-in-time S&P 500 membership.'
+  },
+  {
     file: 'docs/runs/2026-10-15-research-exit-run.md',
     route: '/design/run-research',
     title: 'Research exit run',

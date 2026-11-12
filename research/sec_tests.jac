@@ -106,6 +106,15 @@ test "the filing index is newest first, with 8-K items in words and index-page c
     assert events[1].item_names() == ["results of operations (earnings)", "financial statements and exhibits"];
 }
 
+test "a filer with no XBRL facts, which SEC answers with an empty object, is a gap and not an error" {
+    fake.reset();
+    # Recorded 2026-11-11 for John Hancock Income Securities Trust (JHS), a closed-end fund.
+    (funda, gaps) = fundamentals("JHS", "0000759866", budget(), client("sec_data"));
+    assert fake.misses == [];
+    assert funda is None;
+    assert gaps == ["sec.companyfacts: JHS has no usable XBRL facts"];
+}
+
 test "company facts reduce to the latest quarter, trailing twelve months, and the balance sheet" {
     fake.reset();
     (funda, gaps) = fundamentals("AAPL", AAPL, budget(), client("sec_data"));

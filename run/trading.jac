@@ -12,8 +12,9 @@ afternoon steps with it, and does whatever step is due and not yet done:
 - ten minutes before the close (3:50 p.m., or 12:50 on an early close): cancel the run's
   unfilled DAY orders and place stops for what filled;
 - thirty minutes after the close (4:30 p.m., or 1:30): reconcile with Alpaca and mark the
-  portfolio, once a day, then score the panel's votes whose windows have closed and simulate
-  the forward-test baselines;
+  portfolio, once a day, then score the panel's votes and decisions and the screens whose
+  windows have closed, simulate the forward-test baselines, and store the day's evaluation
+  (analysis/evaluation.jac);
 - on or after the date the operator set in FORWARD_TEST_ENV, start the forward test
   (action/baselines.jac), once: at the first tick of a session day, as long as the day's run
   has not executed and the cancel window has not begun, so a server started after 9:45 still
@@ -32,9 +33,10 @@ import from action.baselines { advance_baselines, baselines_of, forward_test_day
 import from action.broker { Broker }
 import from action.executor { MarketView, close_day_orders, decisions_of, execute_run, keep_stops, market_view, open_positions, sync_orders }
 import from action.reconcile { marks_of, reconcile }
+import from analysis.evaluation { evaluate, record_evaluation, start_of }
 import from analysis.history { History }
 import from analysis.policy { gate_config, sizing_config }
-import from analysis.scoring { score_votes }
+import from analysis.scoring { score_screens, score_votes }
 import from models.graph { DailyMark, Portfolio, PortfolioMode, Ran, Run, RunStatus }
 import from research.alpaca { MarketDay, market_calendar }
 import from research.collector { run_budget }
@@ -138,9 +140,9 @@ def trading_step(portfolio: Portfolio, run: Run | None, day: str, local: datetim
     return lines;
 }
 
-"""Whether the evening steps (vote scoring, the baselines) still have work for `run`."""
+"""Whether the evening steps (scoring, the baselines, the evaluation) still have work for `run`."""
 def evening_due(portfolio: Portfolio, run: Run) -> bool {
-    return not run.votes_scored_at or (not run.baselines_at and bool(baselines_of(portfolio)));
+    return not run.votes_scored_at or (not run.baselines_at and bool(baselines_of(portfolio))) or not run.evaluated_at;
 }
 
 """Start the forward test once the operator has set its date, on a session day before the
@@ -200,16 +202,31 @@ def day_steps(portfolio: Portfolio, run: Run | None, day: str, local: datetime, 
     if trading {
         lines.extend(trading_step(portfolio, run, day, local, now, times, deps));
     }
+    history = deps.history or History();
     if local >= times.reconcile_at and run is not None and not run.votes_scored_at {
-        found = score_votes(portfolio, now, deps.history or History());
-        run.votes_scored_at = now.isoformat();
+        found = score_votes(portfolio, now, history);
         lines.append(f"score: {found.line()}");
+        lines.append(f"score: {score_screens(portfolio, now, history).line()}");
+        run.votes_scored_at = now.isoformat();
     }
     if local >= times.reconcile_at and run is not None and not run.baselines_at and baselines_of(portfolio) {
-        lines.extend(f"baseline: {line}" for line in advance_baselines(portfolio, now, deps.history or History()));
+        lines.extend(f"baseline: {line}" for line in advance_baselines(portfolio, now, history));
         run.baselines_at = now.isoformat();
     }
+    if local >= times.reconcile_at and run is not None and run.votes_scored_at and not run.evaluated_at and (run.baselines_at or not baselines_of(portfolio)) {
+        lines.append(f"evaluate: {evaluation_line(portfolio, now, day, history)}");
+        run.evaluated_at = now.isoformat();
+    }
     return lines;
+}
+
+"""Rebuild and store `portfolio`'s evaluation through `day`, and say what it holds."""
+def evaluation_line(portfolio: Portfolio, now: datetime, day: str, history: History) -> str {
+    runs = [portfolio ->:Ran:->[?:Run]];
+    start = start_of(portfolio, runs) or day;
+    body = evaluate(portfolio, history.read_sessions(start, day), now);
+    record_evaluation(portfolio, body);
+    return f"{body.sessions} session{'' if body.sessions == 1 else 's'} from {body.start_day or day}, {len(body.comparisons)} baselines compared, {body.screen.runs} screens and {sum(s.votes for s in body.specialists)} votes scored";
 }
 
 """The scheduled tick on the team portfolio. Never raises: a failure is logged and recorded
@@ -225,12 +242,38 @@ def team_trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = T
     }
 }
 
+# The SQLSTATEs the runtime replays a unit of work on (jaclang's session, `run_request`).
+glob CONFLICT_CODES: set[str] = {"40001", "40P01", "55P03", "08006"};
+
+"""True when `e`, or an error it came from, is the database asking for a retry: a concurrent
+transaction won. The runtime then rolls the whole firing back and replays it, which is safe
+because every order's client ID is fixed by the run and the position, so a replay finds the
+orders the first attempt placed (TDD §8, idempotency)."""
+def db_conflict(e: BaseException) -> bool {
+    cur: BaseException | None = e;
+    for _ in range(8) {
+        if cur is None {
+            return False;
+        }
+        for arg in cur.args {
+            if isinstance(arg, dict) and arg.get("C") in CONFLICT_CODES {
+                return True;
+            }
+        }
+        cur = cur.__cause__ or cur.__context__;
+    }
+    return False;
+}
+
 """`trading_tick`, with a failure logged and recorded on the day's run, for the next tick to try
-again."""
+again. A database conflict is not a failure: it goes up to the runtime, which replays the firing."""
 def guarded_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps) -> list[str] {
     try {
         return trading_tick(portfolio, now, deps);
     } except Exception as e {
+        if db_conflict(e) {
+            raise;
+        }
         reason = redact(f"{type(e).__name__}: {str(e)[:300]}");
         LOG.error("trading tick failed: %s", reason);
         run = run_for(portfolio, now.astimezone(NEW_YORK).date().isoformat());

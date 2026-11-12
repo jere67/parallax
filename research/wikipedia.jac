@@ -82,7 +82,7 @@ def constituents(budget: RunBudget, client: SourceClient | None = None) -> list[
             sub_industry=row["GICS Sub-Industry"],
             cik=row["CIK"],
             date_added=row["Date added"],
-            stamp=fetched.stamp(fetched.fetched_at, source_url=page)
+            stamp=fetched.snapshot(source_url=page)
         )
         for row in rows
     ];
@@ -111,7 +111,7 @@ def index_changes(budget: RunBudget, client: SourceClient | None = None) -> tupl
                 removed=alpaca_symbol(row["Removed Ticker"]),
                 removed_name=row["Removed Security"],
                 reason=row["Reason"],
-                stamp=fetched.stamp(fetched.fetched_at, source_url=page)
+                stamp=fetched.snapshot(source_url=page)
             )
         );
     }

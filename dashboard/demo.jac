@@ -23,16 +23,17 @@ import threading;
 import from datetime { date, datetime, time, timedelta, timezone }
 import from action.baselines { SimDay, baselines_of, simulate_equal_weight, simulate_spy }
 import from action.executor { limit_price, order_id_for, run_regime, stop_id_for }
-import from action.gate { Book, BookPosition, GATE_VERSION, GateConfig, GateResult, Instrument, Proposal, check_orders }
+import from action.gate { Book, BookPosition, GATE_VERSION, GateConfig, GateResult, Instrument, Proposal, breaker_peak, check_orders }
 import from action.insights { publish_card }
 import from action.sizing { SizingCandidate, size_positions }
 import from agents.models { FALLBACK_MODEL, PRIMARY_MODEL }
 import from agents.specialists { packet }
 import from analysis.consensus { CONSENSUS_VERSION, consensus, draft_action }
-import from analysis.history { bar }
+import from analysis.evaluation { evaluate, record_evaluation }
+import from analysis.history { History, bar }
 import from research.indicators { momentum, range_position, relative_strength, rsi, sma }
 import from dashboard.ui.format { count }
-import from analysis.scoring { BENCHMARK, excess_return, vote_window }
+import from analysis.scoring { BENCHMARK, score_screens, score_votes as score_all }
 import from models.agents { Domain, Evidence, MacroReport, ResearchReport, RiskRegime, Specialist, Stance, Vote }
 import from models.graph {
     Baseline,
@@ -244,6 +245,7 @@ obj DemoSim {
         bias: dict[str, float] = {},
         cash: float = STARTING_CASH,
         peak: float = STARTING_CASH,
+        closes: list[float] = [],
         decisions: int = 0,
         orders: int = 0,
         macro_body: MacroReport | None = None;
@@ -276,7 +278,7 @@ obj DemoSim {
             log.extend(self.close(run, day));
             run.action_log = log;
         }
-        self.score_votes();
+        self.evening_review();
     }
 
     """Daily bars for every stock and SPY: a market factor plus each stock's own move."""
@@ -595,8 +597,9 @@ obj DemoSim {
             t: Instrument(ticker=t, price=prices[t], sector=c.sector, tradable=True, trade_age_minutes=0.2, atr_14=c.atr_14, volume_20=c.volume_20, sessions_to_earnings=c.sessions_to_earnings)
             for (t, (c, d)) in decided.items()
         };
-        book = Book(equity=equity, peak_equity=max(self.peak, equity), positions={t: BookPosition(ticker=t, qty=p.qty, price=prices[t], sector=p.sector) for (t, p) in held.items()});
-        results = check_orders(proposals, book, instruments, run_regime(run), GateConfig());
+        gate = GateConfig();
+        book = Book(equity=equity, peak_equity=max(breaker_peak(STARTING_CASH, self.closes, gate.drawdown_window), equity), positions={t: BookPosition(ticker=t, qty=p.qty, price=prices[t], sector=p.sector) for (t, p) in held.items()});
+        results = check_orders(proposals, book, instruments, run_regime(run), gate);
         approved = 0;
         sells = [r for r in results if r.side == OrderSide.SELL];
         for r in sells + [r for r in results if r.side == OrderSide.BUY] {
@@ -768,6 +771,7 @@ obj DemoSim {
         value = self.positions_value(day);
         equity = self.cash + value;
         self.peak = max(self.peak, equity);
+        self.closes.append(equity);
         self.portfolio.peak_equity = self.peak;
         drawdown = 1.0 - equity / self.peak;
         public(self.portfolio +>:Marked():+> DailyMark(day=day, equity=equity, cash=self.cash, positions_value=value, peak_equity=self.peak, marked_at=marked, drawdown=drawdown, open_positions=len(self.held())));
@@ -785,20 +789,23 @@ obj DemoSim {
         return lines;
     }
 
-    """Score every vote whose window closed by the last session, as the evening job does."""
-    def score_votes {
-        closes = {t: {d: b.close for (d, b) in found.items()} for (t, found) in self.bars.items()};
-        scored_at = at(self.days[-1], "16:30");
-        for run in [self.portfolio ->:Ran:->[?:Run]] {
-            for c in [run ->:Covers:->[?:Coverage]] {
-                for v in [c ->:Voted:->[?:VoteRecord]] {
-                    window = vote_window(self.sessions, run.run_date, v.body.horizon_days);
-                    if window is not None {
-                        v.excess_return = excess_return(closes, v.ticker, window[0], window[1]);
-                        v.scored_at = scored_at;
-                    }
-                }
-            }
+    """The last evening's review, through the real scorers and evaluation on the demo's own bars
+    and calendar, with the demo's stocks as the whole index: every vote, decision, and screen whose
+    window closed by the last session is scored, and the evaluation is stored."""
+    def evening_review {
+        def read_bars(symbols: list[str], start: str, end: str) -> dict[str, dict[str, Bar]] {
+            return {t: {d: b for (d, b) in self.bars[t].items() if start <= d <= end} for t in symbols if t in self.bars};
         }
+        def read_sessions(start: str, end: str) -> list[str] {
+            return [s for s in self.sessions if start <= s <= end];
+        }
+        def read_members(day: str) -> list[str] {
+            return [s.ticker for s in UNIVERSE];
+        }
+        history = History(bars=read_bars, sessions=read_sessions, members=read_members);
+        now = datetime.fromisoformat(at(self.days[-1], "20:30"));
+        score_all(self.portfolio, now, history);
+        score_screens(self.portfolio, now, history);
+        record_evaluation(self.portfolio, evaluate(self.portfolio, self.sessions, now));
     }
 }

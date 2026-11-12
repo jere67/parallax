@@ -397,9 +397,9 @@ The Orchestrator talks only to the agent layers; Alpaca sees nothing until the r
 
 ### Daily schedule (Eastern Time)
 
-The scheduler evaluates cron expressions in UTC with day 0 as Monday ([scheduler reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/jac-scale-scheduler.md)), so each job is registered at both its EDT and EST offsets (for example `cron="30 11,12 * * 0-4"`) and proceeds only if New York time matches.
+The scheduler evaluates cron expressions in UTC with day 0 as Monday ([scheduler reference](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/reference/plugins/jac-scale-scheduler.md)), so each job is registered at both its EDT and EST offsets (for example `cron="* 11-14 * * 0-4"`) and proceeds only if New York time matches.
 Static jobs take a Postgres lease so that a multi-replica deploy fires each tick once ([release notes, 0.37.5](https://github.com/jaseci-labs/jac/blob/v0.37.12/jac/jaclang/cli/docs/community/release_notes/jaclang.md)); the run-date idempotency key still stops a second firing if the lease check fails.
-The morning job lives in `run/jobs.jac`, imported by `main.jac` so the server registers it at startup; it runs as the system user, which reaches `root.shared`, and only a firing between 7:30 and 7:45 a.m. New York time on a weekday starts a run.
+The morning job lives in `run/jobs.jac`, imported by `main.jac` so the server registers it at startup; it runs as the system user, which reaches `root.shared`, and it fires every weekday minute but starts a run only between 7:30 and 9:15 a.m. New York time while the team portfolio has no run for the day, so a server that was asleep or down at 7:30 still runs the day and finishes before the orders go out at 9:45.
 
 | Time | Phase | Owner | Output |
 | --- | --- | --- | --- |
@@ -765,7 +765,7 @@ The MVP is long only: SELL means exit or trim, never short.
 | Gross exposure | 90% (10% cash floor) | Scale all buys down |
 | New positions per day | 3 | Keep the highest-conviction 3 |
 | Daily turnover | 25% of portfolio value | Scale down, exits first |
-| Drawdown breaker | Halt new buys after a 10% drawdown from peak | Exits and stops still run |
+| Drawdown breaker | Halt new buys once equity is 10% below its highest close of the last 63 sessions (about three months) | Exits and stops still run |
 | Regime filter | If SPY is below its 200-day average and its 20-day realized volatility, annualized, is above 30%, gross exposure is capped at 50%; if either figure is missing, the cap applies too | Scale buys down |
 | Earnings blackout | No new entry within 2 trading days before earnings | Reject the entry; log it as insight only |
 | Liquidity | Order no larger than 1% of 20-day average daily volume | Resize down |
@@ -906,7 +906,8 @@ A Live committee page (real-time run progress through polling or a [streaming en
 ### Mobile
 
 The dashboard is an installable progressive web app.
-Under 768px the top bar's links give way to a bottom tab bar, safe-area insets keep it clear of a phone's notch and home indicator, and form controls are at least 44px tall with 16px text, since iOS zooms a page when a smaller field takes focus.
+Under 1024px the top bar's links give way to a bottom tab bar, since eight links no longer fit a tablet.
+Safe-area insets keep it clear of a phone's notch and home indicator, and form controls are at least 44px tall with 16px text, since iOS zooms a page when a smaller field takes focus.
 On a phone the policy assistant is a bottom sheet behind a floating button, and the same component is a sidebar on a wide screen.
 A table on a wide screen is a list of cards on a phone, so the shortlist, positions, and orders never scroll sideways: the page renders both, and CSS shows the one that fits.
 A long list of orders or closed trades shows its ten newest cards and adds ten on each press, so it does not run the page on for screens.
@@ -1161,11 +1162,15 @@ The forward test starts on the morning of the date set in `TRADING_AGENT_FORWARD
 | Arbiter downgrade value | Return of trades the Arbiter blocked, had they been taken | Negative (blocking helped) |
 | Reliability | Runs producing a valid, complete decision set | At least 98% |
 | Risk-gate bypasses | Orders not traced to a gate approval | Zero |
-| Run latency | Preflight to orders submitted | Under 2 hours |
+| Run latency | Preflight to the run's decisions (orders wait for 9:45 a.m. by design, so time to orders measures the clock) | Under 2 hours |
 | Model usage | Free-model requests per run and per day | Within the daily cap |
 
 Results are reported with bootstrap confidence intervals and without cherry-picking windows.
 The final presentation says plainly whether the full system beat each baseline and how confident the team can be.
+
+Each evening review computes these metrics from the graph (`analysis/evaluation.jac`) and stores the latest as an `EvaluationRecord` on the portfolio, which the Results page (`/app/results`) and the final report read.
+To make that possible, the evening scoring also scores every decision over its ten-session window, whatever its action, so a buy the Arbiter blocked is judged as if taken, and scores each run's screen against every other S&P 500 member that day.
+Comparisons with a baseline use a moving-block bootstrap over paired daily returns (blocks of 5 sessions, 2,000 resamples, a fixed seed); the screen's spread resamples runs in the same blocks, since neighboring windows overlap; hit rates use the Wilson interval.
 
 ## 14. Security, compliance, observability, and testing
 

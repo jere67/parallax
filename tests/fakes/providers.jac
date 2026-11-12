@@ -8,6 +8,9 @@ import from urllib.parse { parse_qs, urlsplit }
 
 glob GOOD_ALPACA: str = "PKGOODKEY0001";
 glob GOOD_SECRET: str = "good-secret-value-1";
+# A second user's own paper account; it shares GOOD_SECRET for brevity.
+glob OTHER_ALPACA: str = "PKGOODKEY0002";
+glob ACCOUNT_NUMBERS: dict[str, str] = {GOOD_ALPACA: "PA3TEST7890", OTHER_ALPACA: "PA3TEST4321"};
 glob LIVE_ALPACA: str = "AKLIVEKEY0001";
 glob GOOD_OPENROUTER: str = "sk-or-good-key-0001";
 glob SMALL_OPENROUTER: str = "sk-or-small-key-002";
@@ -15,6 +18,7 @@ glob GOOD_FINNHUB: str = "finnhub-good-key-01";
 
 obj FakeProviders {
     has alpaca_seen: list[str] = [],
+        alpaca_paths: list[tuple[str, str]] = [],
         positions: list[dict[str, str]] = [],
         down: bool = False;
     has _server: ThreadingHTTPServer | None = None;
@@ -67,10 +71,11 @@ class ProviderHandler(BaseHTTPRequestHandler) {
     def alpaca(self: ProviderHandler, fake: FakeProviders, path: str) {
         key = self.headers.get("APCA-API-KEY-ID", "");
         fake.alpaca_seen.append(key);
-        if key != GOOD_ALPACA or self.headers.get("APCA-API-SECRET-KEY", "") != GOOD_SECRET {
+        fake.alpaca_paths.append((key, path));
+        if key not in ACCOUNT_NUMBERS or self.headers.get("APCA-API-SECRET-KEY", "") != GOOD_SECRET {
             self.reply(403, {"message": "forbidden."});
         } elif path == "/v2/account" {
-            self.reply(200, {"account_number": "PA3TEST7890", "status": "ACTIVE", "equity": "100000", "cash": "100000", "buying_power": "200000", "last_equity": "100000", "trading_blocked": False, "account_blocked": False});
+            self.reply(200, {"account_number": ACCOUNT_NUMBERS[key], "status": "ACTIVE", "equity": "100000", "cash": "100000", "buying_power": "200000", "last_equity": "100000", "trading_blocked": False, "account_blocked": False});
         } elif path == "/v2/positions" {
             self.reply(200, fake.positions);
         } elif path == "/v2/orders" {
