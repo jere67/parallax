@@ -20,6 +20,7 @@ action/         broker client, sizing, risk gate, executor, reconciliation, insi
 run/            daily run, Run Guard, trading day, scheduled jobs, health
 market/         whole-market data for the screener and stock pages
 dashboard/      client pages and components
+mobile/         the phone app for Expo Go, its own Jac project
 assets/         static files, plus the app's manifest, icons, and service worker at the root
 tests/          integration and smoke tests, fixtures, fakes
 e2e/            the dashboard's browser checks on each device (Playwright)
