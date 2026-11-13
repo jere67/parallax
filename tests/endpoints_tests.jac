@@ -12,15 +12,30 @@ glob WALKER_DECL: re.Pattern[str] = re.compile(r"walker:(?:pub|priv)\s+(\w+)");
 # exports for other client modules, not endpoints.
 glob BROWSER_GLOBAL: re.Pattern[str] = re.compile(r"\b(?:window|document|localStorage)\.");
 
+"""The server's source files. A folder below the root with its own jac.toml is a separate
+project (the phone app in mobile/), so its :pub functions are not this server's endpoints."""
+def server_sources -> list[Path] {
+    def skipped(path: Path) -> bool {
+        return bool(SKIP_DIRS & set(path.relative_to(PROJECT_ROOT).parts));
+    }
+    projects = [
+        config.parent
+        for config in PROJECT_ROOT.rglob("jac.toml")
+        if config.parent != PROJECT_ROOT and not skipped(config)
+    ];
+    return [
+        path
+        for path in PROJECT_ROOT.rglob("*.jac")
+        if not skipped(path) and not any(project in path.parents for project in projects)
+    ];
+}
+
 """Names of the functions and walkers marked :pub or :priv in the source, skipping client
 components and modules that use browser globals."""
 def declared_endpoints -> tuple[set[str], set[str]] {
     functions: set[str] = set();
     walkers: set[str] = set();
-    for path in PROJECT_ROOT.rglob("*.jac") {
-        if SKIP_DIRS & set(path.relative_to(PROJECT_ROOT).parts) {
-            continue;
-        }
+    for path in server_sources() {
         source = path.read_text();
         if BROWSER_GLOBAL.search(source) {
             continue;
@@ -87,9 +102,8 @@ test "only health answers an anonymous caller; everything else takes an account"
     # which reads no data. The pages' own wrappers (dashboard/ui) are client code.
     public = {
         found.group(1)
-        for path in PROJECT_ROOT.rglob("*.jac")
-        if not SKIP_DIRS & set(path.relative_to(PROJECT_ROOT).parts)
-            and "ui" not in path.relative_to(PROJECT_ROOT).parts
+        for path in server_sources()
+        if "ui" not in path.relative_to(PROJECT_ROOT).parts
             and not BROWSER_GLOBAL.search(path.read_text())
         for found in re.finditer(r"def:pub\s+(\w+)([^{;]*)", path.read_text())
         if "JsxElement" not in found.group(2)
