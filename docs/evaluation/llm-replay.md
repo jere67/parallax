@@ -10,11 +10,10 @@ This is layer 1 of the evaluation plan (TDD §13), in its smallest form: 10 cons
 
 ## Answer
 
-**In progress: 5 of 50 pairs are done.**
-The replay shares the team's free-model allowance, so it runs in the hours the live morning runs do not need, and this section is final when the last day is scored.
-5 of 5 day and ticker pairs reached the Arbiter, and 25 of 25 votes parsed.
-Votes that took a side were right 42% of the time (8 of 19), with a 95% interval of 23% to 64%: not distinguishable from a coin flip.
-The pipeline bought 2 times, with a mean 10-session excess return over SPY of -0.31%.
+**Partly: the pipeline runs on history-only data, but not every check passed (see the sanity checks), and its votes beat a coin flip, though 10 overlapping days are a small sample.**
+49 of 50 day and ticker pairs reached the Arbiter, and 245 of 245 votes parsed.
+Votes that took a side were right 64% of the time (118 of 184), with a 95% interval of 57% to 71%: better than a coin flip.
+The pipeline bought 9 times, with a mean 10-session excess return over SPY of +5.56%.
 No report cited anything dated after its decision.
 
 ## Method
@@ -72,29 +71,29 @@ Each cell is the action, the consensus score C, and the ticker's 10-session exce
 | Day | MRNA | MDT | META | MSFT | NVDA |
 | --- | --- | --- | --- | --- | --- |
 | 10-15 | vetoed, C +0.18, -5.7% | **buy**, C +0.30, +0.2% | none, C -0.06, -17.3% | **buy**, C +0.28, -0.9% | none, C +0.13, -3.0% |
-| 10-16 |  |  |  |  |  |
-| 10-19 |  |  |  |  |  |
-| 10-20 |  |  |  |  |  |
-| 10-21 |  |  |  |  |  |
-| 10-22 |  |  |  |  |  |
-| 10-23 |  |  |  |  |  |
-| 10-26 |  |  |  |  |  |
-| 10-27 |  |  |  |  |  |
-| 10-28 |  |  |  |  |  |
+| 10-16 | none, C -0.00, -5.5% | **buy**, C +0.22, +2.1% | vetoed, C +0.14, -14.9% | vetoed, C +0.16, -1.4% | none, C -0.06, -1.3% |
+| 10-19 | none, C +0.06, +2.7% | **buy**, C +0.17, +2.9% | none, C -0.01, -12.3% | none, C -0.07, -0.4% | none, C -0.06, -3.4% |
+| 10-20 | none, C -0.01, -0.8% | vetoed, C +0.14, +8.9% | none, C -0.17, -12.1% | none, C +0.09, -3.1% | none, C -0.10, -5.0% |
+| 10-21 | none, C -0.08, -3.7% | **buy**, C +0.20, +6.4% | none, C -0.17, -8.6% | none, C n/a, -0.1% | none, C -0.12, -2.6% |
+| 10-22 | none, C +0.06, +5.9% | **buy**, C +0.20, +13.6% | none, C -0.06, -8.9% | **buy**, C +0.23, +5.1% | none, C -0.11, -9.0% |
+| 10-23 | none, C -0.15, +23.2% | vetoed, C +0.16, +12.6% | none, C -0.10, -2.7% | none, C +0.07, +6.9% | none, C -0.12, -10.4% |
+| 10-26 | none, C +0.07, +30.3% | **buy**, C +0.19, +9.9% | none, C -0.11, -1.8% | vetoed, C +0.16, +4.4% | none, C -0.22, -8.3% |
+| 10-27 | none, C -0.08, +36.9% | vetoed, C +0.15, +10.1% | none, C -0.03, +3.4% | none, C +0.12, +4.0% | none, C -0.17, -15.6% |
+| 10-28 | none, C -0.13, +23.2% | **buy**, C +0.19, +10.7% | none, C -0.16, +6.0% | vetoed, C +0.15, +2.9% | none, C -0.17, -19.9% |
 
-The consensus rule drafted 3 buys, and the Arbiter confirmed 2 and vetoed 1.
-The confirmed buys were MDT on 10-15 (+0.2%), MSFT on 10-15 (-0.9%).
-The vetoed drafts were MRNA on 10-15 (-5.7%).
+The consensus rule drafted 17 buys, and the Arbiter confirmed 9 and vetoed 8.
+The confirmed buys were MDT on 10-15 (+0.2%), MSFT on 10-15 (-0.9%), MDT on 10-16 (+2.1%), MDT on 10-19 (+2.9%), MDT on 10-21 (+6.4%), MDT on 10-22 (+13.6%), MSFT on 10-22 (+5.1%), MDT on 10-26 (+9.9%), MDT on 10-28 (+10.7%).
+The vetoed drafts were MRNA on 10-15 (-5.7%), META on 10-16 (-14.9%), MSFT on 10-16 (-1.4%), MDT on 10-20 (+8.9%), MDT on 10-23 (+12.6%), MSFT on 10-26 (+4.4%), MDT on 10-27 (+10.1%), MSFT on 10-28 (+2.9%).
 
 How often each specialist's votes that took a side matched the sign of the excess return:
 
 | Specialist | Votes that took a side | Right | Hit rate |
 | --- | --- | --- | --- |
-| flow | 5 | 3 | 60% |
-| fundamentals | 3 | 1 | 33% |
-| macro | 5 | 2 | 40% |
-| news | 3 | 1 | 33% |
-| technical | 3 | 1 | 33% |
+| flow | 43 | 21 | 49% |
+| fundamentals | 31 | 17 | 55% |
+| macro | 42 | 32 | 76% |
+| news | 31 | 22 | 71% |
+| technical | 37 | 26 | 70% |
 
 A vote's horizon can be longer than 10 sessions, so this scores every vote on the same short window.
 
@@ -108,14 +107,14 @@ That is the noise K = 1 accepts; more samples per specialist would average some 
 
 ## Sanity checks
 
-- **Completion:** 5 of 5 pairs reached a consensus and the Arbiter; 0 were held for missing research, and 0 had any error.
-- **Parsed votes:** 25 of 25.
-- **Stances:** 16 buy, 6 hold, 3 sell.
-- **Confidence:** from 0.35 to 0.80.
+- **Completion:** 49 of 50 pairs reached a consensus and the Arbiter; 1 were held for missing research, and 0 had any error.
+- **Parsed votes:** 245 of 245.
+- **Stances:** 97 buy, 87 sell, 61 hold.
+- **Confidence:** from 0.30 to 0.80.
 - **Late evidence:** 0 items dated at or after the decision. A first pass of three days found 10, all of them the next-earnings snapshot dated when it was read rather than as of the decision; that was fixed and the days rerun.
-- **Requests:** 58 free requests, about 12 per pair.
-- **Wall time:** 9 minutes of running, spread over the hours the allowance allowed.
-- **Models:** nvidia/nemotron-3.5-super-vl:free answered 40.
+- **Requests:** 595 free requests, about 12 per pair.
+- **Wall time:** 116 minutes of running, spread over the hours the allowance allowed.
+- **Models:** nvidia/nemotron-3.5-super-vl:free answered 395.
 
 ## Limits
 
