@@ -57,6 +57,13 @@ glob CHUNK: int = 1000;
 # A move that has said nothing for this long died with its process.
 glob STALE_S: float = 1800.0;
 glob MAX_UPLOAD_CHARS: int = 80000000;
+# JacHammer's proxy answers 502 to a request body over 1 MiB, so the file goes up in parts of at
+# most this many base64 characters, kept in kv_state until the move starts or they expire.
+glob PART_CHARS: int = 524288;
+glob MAX_PARTS: int = MAX_UPLOAD_CHARS // PART_CHARS + 1;
+glob PART_PREFIX: str = "parallax:transfer-part:";
+glob PART_TTL_S: int = 3600;
+glob UPLOAD_ID: re.Pattern[str] = re.compile(r"^[A-Za-z0-9-]{8,64}$");
 glob SUPER_ROOT: str = "00000000-0000-0000-0000-000000000000";
 glob ANCHOR_FIELDS: list[str] = ["id", "kind", "arch_type", "arch_module", "fingerprint", "root_id", "src", "dst", "undirected", "props", "format_version", "version", "seq"];
 # A stored class's module: the app's own (models/...), with or without a built app's prefix.
@@ -503,6 +510,67 @@ def own_store -> PgStore {
     return PgStore(conninfo=current.conninfo);
 }
 
+def part_key(upload: str, index: int) -> str {
+    return f"{PART_PREFIX}{upload}:{index}";
+}
+
+"""Why a part cannot be kept, or "" when it can."""
+def part_problem(upload: str, index: int, part: str) -> str {
+    if not UPLOAD_ID.match(upload) {
+        return "The upload has no usable name.";
+    }
+    if index < 0 or index >= MAX_PARTS {
+        return "The file is larger than a move can take.";
+    }
+    if len(part) > PART_CHARS {
+        return "A part of the file is larger than the server takes in one request.";
+    }
+    return "";
+}
+
+"""Keep one part of an upload until the move starts, or for an hour."""
+def keep_part(store: PgStore, upload: str, index: int, part: str) {
+    store.kv_put_ttl(part_key(upload, index), part, PART_TTL_S);
+}
+
+"""The upload's `count` parts joined, and their keys removed. Raises when one is missing."""
+def take_parts(store: PgStore, upload: str, count: int) -> str {
+    if not UPLOAD_ID.match(upload) or count < 1 or count > MAX_PARTS {
+        raise TransferError("The file did not arrive whole. Choose it again.");
+    }
+    parts: list[str] = [];
+    for index in range(count) {
+        found = store.kv_get(part_key(upload, index));
+        if found is None {
+            raise TransferError("The file did not arrive whole. Choose it again.");
+        }
+        parts.append(found);
+    }
+    for index in range(count) {
+        store.kv_delete(part_key(upload, index));
+    }
+    return "".join(parts);
+}
+
+"""Keep part `index` of the export file `upload` is sending (base64, at most PART_CHARS). Admins
+only; `start_transfer` joins the parts."""
+def:priv send_transfer_part(upload: str, index: int, part: str) -> TransferStatus {
+    if not caller_is_admin() {
+        return TransferStatus(state="refused", message="Only an admin can move records onto this server.", ready=False, runs=0);
+    }
+    problem = part_problem(upload, index, part);
+    if problem {
+        return TransferStatus(state="refused", message=problem, ready=True, runs=0);
+    }
+    store = own_store();
+    try {
+        keep_part(store, upload, index, part);
+        return TransferStatus(state="", message="", ready=True, runs=0);
+    } finally {
+        store.close();
+    }
+}
+
 """Whether this server can take a move, and how the last one went. Admins only."""
 def:priv get_transfer_status -> TransferStatus {
     if not caller_is_admin() {
@@ -516,9 +584,9 @@ def:priv get_transfer_status -> TransferStatus {
     }
 }
 
-"""Start moving the records in `data` (base64 of an export file) onto this server, replacing its
-graph and its accounts. The move runs in the background; the page asks for its state."""
-def:priv start_transfer(data: str) -> TransferStatus {
+"""Start moving the records in the export file sent as `parts` parts of `upload`, replacing this
+server's graph and accounts. The move runs in the background; the page asks for its state."""
+def:priv start_transfer(upload: str, parts: int) -> TransferStatus {
     if not caller_is_admin() {
         return TransferStatus(state="refused", message="Only an admin can move records onto this server.", ready=False, runs=0);
     }
@@ -533,7 +601,7 @@ def:priv start_transfer(data: str) -> TransferStatus {
                 return TransferStatus(state="refused", message=f"This server has {current.runs} runs of its own, so it keeps its records. A move only goes to a server that has not run yet.", ready=False, runs=current.runs);
             }
             try {
-                moved = prepare(decode(data), module_prefix());
+                moved = prepare(decode(take_parts(store, upload, parts)), module_prefix());
             } except TransferError as e {
                 return TransferStatus(state="refused", message=str(e), ready=True, runs=0);
             }

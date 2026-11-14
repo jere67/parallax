@@ -19,12 +19,16 @@ import from accounts.transfer {
     decode,
     forget_cached,
     hold_jobs,
+    keep_part,
+    part_problem,
+    PART_CHARS,
     module_prefix,
     prepare,
     read_state,
     release_jobs,
     rename_module,
-    status_of
+    status_of,
+    take_parts
 }
 
 glob PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent;
@@ -207,5 +211,27 @@ test "after a move the server looks up its shared root again" {
     } finally {
         jac_runtime._shared_root_resolver[0] = saved[0];
         jac_runtime._shared_root_resolver[1] = saved[1];
+    }
+}
+
+test "an upload arrives in parts, is joined in order once, and refuses a missing part" {
+    store = own_store();
+    try {
+        data = upload(export_doc());
+        parts = [data[i:i + 100] for i in range(0, len(data), 100)];
+        for (index, part) in enumerate(reversed(parts)) {
+            keep_part(store, "upload-one", len(parts) - 1 - index, part);
+        }
+        assert take_parts(store, "upload-one", len(parts)) == data;
+        assert "did not arrive whole" in refusal(lambda { take_parts(store, "upload-one", len(parts)); });
+        keep_part(store, "upload-two", 0, parts[0]);
+        assert "did not arrive whole" in refusal(lambda { take_parts(store, "upload-two", 2); });
+        assert "did not arrive whole" in refusal(lambda { take_parts(store, "bad name!", 1); });
+        assert part_problem("upload-one", 0, "x" * PART_CHARS) == "";
+        assert "larger than the server takes" in part_problem("upload-one", 0, "x" * (PART_CHARS + 1));
+        assert "no usable name" in part_problem("../x", 0, "x");
+        assert "larger than a move" in part_problem("upload-one", 10 ** 6, "x");
+    } finally {
+        store.close();
     }
 }

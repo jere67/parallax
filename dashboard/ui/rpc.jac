@@ -82,8 +82,12 @@ async def:pub get_transfer_status -> TransferStatus | None {
     return await call("accounts/transfer.jac", "get_transfer_status");
 }
 
-async def:pub start_transfer(data: str) -> TransferStatus | None {
-    return await call("accounts/transfer.jac", "start_transfer", {"data": data});
+async def:pub send_transfer_part(upload: str, index: int, part: str) -> TransferStatus | None {
+    return await call("accounts/transfer.jac", "send_transfer_part", {"upload": upload, "index": index, "part": part});
+}
+
+async def:pub start_transfer(upload: str, parts: int) -> TransferStatus | None {
+    return await call("accounts/transfer.jac", "start_transfer", {"upload": upload, "parts": parts});
 }
 
 async def:pub screen_stocks(
