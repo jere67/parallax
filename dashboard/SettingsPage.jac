@@ -7,7 +7,7 @@ import from "lucide-react" { Check, ChevronDown, ExternalLink }
 import from dashboard.ui.brand { DOCS_URL }
 import from dashboard.ui.format { stamp_et }
 import from dashboard.ui.parts { ErrorBox, Loading, Panel, TAP_BUTTON, TAP_INPUT, TAP_QUIET }
-import from dashboard.ui.rpc { get_agent_settings, get_transfer_status, remove_agent_keys, save_agent_keys, set_paper_trading, start_my_run, start_transfer }
+import from dashboard.ui.rpc { get_agent_settings, get_transfer_status, remove_agent_keys, save_agent_keys, send_transfer_part, set_paper_trading, start_my_run, start_transfer }
 import from models.accounts { AgentReply, AgentSettings as SettingsData, KeyStatus as KeyData, KeysReply, TransferStatus }
 
 # Where each provider makes its keys. A page that needs an account sends a signed-out visitor to
@@ -36,6 +36,9 @@ glob FINNHUB_STEPS: list[dict[str, str]] = [
 ];
 glob PASSWORD_URL: str = "/user/password";
 glob EXPORT_GUIDE_URL: str = DOCS_URL + "guide/deploy#bring-your-records-along";
+# Base64 characters sent per request: JacHammer's proxy refuses a body over 1 MiB
+# (accounts/transfer.jac PART_CHARS).
+glob MOVE_PART_CHARS: int = 524288;
 # How often the page asks how a move is going.
 glob MOVE_POLL_MS: int = 3000;
 glob MIN_PASSWORD: int = 8;
@@ -388,6 +391,7 @@ def MovePanel(moved: Callable[[], None]) -> JsxElement {
         file: any = None,
         confirming: bool = False,
         busy: bool = False,
+        sending: str = "",
         problem: str = "";
 
     async can with entry {
@@ -425,7 +429,20 @@ def MovePanel(moved: Callable[[], None]) -> JsxElement {
         problem = "";
         try {
             data = await read_base64(file);
-            reply = await start_transfer(data);
+            upload: str = String(window.crypto.randomUUID());  # jac:ignore[E1030]
+            total = int((len(data) + MOVE_PART_CHARS - 1) / MOVE_PART_CHARS);
+            index = 0;
+            while index < total {
+                sending = f"Sending {int(index * 100 / total)}%";
+                sent = await send_transfer_part(upload, index, data[index * MOVE_PART_CHARS:(index + 1) * MOVE_PART_CHARS]);
+                if sent is None or sent.state == "refused" {
+                    problem = sent.message if sent is not None else "The file could not be sent. Sign in again and try once more.";
+                    return;
+                }
+                index += 1;
+            }
+            sending = "Starting the move";
+            reply = await start_transfer(upload, total);
             if reply is not None {
                 status = reply;
                 confirming = False;
@@ -437,6 +454,7 @@ def MovePanel(moved: Callable[[], None]) -> JsxElement {
             problem = "The file could not be sent. Check your connection and try again.";
         } finally {
             busy = False;
+            sending = "";
         }
     }
 
@@ -469,7 +487,7 @@ def MovePanel(moved: Callable[[], None]) -> JsxElement {
                         <div className="flex flex-col gap-3 rounded-md border border-accent/40 bg-accent/10 p-3">
                             <p className="text-[13px] leading-5 text-text">The file's records and accounts replace this server's. Afterwards you are signed out, and everyone signs in with their accounts from the old server.</p>
                             <div className="flex flex-wrap gap-2">
-                                <button type="button" disabled={busy} onClick={start} className={TAP_BUTTON}>{"Sending…" if busy else "Move the records here"}</button>
+                                <button type="button" disabled={busy} onClick={start} className={TAP_BUTTON}>{(sending or "Sending") + "…" if busy else "Move the records here"}</button>
                                 <button type="button" disabled={busy} onClick={lambda { confirming = False; }} className={TAP_QUIET}>Cancel</button>
                             </div>
                         </div>
