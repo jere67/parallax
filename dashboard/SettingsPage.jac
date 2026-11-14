@@ -2,11 +2,13 @@
 trading, and change a password. Keys only ever travel from here to the server: the page shows what
 the server sends back, which is a hint and the time each was checked."""
 import from "@jac/runtime" { jacLogout, useNavigate }
+import from "react" { useEffect }
 import from "lucide-react" { Check, ChevronDown, ExternalLink }
+import from dashboard.ui.brand { DOCS_URL }
 import from dashboard.ui.format { stamp_et }
 import from dashboard.ui.parts { ErrorBox, Loading, Panel, TAP_BUTTON, TAP_INPUT, TAP_QUIET }
-import from dashboard.ui.rpc { get_agent_settings, remove_agent_keys, save_agent_keys, set_paper_trading, start_my_run }
-import from models.accounts { AgentReply, AgentSettings as SettingsData, KeyStatus as KeyData, KeysReply }
+import from dashboard.ui.rpc { get_agent_settings, get_transfer_status, remove_agent_keys, save_agent_keys, set_paper_trading, start_my_run, start_transfer }
+import from models.accounts { AgentReply, AgentSettings as SettingsData, KeyStatus as KeyData, KeysReply, TransferStatus }
 
 # Where each provider makes its keys. A page that needs an account sends a signed-out visitor to
 # sign in or sign up, then back to it.
@@ -33,6 +35,9 @@ glob FINNHUB_STEPS: list[dict[str, str]] = [
     {"text": "Open the dashboard below. Your API key is at the top; copy it."}
 ];
 glob PASSWORD_URL: str = "/user/password";
+glob EXPORT_GUIDE_URL: str = DOCS_URL + "guide/deploy#bring-your-records-along";
+# How often the page asks how a move is going.
+glob MOVE_POLL_MS: int = 3000;
 glob MIN_PASSWORD: int = 8;
 
 def key_named(settings: SettingsData, name: str) -> KeyData | None {
@@ -366,6 +371,117 @@ def ManagedPanel(settings: SettingsData) -> JsxElement {
     </Panel>
 }
 
+"""The file's contents as base64, which is how a move travels to the server."""
+def read_base64(file: any) -> any {
+    return new(Promise, lambda (resolve: any, reject: any) {
+        reader: any = new(FileReader);  # jac:ignore[E1053]
+        reader.onload = lambda { resolve.call(None, String(reader.result).split(",")[1] or ""); };
+        reader.onerror = lambda { reject.call(None, reader.error); };
+        reader.readAsDataURL(file);
+    });
+}
+
+"""Moving another server's records here: an admin's step on a server that has not run yet. The
+move replaces this server's accounts too, so once it lands the page signs out."""
+def MovePanel(moved: Callable[[], None]) -> JsxElement {
+    has status: TransferStatus | None = None,
+        file: any = None,
+        confirming: bool = False,
+        busy: bool = False,
+        problem: str = "";
+
+    async can with entry {
+        try {
+            status = await get_transfer_status();
+        } except Exception {
+            status = None;
+        }
+    }
+
+    async def check {
+        found: TransferStatus | None = None;
+        try {
+            found = await get_transfer_status();
+        } except Exception {
+            # The accounts changed under this session: the move landed.
+            moved();
+            return;
+        }
+        if found is not None and found.state == "done" {
+            moved();
+            return;
+        }
+        status = found;
+    }
+
+    running: bool = status is not None and status.state == "running";
+    useEffect(lambda {
+        timer = window.setInterval(lambda { if running { check(); } }, MOVE_POLL_MS);
+        return lambda { window.clearInterval(timer); };
+    }, [running]);
+
+    async def start {
+        busy = True;
+        problem = "";
+        try {
+            data = await read_base64(file);
+            reply = await start_transfer(data);
+            if reply is not None {
+                status = reply;
+                confirming = False;
+                if reply.state == "refused" {
+                    problem = reply.message;
+                }
+            }
+        } except Exception {
+            problem = "The file could not be sent. Check your connection and try again.";
+        } finally {
+            busy = False;
+        }
+    }
+
+    if status is None or not (status.ready or status.state in ["running", "failed", "done"]) {
+        return <></>;
+    }
+    state_words = status.message if status.state in ["running", "failed", "done"] else "";
+    <Panel title="Bring records from another server">
+        <div className="flex flex-col gap-3">
+            <p className="text-[13px] leading-5 text-muted">
+                {"This server has not run yet, so it can take another server's records: every run, decision, order, and agent, and the accounts that sign in to them. Export them on the old server with scripts/export-data.sh, then choose the file here. "}
+                <a href={EXPORT_GUIDE_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-accent hover:underline">How to export</a>
+            </p>
+            {if state_words {
+                <p className={"text-[13px] leading-5 " + ("text-down" if status.state == "failed" else "text-text")} role="status">{state_words}</p>
+            }}
+            {if problem { <p className="text-[13px] leading-5 text-down" role="alert">{problem}</p> }}
+            {if status.ready and not running {
+                <div className="flex flex-col gap-3">
+                    <label className="flex flex-col gap-1 text-[12px] text-muted">
+                        Export file
+                        <input
+                            type="file"
+                            accept=".gz,.json,application/gzip,application/json"
+                            onChange={lambda (e: ChangeEvent) { picked: any = e.target.files; file = picked[0] if picked and picked.length else None; confirming = False; problem = ""; }}
+                            className="text-[13px] text-text file:mr-3 file:min-h-9 file:cursor-pointer file:rounded-md file:border file:border-line file:bg-panel-2 file:px-3 file:text-[13px] file:font-medium file:text-text"
+                        />
+                    </label>
+                    {if confirming {
+                        <div className="flex flex-col gap-3 rounded-md border border-accent/40 bg-accent/10 p-3">
+                            <p className="text-[13px] leading-5 text-text">The file's records and accounts replace this server's. Afterwards you are signed out, and everyone signs in with their accounts from the old server.</p>
+                            <div className="flex flex-wrap gap-2">
+                                <button type="button" disabled={busy} onClick={start} className={TAP_BUTTON}>{"Sending…" if busy else "Move the records here"}</button>
+                                <button type="button" disabled={busy} onClick={lambda { confirming = False; }} className={TAP_QUIET}>Cancel</button>
+                            </div>
+                        </div>
+                    } else {
+                        <button type="button" disabled={not file} onClick={lambda { confirming = True; problem = ""; }} className={TAP_BUTTON + " self-start"}>Move records here</button>
+                    }}
+                </div>
+            }}
+        </div>
+    </Panel>
+}
+
 """The runtime keeps its token out of reach, so this asks it through the same request it would
 send, with the stored token."""
 async def change_password(current: str, fresh: str) -> int {
@@ -465,6 +581,7 @@ def:pub SettingsPage -> JsxElement {
         {<ManagedPanel settings={settings}/> if settings.managed else <KeysPanel settings={settings} done={update}/>}
         <RunPanel settings={settings} done={update}/>
         {if not settings.managed { <TradingPanel settings={settings} done={update}/> }}
+        {if settings.managed and not settings.demo { <MovePanel moved={leave}/> }}
         <AccountPanel leave={leave}/>
     </div>
 }

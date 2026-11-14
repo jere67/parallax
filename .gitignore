@@ -13,3 +13,6 @@ test-results/
 
 # The docs site (site/): VitePress cache
 site/.vitepress/cache/
+
+# Exports from scripts/export-data.sh: password hashes and sealed keys
+parallax-data-*.json.gz
