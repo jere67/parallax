@@ -1148,7 +1148,9 @@ The two baselines are simulated from daily bars (`action/baselines.jac`):
   It stays outside the gate, since a fully invested index is the benchmark, not a strategy.
 
 Both mark at each close, one session behind the team portfolio, because a daily bar is final only in the evening.
-The forward test starts on the morning of the date set in `TRADING_AGENT_FORWARD_TEST_START`, only from a flat paper account: its equity becomes the starting balance of all three portfolios, and the team portfolio switches to auto mode (GAP-09).
+The forward test starts on the morning of the date set in `TRADING_AGENT_FORWARD_TEST_START`, from the paper account as it stands: its equity becomes the starting balance of all three portfolios, and the team portfolio switches to auto mode (GAP-09).
+An account that already holds stocks is taken over: its open orders are canceled, its positions go on the record at Alpaca's share count and average cost with the stop price their old stop orders had, and the stop keeper places the portfolio's own stops in the same tick.
+The baselines still start in cash, so the team portfolio then starts invested while they do not.
 
 ### Metrics
 

@@ -62,7 +62,7 @@ Two environment variables control the team agent:
 
 - `TRADING_AGENT_FORWARD_TEST_START=YYYY-MM-DD` starts the forward test on that trading date, at the first trading tick before that day's run executes and before 3:50 p.m. New York time.
   A server started later than that starts it on the next trading day.
-  The paper account must be flat.
+  An account that already holds stocks is taken over: its open orders are canceled, and its positions go on the record with their stops.
   Its equity becomes the starting balance of the team portfolio and both baselines (equal-weight shortlist and SPY buy-and-hold), and the team portfolio switches to auto mode.
   Set it only with the team's go-ahead.
 - `TRADING_AGENT_DISABLE_ORDERS=1` stops every order.

@@ -43,7 +43,7 @@ The forward test runs three portfolios from the same day with the same starting 
 | SPY buy-and-hold | The market | Simulated from daily bars |
 
 For the admin's team agent, the test starts when `TRADING_AGENT_FORWARD_TEST_START` is set to a trading date, at the first trading tick on or after that date before the day's run executes.
-The paper account must be flat, with no positions and no open orders.
+An account that already holds stocks is taken over: its open orders are canceled, and its positions go on the team portfolio's record with their stops.
 Its equity becomes the starting balance of all three portfolios, the team portfolio switches to auto mode, and both baselines are created in cash.
 See [The forward test](/guide/forward-test) for how to start it and [`action/baselines.jac`](https://github.com/jere67/parallax/blob/main/action/baselines.jac) for the code.
 

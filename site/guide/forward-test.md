@@ -36,12 +36,16 @@ A server started after that window starts the test on the next trading day inste
 
 <Steps>
 
-1. **The paper account is checked.**
-   It must be flat: no positions and no open orders.
-   If it is not, the start fails with a message listing what is held, and the next tick tries again.
+1. **The paper account is taken over.**
+   Every open order is canceled, since this server never sent it.
+   Every stock the account holds goes on the team portfolio's record, at Alpaca's share count and average cost.
+   Its stop stays at the price its old stop order had, or 10% below the current price when it had none, and the server places its own stop for it in the same tick.
+   An account that is already flat skips this step.
+   A short position, or an order that will not cancel, stops the start, and the next tick tries again.
 
 2. **The starting balance is set.**
-   The account's equity becomes the starting balance of the team portfolio and of both baselines, so all three start alike, all in cash.
+   The account's equity, cash plus the stocks it holds, becomes the starting balance of the team portfolio and of both baselines.
+   The baselines start all in cash, so a team portfolio that took over positions starts invested while they do not.
 
 3. **The baselines are created.**
    An equal-weight shortlist and SPY buy-and-hold.
@@ -59,12 +63,20 @@ The tick writes a line like this to the run's action log:
 start: forward test started on 2026-11-09: starting balance 100,000.00, team portfolio in auto mode, baselines equal_weight and spy created
 ```
 
+On an account that held stocks, it also names what it took over, and each new stop follows on its own line:
+
+```text
+start: forward test started on 2026-11-16: starting balance 101,204.17, team portfolio in auto mode, baselines equal_weight and spy created; took over 2 positions (AMZN, FOXA); canceled 2 open orders
+stop: AMZN: stop for 4 at 250.38: accepted
+```
+
 ## Before the start date
 
 Check these before setting the variable:
 
 - The server has run at least one morning in insight mode, and the [Runs page](/guide/dashboard#runs) shows a NORMAL run.
-- The paper account is flat.
+- No other server trades the paper account.
+  The start cancels the account's open orders and takes over its positions, so a second server on the same keys would keep placing orders this one never sent.
 - `TRADING_AGENT_DISABLE_ORDERS` is not set, unless the team wants a dry run that records the checks without trading.
 - `TRADING_AGENT_DEMO` is not set.
   A demo portfolio is never traded, and it already has baselines, so the test could not start on it.

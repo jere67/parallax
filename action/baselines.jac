@@ -16,14 +16,16 @@ Both mark to each session's close. A session is simulated once its bars are fina
 session; a missed evening is caught up the next.
 
 `start_forward_test` starts all three portfolios: it records the team account's equity as
-the starting balance, puts the team portfolio in auto mode, and creates both baselines. It
+the starting balance, takes over any positions the account already holds, puts the team
+portfolio in auto mode, and creates both baselines. It
 runs only on the operator's go-ahead, given by setting FORWARD_TEST_ENV to the start date.
 """
 import math;
 import os;
 import from datetime { date, datetime, timedelta }
-import from action.broker { Broker }
-import from action.executor { run_regime }
+import from action.broker { Broker, BrokerOrder }
+import from action.executor { orders_disabled, run_regime }
+import from action.reconcile { adopt_position, default_stop }
 import from action.gate { Book, BookPosition, GateConfig, Instrument, Proposal, breaker_peak, check_orders }
 import from action.sizing { SizingCandidate, SizingConfig, size_positions }
 import from analysis.history { History }
@@ -90,28 +92,67 @@ def shortlist(run: Run | None) -> dict[str, Coverage] {
     return {c.ticker: c for c in [run ->:Covers:->[?:Coverage]] if c.reason == CoverageReason.SCREEN};
 }
 
+"""The stop price of each stock's working stop sell in `orders`, the highest when it has more than
+one, so a position taken over keeps the protection it had."""
+def stop_prices(orders: list[BrokerOrder]) -> dict[str, float] {
+    found: dict[str, float] = {};
+    for o in orders {
+        if o.side == "sell" and o.order_type in ("stop", "stop_limit") and o.stop_price {
+            found[o.symbol] = max(found.get(o.symbol, 0.0), o.stop_price);
+        }
+    }
+    return found;
+}
+
 """Start the forward test on `day`: the team account's equity becomes the starting balance of
 all three portfolios, the team portfolio trades from today's run, and both baselines start
-in cash. The account must be flat, so all three start alike."""
+in cash at that balance.
+
+An account that already holds stocks, such as one another server traded, is taken over: every
+open order is canceled, since the record never sent it, and every long position goes on the
+record at Alpaca's share count and average cost, at the stop price its old stop order had (or
+the reconciliation default, action/reconcile.jac, when it had none). The stop keeper then
+places the portfolio's own stops (run/trading.jac, `start_due`). The team portfolio thus
+starts invested while the baselines start in cash; the start line names what it took over.
+With orders off (action/executor.jac, ORDERS_OFF_ENV) nothing is canceled. A short position, or
+an order that will not cancel, stops the start before anything goes on the record, and the
+next tick tries again."""
 def start_forward_test(portfolio: Portfolio, broker: Broker, now: datetime, day: str) -> str {
     if baselines_of(portfolio) {
         raise ValueError("the forward test has already started");
     }
-    account = broker.account();
-    held = [s for (s, p) in broker.positions().items() if p.qty != 0];
-    working = broker.orders("open");
-    if held or working {
-        raise ValueError(f"the paper account must be flat to start the forward test: {len(held)} positions ({', '.join(sorted(held))}) and {len(working)} open orders");
+    shorts = sorted(s for (s, p) in broker.positions().items() if p.qty < 0);
+    if shorts {
+        raise ValueError(f"the paper account holds short positions, which the long-only portfolio cannot take over: {', '.join(shorts)}");
     }
+    working = broker.orders("open");
+    stops = stop_prices(working);
+    canceled = [] if orders_disabled() else working;
+    stuck = [o.symbol for o in canceled if broker.cancel_and_wait(o.id).working()];
+    if stuck {
+        raise ValueError(f"the paper account's open orders would not cancel: {', '.join(sorted(stuck))}");
+    }
+    held = {s: p for (s, p) in broker.positions().items() if p.qty > 0};
+    account = broker.account();
     equity = account.equity;
     portfolio.starting_cash = equity;
     portfolio.opened_at = now.isoformat();
     portfolio.peak_equity = equity;
     portfolio.mode = PortfolioMode.AUTO;
+    for (ticker, at) in sorted(held.items()) {
+        adopt_position(portfolio, at, stops.get(ticker) or default_stop(portfolio, ticker, at.current_price), now);
+    }
     for kind in [BaselineKind.EQUAL_WEIGHT, BaselineKind.SPY] {
         public(portfolio +>:Benchmarks:+> Baseline(kind=kind, starting_cash=equity, start_day=day, cash=equity, peak_equity=equity));
     }
-    return f"forward test started on {day}: starting balance {equity:,.2f}, team portfolio in auto mode, baselines {BaselineKind.EQUAL_WEIGHT.value} and {BaselineKind.SPY.value} created";
+    line = f"forward test started on {day}: starting balance {equity:,.2f}, team portfolio in auto mode, baselines {BaselineKind.EQUAL_WEIGHT.value} and {BaselineKind.SPY.value} created";
+    if held {
+        line += f"; took over {len(held)} position{'' if len(held) == 1 else 's'} ({', '.join(sorted(held))})";
+    }
+    if canceled {
+        line += f"; canceled {len(canceled)} open order{'' if len(canceled) == 1 else 's'}";
+    }
+    return line;
 }
 
 """One session being simulated: its date, the bars around it, the trading sessions for time
