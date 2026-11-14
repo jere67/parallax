@@ -5,7 +5,7 @@ import from policy.chat { apply_policy_proposal, discard_policy_proposal, get_po
 import from models.health { Health }
 import from models.accounts { AgentReply, AgentSettings, KeysReply }
 import from run.health { health }
-import from run.jobs { morning_job, trading_job }
+import from run.jobs { lost_run_job, morning_job, trading_job }
 import from run.manual { manual_run_job, start_morning_run }
 import from run.agents { agent_run_slot_1, agent_run_slot_2, agent_run_slot_3, agents_trading_job }
 import from accounts.api { get_agent_settings, remove_agent_keys, save_agent_keys, set_paper_trading, start_my_run }
