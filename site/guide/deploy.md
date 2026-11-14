@@ -46,6 +46,10 @@ If the hosted server's first morning run still shows refused requests (its run s
 The team's forward test keeps running on the laptop server, where its history since November 2 is stored.
 A new deploy starts with an empty graph, and its team portfolio stays out of auto mode, so it places no orders of its own until someone sets `TRADING_AGENT_FORWARD_TEST_START`.
 
+To move the team's trading to the host instead, stop the laptop server for good and give the host the team's Alpaca keys.
+When the host's forward test starts, it takes over the account: it cancels the laptop's open orders and puts the stocks the account holds on its own record with their stops (see [The forward test](/guide/forward-test#what-happens-at-the-start)).
+The laptop's history stays on the laptop; the host's evaluation starts from its own start date.
+
 ## Deploy
 
 1. Install the CLI and log in.

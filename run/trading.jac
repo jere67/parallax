@@ -18,7 +18,8 @@ afternoon steps with it, and does whatever step is due and not yet done:
 - on or after the date the operator set in FORWARD_TEST_ENV, start the forward test
   (action/baselines.jac), once: at the first tick of a session day, as long as the day's run
   has not executed and the cancel window has not begun, so a server started after 9:45 still
-  trades that day.
+  trades that day. Positions the account already held are taken over, and their stops are
+  placed in the same tick.
 
 Every step records that it ran, so a second firing does nothing. Nothing trades unless the
 team portfolio is in auto mode, but votes are scored in both modes. A daily bar is final
@@ -158,7 +159,11 @@ def start_due(portfolio: Portfolio, run: Run | None, now: datetime, day: str, de
     if session is None or now >= session_times(session).cancel_at {
         return [];
     }
-    return [f"start: {start_forward_test(portfolio, deps.broker_client(), now, day)}"];
+    broker = deps.broker_client();
+    lines = [f"start: {start_forward_test(portfolio, broker, now, day)}"];
+    # Positions taken over at the start lost their old stops; protect them now, not at 9:45.
+    lines.extend(f"stop: {c}" for c in keep_stops(portfolio, broker, now));
+    return lines;
 }
 
 """Do whatever step of `portfolio`'s trading day is due at `now`, and return what it did.

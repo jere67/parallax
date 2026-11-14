@@ -16,7 +16,7 @@ shares and cash:
 Drift and bypasses must stay empty; the Action exit criterion counts bypasses.
 """
 import from datetime { datetime }
-import from action.broker { Broker }
+import from action.broker { Broker, BrokerPosition }
 import from action.executor { open_positions, sync_orders }
 import from models.graph {
     Coverage,
@@ -58,6 +58,19 @@ def latest_atr(portfolio: Portfolio, ticker: str) -> float | None {
         }
     }
     return None;
+}
+
+"""The stop for a position in `ticker` the record does not have: 2 ATR below `price` when a run
+recorded an ATR for it, and FALLBACK_STOP_FRACTION below otherwise."""
+def default_stop(portfolio: Portfolio, ticker: str, price: float) -> float {
+    atr = latest_atr(portfolio, ticker);
+    return price - STOP_ATR_MULTIPLE * atr if atr else price * (1.0 - FALLBACK_STOP_FRACTION);
+}
+
+"""Put the shares Alpaca reports in `at` on `portfolio`'s record as an open position, protected
+at `stop`. The stop keeper places its order (action/executor.jac, `keep_stops`)."""
+def adopt_position(portfolio: Portfolio, at: BrokerPosition, stop: float, now: datetime) -> Position {
+    return public(portfolio +>:Holds():+> Position(ticker=at.symbol, sector="", qty=at.qty, avg_entry_price=at.avg_entry_price, opened_at=now.isoformat(), stop_price=round(max(0.01, stop), 2), last_price=at.current_price, priced_at=now.isoformat()));
 }
 
 """Orders that bypassed the risk gate: an Order sent without an approving RiskCheck (or, for
@@ -117,10 +130,8 @@ def reconcile(portfolio: Portfolio, broker: Broker, now: datetime, day: str) -> 
         if ticker in positions or at.qty <= 0 {
             continue;
         }
-        atr = latest_atr(portfolio, ticker);
-        stop = at.avg_entry_price - STOP_ATR_MULTIPLE * atr if atr else at.avg_entry_price * (1.0 - FALLBACK_STOP_FRACTION);
-        public(portfolio +>:Holds():+> Position(ticker=ticker, sector="", qty=at.qty, avg_entry_price=at.avg_entry_price, opened_at=now.isoformat(), stop_price=round(max(0.01, stop), 2), last_price=at.current_price, priced_at=now.isoformat()));
-        drift.append(f"{ticker}: {at.qty} shares at Alpaca not on record; adopted with a stop at {stop:.2f}");
+        adopted = adopt_position(portfolio, at, default_stop(portfolio, ticker, at.avg_entry_price), now);
+        drift.append(f"{ticker}: {at.qty} shares at Alpaca not on record; adopted with a stop at {adopted.stop_price:.2f}");
     }
 
     marks = marks_of(portfolio);

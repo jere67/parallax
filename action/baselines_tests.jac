@@ -11,12 +11,13 @@ import from action.baselines {
     simulate_equal_weight,
     start_forward_test
 }
+import from action.executor { open_positions }
 import from action.fixtures { Call, broker_for, finished_run, team }
 import from analysis.history { History, bar }
 import from models.graph { Baseline, BaselineKind, Benchmarks, PortfolioMode, Position, SimHolds, TradeAction }
 import from research.alpaca { Bar }
 import from run.guard { NEW_YORK }
-import from tests.fakes.broker_server { FakeBroker, FakePosition }
+import from tests.fakes.broker_server { FakeBroker, FakeOrder, FakePosition }
 
 def ny(stamp: str) -> datetime {
     return datetime.fromisoformat(stamp).replace(tzinfo=NEW_YORK);
@@ -37,7 +38,7 @@ def history_of(bars: dict[str, dict[str, Bar]], asked: list[tuple[list[str], str
     return History(bars=read, sessions=weekdays);
 }
 
-test "the forward test starts from the flat account's equity, in auto mode, with both baselines" {
+test "the forward test starts from a flat account's equity, in auto mode, with both baselines" {
     fake = FakeBroker(cash=98765.43);
     try {
         portfolio = team(PortfolioMode.INSIGHT);
@@ -59,10 +60,37 @@ test "the forward test starts from the flat account's equity, in auto mode, with
     }
 }
 
-test "an account that is not flat does not start the forward test" {
+test "an account that already holds stocks is taken over: its orders canceled, its positions on record at their old stops" {
+    fake = FakeBroker(cash=50000.0);
+    try {
+        fake.positions["AMZN"] = FakePosition(symbol="AMZN", qty=4, avg_entry_price=260.0);
+        fake.positions["FOXA"] = FakePosition(symbol="FOXA", qty=8, avg_entry_price=70.0);
+        fake.set_price("AMZN", 268.74);
+        fake.set_price("FOXA", 67.0);
+        fake.orders.append(FakeOrder(id="old-stop", client_order_id="AMZN-20261111144600-stop2", symbol="AMZN", side="sell", order_type="stop", time_in_force="gtc", qty=4, submitted_at=fake.now, stop_price=250.38));
+        fake.orders.append(FakeOrder(id="old-buy", client_order_id="2026-11-13-MSFT-buy", symbol="MSFT", side="buy", order_type="limit", time_in_force="day", qty=1, submitted_at=fake.now, limit_price=500.0));
+        portfolio = team(PortfolioMode.INSIGHT);
+        line = start_forward_test(portfolio, broker_for(fake), ny("2026-10-21T09:30:00"), "2026-10-21");
+        equity = 50000.0 + 4 * 268.74 + 8 * 67.0;
+        assert line == f"forward test started on 2026-10-21: starting balance {equity:,.2f}, team portfolio in auto mode, baselines equal_weight and spy created; took over 2 positions (AMZN, FOXA); canceled 2 open orders";
+        assert all(o.status == "canceled" for o in fake.orders);
+        held = open_positions(portfolio);
+        assert sorted(held) == ["AMZN", "FOXA"];
+        assert held["AMZN"].qty == 4 and held["AMZN"].avg_entry_price == 260.0 and held["AMZN"].stop_price == 250.38;
+        # No old stop: 10% below the price it was taken over at, not below its cost, so it is not sold at once.
+        assert held["FOXA"].qty == 8 and held["FOXA"].stop_price == 60.3;
+        assert portfolio.mode == PortfolioMode.AUTO and abs(portfolio.starting_cash - equity) < 1e-9;
+        assert all(abs(b.cash - equity) < 1e-9 for b in baselines_of(portfolio).values());
+    } finally {
+        fake.stop();
+    }
+}
+
+test "an account with a short position does not start the forward test, and keeps its orders" {
     fake = FakeBroker();
     try {
-        fake.positions["F"] = FakePosition(symbol="F", qty=2, avg_entry_price=12.0);
+        fake.positions["F"] = FakePosition(symbol="F", qty=-2, avg_entry_price=12.0);
+        fake.orders.append(FakeOrder(id="old-buy", client_order_id="cover", symbol="F", side="buy", order_type="limit", time_in_force="day", qty=2, submitted_at=fake.now, limit_price=12.0));
         portfolio = team(PortfolioMode.INSIGHT);
         failed = "";
         try {
@@ -70,8 +98,9 @@ test "an account that is not flat does not start the forward test" {
         } except ValueError as e {
             failed = str(e);
         }
-        assert failed.startswith("the paper account must be flat") and "1 positions (F)" in failed;
-        assert portfolio.mode == PortfolioMode.INSIGHT and baselines_of(portfolio) == {};
+        assert failed == "the paper account holds short positions, which the long-only portfolio cannot take over: F";
+        assert portfolio.mode == PortfolioMode.INSIGHT and baselines_of(portfolio) == {} and open_positions(portfolio) == {};
+        assert fake.orders[0].working();
     } finally {
         fake.stop();
     }

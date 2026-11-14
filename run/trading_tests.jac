@@ -18,7 +18,7 @@ import from policy.store { save_policy, team_policy }
 import from run.guard { NEW_YORK }
 import from run.attempts { attempt_for, begin, finish, forget }
 import from run.trading { TradingDeps, db_conflict, team_trading_tick, trading_tick }
-import from tests.fakes.broker_server { FakeBroker, FakeOrder, Scripted }
+import from tests.fakes.broker_server { FakeBroker, FakeOrder, FakePosition, Scripted }
 
 glob DAY: str = "2026-10-21";
 
@@ -287,6 +287,30 @@ test "the forward test starts before 9:45 on the operator's date, and its baseli
         lines = tick_at(fake, portfolio, deps, "16:30", "2026-10-22");
         assert "baseline: equal_weight 2026-10-21 AAA bought 80 at 100.00, stop 96.00" in lines and "baseline: spy 2026-10-21 SPY bought 200 at 500.00" in lines;
         assert second.baselines_at and tick_at(fake, portfolio, deps, "16:31", "2026-10-22") == [];
+    } finally {
+        os.environ.pop(FORWARD_TEST_ENV, None);
+        fake.stop();
+    }
+}
+
+test "a start on an account another server traded takes over its positions, re-places their stops, and reconciles clean" {
+    fake = FakeBroker(cash=50000.0);
+    os.environ[FORWARD_TEST_ENV] = DAY;
+    try {
+        deps = deps_for(fake);
+        portfolio = team(PortfolioMode.INSIGHT);
+        fake.positions["AMZN"] = FakePosition(symbol="AMZN", qty=4, avg_entry_price=260.0);
+        fake.set_price("AMZN", 268.74);
+        fake.orders.append(FakeOrder(id="old-stop", client_order_id="AMZN-20261111144600-stop2", symbol="AMZN", side="sell", order_type="stop", time_in_force="gtc", qty=4, submitted_at="2026-10-20T14:00:00+00:00", stop_price=250.38));
+        lines = tick_at(fake, portfolio, deps, "09:30");
+        assert lines[0].endswith("; took over 1 position (AMZN); canceled 1 open order");
+        assert lines[1:] == ["stop: AMZN: stop for 4 at 250.38: pending_new"];
+        working = [o for o in fake.orders if o.working()];
+        assert len(working) == 1 and working[0].id != "old-stop" and working[0].stop_price == 250.38 and working[0].qty == 4;
+        assert open_positions(portfolio)["AMZN"].stop_order_id == working[0].id;
+        finished_run(portfolio, DAY, []);
+        evening = tick_at(fake, portfolio, deps, "16:30");
+        assert any(l.startswith("reconcile:") and l.endswith(", 1 positions, drawdown 0.0%, 0 drift, 0 bypasses") for l in evening);
     } finally {
         os.environ.pop(FORWARD_TEST_ENV, None);
         fake.stop();
