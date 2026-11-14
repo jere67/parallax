@@ -4,7 +4,7 @@ client bridges for private endpoints, so each goes through the runtime's RPC hel
 by reloading the page, which would cancel a log-in already under way."""
 import from "@jac/runtime" { jacIsLoggedIn }
 import from dashboard.ui.retry { call_function }
-import from models.accounts { AgentReply, AgentSettings, KeysReply }
+import from models.accounts { AgentReply, AgentSettings, KeysReply, TransferStatus }
 import from models.market { HistoryView, ScreenerView, StockAboutView, StockView }
 import from models.evaluation { Evaluation }
 import from models.views { NewsFeed, NewsStory, PerformanceView, PortfolioView, RunSummary, RunView, SpecialistSummaryView, TrailView }
@@ -76,6 +76,14 @@ async def:pub set_paper_trading(on: bool) -> AgentReply | None {
 
 async def:pub start_my_run -> AgentReply | None {
     return await call("accounts/api.jac", "start_my_run");
+}
+
+async def:pub get_transfer_status -> TransferStatus | None {
+    return await call("accounts/transfer.jac", "get_transfer_status");
+}
+
+async def:pub start_transfer(data: str) -> TransferStatus | None {
+    return await call("accounts/transfer.jac", "start_transfer", {"data": data});
 }
 
 async def:pub screen_stocks(

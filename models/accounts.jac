@@ -84,3 +84,13 @@ obj AgentReply {
         message: str,
         settings: AgentSettings;
 }
+
+"""Moving another server's records here (accounts/transfer.jac). `state` is "" before any move,
+then "running", "done", or "failed"; "refused" answers an upload that was not taken. `ready` is
+an admin on a server that has not run, which can take a move; `runs` is how many this one has."""
+obj TransferStatus {
+    has state: str,
+        message: str,
+        ready: bool,
+        runs: int;
+}
