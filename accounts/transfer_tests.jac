@@ -6,7 +6,9 @@ import gzip;
 import json;
 import re;
 import from pathlib { Path }
+import from uuid { UUID }
 import from jaclang { JacRuntime as Jac }
+import jaclang.runtime.runtime as jac_runtime;
 import from jaclang.data.store { PgStore }
 import from accounts.transfer {
     JOBS,
@@ -15,6 +17,7 @@ import from accounts.transfer {
     TransferError,
     carry_out,
     decode,
+    forget_cached,
     hold_jobs,
     module_prefix,
     prepare,
@@ -190,5 +193,19 @@ test "a job that keeps its lease stops the move before anything changes" {
         release_jobs(store, held);
     } finally {
         store.close();
+    }
+}
+
+test "after a move the server looks up its shared root again" {
+    saved = list(jac_runtime._shared_root_resolver);
+    try {
+        Jac.set_shared_root_resolver(lambda -> str | None { return "aaaaaaaa-0000-0000-0000-000000000000"; });
+        assert Jac.shared_root_id() == UUID("aaaaaaaa-0000-0000-0000-000000000000");
+        assert jac_runtime._shared_root_resolver[1] is not None;
+        forget_cached();
+        assert jac_runtime._shared_root_resolver[1] is None;
+    } finally {
+        jac_runtime._shared_root_resolver[0] = saved[0];
+        jac_runtime._shared_root_resolver[1] = saved[1];
     }
 }

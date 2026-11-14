@@ -29,6 +29,7 @@ import time;
 import zlib;
 import from datetime { datetime, timezone }
 import from jaclang { JacRuntime as Jac }
+import jaclang.runtime.runtime as jac_runtime;
 import from jaclang.data.store { ConnInfo, PgStore, TxnIsolation }
 import accounts.sharing as sharing;
 import accounts.store as accounts_store;
@@ -385,8 +386,14 @@ def release_jobs(store: PgStore, held: list[str]) {
     }
 }
 
-"""Forget what this process remembers of the old graph: built views, roles, and accounts."""
+"""Forget what this process remembers of the old graph: the shared root, built views, roles, and
+accounts. `root.shared` is the guest account's root, which the runtime looks up once per process;
+the guest account moved with the rest, so registering the same lookup again makes it look anew."""
 def forget_cached {
+    resolver = jac_runtime._shared_root_resolver[0];
+    if resolver is not None {
+        Jac.set_shared_root_resolver(resolver);
+    }
     VIEWS.clear();
     accounts_store._ROLES.clear();
     sharing._SEEN.clear();
