@@ -18,6 +18,8 @@ Each acts on the caller's own account, which no parameter names, so a request ca
 | `remove_agent_keys` | `provider`: `alpaca`, `openrouter`, or `finnhub` | An `AgentReply` |
 | `set_paper_trading` | `on`: boolean | An `AgentReply` |
 | `start_my_run` | None | An `AgentReply` |
+| `get_transfer_status` | None | A `TransferStatus`; admins only |
+| `start_transfer` | `data`: base64 of an export file | A `TransferStatus`; admins only |
 
 ## AgentSettings
 
@@ -115,6 +117,24 @@ Asks for today's run on the caller's own keys.
 It starts within a minute or two and takes about half an hour.
 It is refused when keys are missing, on a weekend, while a run is working, when the run was already asked for, when the day already has a run, and on a demo server.
 For the admin, it does what [`start_morning_run`](/api/start-morning-run) does.
+
+## get_transfer_status and start_transfer
+
+These move another server's records here, as [Bring your records along](/guide/deploy#bring-your-records-along) describes.
+A non-admin caller gets an empty status, and `start_transfer` refuses them.
+
+`start_transfer` takes `data`, the base64 of a file from `scripts/export-data.sh`, gzipped or not.
+It checks the file, then moves it in the background and returns at once; `get_transfer_status` reports how the move went.
+It refuses a server with runs of its own, a file that is not a whole server's records, and a file with classes this server does not have.
+
+A `TransferStatus` has:
+
+- `state`: empty before any move, then `running`, `done`, or `failed`; `refused` answers an upload that was not taken.
+- `message`: what happened, in words.
+- `ready`: `true` for an admin of a server that can take a move now.
+- `runs`: how many runs this server has.
+
+Once a move is `done`, the accounts are the old server's, so the caller's session no longer names an account.
 
 ## Changing a password
 

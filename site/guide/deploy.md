@@ -48,7 +48,8 @@ A new deploy starts with an empty graph, and its team portfolio stays out of aut
 
 To move the team's trading to the host instead, stop the laptop server for good and give the host the team's Alpaca keys.
 When the host's forward test starts, it takes over the account: it cancels the laptop's open orders and puts the stocks the account holds on its own record with their stops (see [The forward test](/guide/forward-test#what-happens-at-the-start)).
-The laptop's history stays on the laptop; the host's evaluation starts from its own start date.
+The laptop's history stays on the laptop, and the host's evaluation starts from its own start date.
+To keep one record instead, bring the laptop's records to the host before its first morning (see [Bring your records along](#bring-your-records-along)).
 
 ## Deploy
 
@@ -137,6 +138,41 @@ The laptop's history stays on the laptop; the host's evaluation starts from its 
 - `jachammer doctor` diagnoses a deploy that does not start.
 - Each user connects their own keys in Settings, and their agent runs on them (see [Your agent](/guide/your-agent)).
 - The admin logs in as `admin` with `ADMIN_PASSWORD`.
+
+## Bring your records along
+
+A new server starts empty.
+It can take another server's whole record instead: every run, vote, decision, order, mark, evaluation, and agent, and the accounts that sign in to them.
+Do it before the new server's first morning run, since a server that has run keeps its own records and refuses a move.
+
+1. Stop the old server for good, so the two do not trade the same Alpaca account.
+2. In a clone of this repository, export the old server's database:
+
+   ```sh
+   scripts/export-data.sh ~/path/to/old-server-folder
+   ```
+
+   It reads the folder's database in one snapshot, changes nothing, and writes `parallax-data-<date>.json.gz`.
+   The file holds password hashes and sealed keys: keep it private, and delete it once the move is done.
+3. Sign in to the new server as an admin, open Settings, choose the file under "Bring records from another server", and confirm.
+   The move takes a minute or two.
+4. When it lands, the page signs you out.
+   Everyone signs in with their account from the old server, with its role there.
+   The `admin` account keeps the new server's `ADMIN_PASSWORD`, since the old one may still have the laptop's fallback password.
+
+What a move does:
+
+- It replaces the new server's graph and accounts in one transaction, so it lands whole or changes nothing.
+- It holds every scheduled job's lease while it writes, so no job starts on the graph it replaces.
+- It renames each stored class to the new server's module names.
+  A built app stores `models.graph` under a prefix made from its folder, so the same class has a different name on each server.
+- The team's forward test carries on where it was: its baselines come along, so the new server starts no new one, and `TRADING_AGENT_FORWARD_TEST_START` changes nothing.
+  Give the new server the team's Alpaca keys, since the record's positions and stop orders are on that account.
+- Users' own keys stay sealed under the old server's `PARALLAX_KEYS_SECRET`.
+  Give the new server the same secret to keep them working; otherwise Settings shows them as not connected, and each user connects them again.
+- The provider cache and the market pages do not move; the new server rebuilds them.
+
+The move lives in `accounts/transfer.jac`, and the export query in `scripts/export-data.sql`.
 
 ## Without JacHammer
 
