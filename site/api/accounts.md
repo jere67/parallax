@@ -19,7 +19,8 @@ Each acts on the caller's own account, which no parameter names, so a request ca
 | `set_paper_trading` | `on`: boolean | An `AgentReply` |
 | `start_my_run` | None | An `AgentReply` |
 | `get_transfer_status` | None | A `TransferStatus`; admins only |
-| `start_transfer` | `data`: base64 of an export file | A `TransferStatus`; admins only |
+| `send_transfer_part` | `upload`: a name for the upload, `index`, `part`: up to 524,288 base64 characters of the export file | A `TransferStatus`; admins only |
+| `start_transfer` | `upload`, `parts`: how many parts were sent | A `TransferStatus`; admins only |
 
 ## AgentSettings
 
@@ -118,13 +119,14 @@ It starts within a minute or two and takes about half an hour.
 It is refused when keys are missing, on a weekend, while a run is working, when the run was already asked for, when the day already has a run, and on a demo server.
 For the admin, it does what [`start_morning_run`](/api/start-morning-run) does.
 
-## get_transfer_status and start_transfer
+## get_transfer_status, send_transfer_part, and start_transfer
 
 These move another server's records here, as [Bring your records along](/guide/deploy#bring-your-records-along) describes.
 A non-admin caller gets an empty status, and `start_transfer` refuses them.
 
-`start_transfer` takes `data`, the base64 of a file from `scripts/export-data.sh`, gzipped or not.
-It checks the file, then moves it in the background and returns at once; `get_transfer_status` reports how the move went.
+The file from `scripts/export-data.sh` goes up as base64 in parts, since JacHammer's proxy refuses a request body over 1 MiB.
+`send_transfer_part` keeps each part for an hour; `start_transfer` joins them in order, checks the file, then moves it in the background and returns at once.
+`get_transfer_status` reports how the move went.
 It refuses a server with runs of its own, a file that is not a whole server's records, and a file with classes this server does not have.
 
 A `TransferStatus` has:
