@@ -7,11 +7,22 @@ glob WORKER_URL: str = "/sw.js";
 glob DISMISSED_KEY: str = "trading-agent-install-dismissed";
 
 """Register the service worker, once, after the page has loaded, and never let a failure reach
-the reader: the dashboard works the same without one."""
+the reader: the dashboard works the same without one. When a new release's worker takes over a
+page an older one served, the page reloads once, so the reader runs the release the server has
+(assets/sw.js says why a page could otherwise stay old). A first visit has no worker to replace."""
 def:pub register_worker {
     useEffect(lambda {
         nav: any = navigator;
         if nav.serviceWorker {
+            replacing = bool(nav.serviceWorker.controller);
+            reloaded = [False];
+            def took_over {
+                if replacing and not reloaded[0] {
+                    reloaded[0] = True;
+                    window.location.reload();
+                }
+            }
+            nav.serviceWorker.addEventListener("controllerchange", took_over);
             nav.serviceWorker.register(WORKER_URL).catch(lambda (_e: any) { None; });
         }
     }, []);
