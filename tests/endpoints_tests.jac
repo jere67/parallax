@@ -8,9 +8,9 @@ glob PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent;
 glob SKIP_DIRS: set[str] = {".git", ".jac", "dist", "node_modules", "tests"};
 glob FUNCTION_DECL: re.Pattern[str] = re.compile(r"def:(?:pub|priv)\s+(\w+)([^{;]*)");
 glob WALKER_DECL: re.Pattern[str] = re.compile(r"walker:(?:pub|priv)\s+(\w+)");
-# Browser globals place a module client (jac guide jac-codespaces), so its :pub helpers are
-# exports for other client modules, not endpoints.
-glob BROWSER_GLOBAL: re.Pattern[str] = re.compile(r"\b(?:window|document|localStorage)\.");
+# Browser globals or the client runtime place a module client (jac guide jac-codespaces), so its
+# :pub helpers are exports for other client modules, not endpoints.
+glob BROWSER_GLOBAL: re.Pattern[str] = re.compile(r"\b(?:window|document|localStorage)\.|\"@jac/runtime\"");
 
 """The server's source files. A folder below the root with its own jac.toml is a separate
 project (the phone app in mobile/), so its :pub functions are not this server's endpoints."""
@@ -77,7 +77,7 @@ test "every declared endpoint is served" {
     assert not missing, f"Not served: {missing}. Import each one by name in main.jac (TDD §3, rule 7).";
 }
 
-test "only health answers an anonymous caller; everything else takes an account" {
+test "only health and the demo sign-in answer an anonymous caller; everything else takes an account" {
     client = start_client();
     try {
         served = client.get("/functions").json()["data"]["functions"];
@@ -95,10 +95,11 @@ test "only health answers an anonymous caller; everything else takes an account"
     } finally {
         client.close();
     }
-    assert open_ones == ["health"], open_ones;
+    assert sorted(open_ones) == ["health", "open_demo"], open_ones;
     assert open_walkers == [], open_walkers;
     # A required argument is checked before the token, so a 422 above proves nothing about a public
-    # endpoint. The source says which are public: health, and the pure formatting the pages share,
+    # endpoint. The source says which are public: health, the demo account's sign-in, which hands
+    # out a token for an account that changes nothing, and the pure formatting the pages share,
     # which reads no data. The pages' own wrappers (dashboard/ui) are client code.
     public = {
         found.group(1)
@@ -108,7 +109,7 @@ test "only health answers an anonymous caller; everything else takes an account"
         for found in re.finditer(r"def:pub\s+(\w+)([^{;]*)", path.read_text())
         if "JsxElement" not in found.group(2)
     };
-    assert public - {"health", "money", "percent", "ratio", "chart_points"} == set(), public;
+    assert public - {"health", "open_demo", "money", "percent", "ratio", "chart_points"} == set(), public;
 }
 
 test "health answers ok with a UTC timestamp" {
