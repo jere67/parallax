@@ -21,6 +21,13 @@ portfolio (`Sent`), so reconciliation can trace each one.
 
 Everything here runs on the job's own thread, never on a worker thread, since it writes the
 graph (TDD §3, rule 6).
+
+Coins (research/crypto.jac) go through the same steps. They trade around the clock and Alpaca
+takes no DAY order for them, so a coin's entry is a GTC limit that the 3:50 window cancels like a
+DAY order, and its stop is a GTC stop-limit (Alpaca has no plain stop for crypto) 1% under the
+stop price. Quantities are fractions down to the coin's trade increment. Option contracts are
+left to action/options.jac: nothing here sizes, gates, or stops them, but their value still
+counts toward gross exposure.
 """
 import math;
 import os;
@@ -28,6 +35,7 @@ import from datetime { datetime }
 import from action.broker { Broker, BrokerError, BrokerOrder, BrokerPosition, OrderRequest }
 import from action.gate { GATE_VERSION, Book, BookPosition, GateConfig, GateResult, Instrument, Proposal, breaker_peak, check_orders }
 import from action.sizing { SizingCandidate, SizingConfig, size_positions }
+import from models.assets { CRYPTO, OPTIONS, STOCKS, asset_class_of }
 import from models.graph {
     CheckedBy,
     Coverage,
@@ -59,6 +67,7 @@ import from models.graph {
 import from models.research { RegimeInputs }
 import from research.alpaca { Asset, LatestTrade, assets, latest_trades }
 import from research.collector { parse_utc, run_budget }
+import from research.crypto { CryptoAsset, crypto_assets, crypto_latest_trades, is_crypto }
 import from run.public { public }
 
 # Marketable limit offset from the latest trade (TDD §8, order type).
@@ -68,17 +77,35 @@ glob LIMIT_OFFSET: float = 0.003;
 glob ORDERS_OFF_ENV: str = "TRADING_AGENT_DISABLE_ORDERS";
 # Alpaca order states in which an order may still fill (action/broker.jac).
 glob FINISHED_STATUSES: set[str] = {"filled", "canceled", "expired", "replaced", "rejected"};
+# A coin's stop-limit sells no lower than this far under its stop price.
+glob CRYPTO_STOP_SLIPPAGE: float = 0.01;
+# A coin position left with less than this share of what it held before an exit is closed: Alpaca
+# takes its fee in the coin, so an exit can leave dust the account cannot sell.
+glob DUST_FRACTION: float = 0.02;
 
 def orders_disabled -> bool {
     return os.environ.get(ORDERS_OFF_ENV, "").strip() == "1";
 }
 
-"""The latest trade and tradability of each stock, from Alpaca's data and asset APIs. A test
-passes one in instead of calling the network."""
+"""The latest trade and tradability of each stock and coin, from Alpaca's data and asset APIs. A
+test passes one in instead of calling the network."""
 obj MarketView {
     has trades: dict[str, LatestTrade] = {},
         assets: dict[str, Asset] = {},
-        gaps: list[str] = [];
+        gaps: list[str] = [],
+        coins: dict[str, CryptoAsset] = {};
+
+    """The smallest quantity `ticker` trades in: a share, or the coin's trade increment."""
+    def increment(ticker: str) -> float {
+        found = self.coins.get(ticker);
+        return found.min_trade_increment if found is not None and found.min_trade_increment > 0.0 else 1.0;
+    }
+
+    """A coin's price tick, or 0 for a stock, whose tick follows from its price."""
+    def price_increment(ticker: str) -> float {
+        found = self.coins.get(ticker);
+        return found.price_increment if found is not None else 0.0;
+    }
 
     def price(ticker: str) -> float | None {
         found = self.trades.get(ticker);
@@ -104,20 +131,44 @@ the gate then refuses the buys it cannot judge."""
 def market_view(tickers: list[str]) -> MarketView {
     view = MarketView();
     budget = run_budget();
-    try {
-        (found, gaps) = latest_trades(tickers, budget);
-        view.trades = {t.symbol: t for t in found};
-        view.gaps.extend(gaps);
-    } except Exception as e {
-        view.gaps.append(f"alpaca.latest_trade: unavailable ({type(e).__name__}: {str(e)[:200]})");
+    stocks = [t for t in tickers if asset_class_of(t) == STOCKS];
+    coins = [t for t in tickers if is_crypto(t)];
+    if stocks {
+        try {
+            (found, gaps) = latest_trades(stocks, budget);
+            view.trades = {t.symbol: t for t in found};
+            view.gaps.extend(gaps);
+        } except Exception as e {
+            view.gaps.append(f"alpaca.latest_trade: unavailable ({type(e).__name__}: {str(e)[:200]})");
+        }
+        try {
+            listed = assets(budget);
+            view.assets = {t: listed[t] for t in stocks if t in listed};
+        } except Exception as e {
+            view.gaps.append(f"alpaca.assets: unavailable ({type(e).__name__}: {str(e)[:200]})");
+        }
     }
-    try {
-        listed = assets(budget);
-        view.assets = {t: listed[t] for t in tickers if t in listed};
-    } except Exception as e {
-        view.gaps.append(f"alpaca.assets: unavailable ({type(e).__name__}: {str(e)[:200]})");
+    if coins {
+        try {
+            (found, gaps) = crypto_latest_trades(coins, budget);
+            view.trades.update({t.symbol: t for t in found});
+            view.gaps.extend(gaps);
+        } except Exception as e {
+            view.gaps.append(f"alpaca.crypto_trade: unavailable ({type(e).__name__}: {str(e)[:200]})");
+        }
+        try {
+            pairs = crypto_assets(budget);
+            view.coins = {t: pairs[t] for t in coins if t in pairs};
+        } except Exception as e {
+            view.gaps.append(f"alpaca.crypto_assets: unavailable ({type(e).__name__}: {str(e)[:200]})");
+        }
     }
     return view;
+}
+
+"""True when `classes` (a run's) let its agent buy `ticker`."""
+def class_enabled(ticker: str, classes: list[str]) -> bool {
+    return asset_class_of(ticker) in classes;
 }
 
 """What one call did, for the job's log and the run's execution note."""
@@ -144,9 +195,9 @@ def decisions_of(run: Run) -> dict[str, tuple[Coverage, Decision]] {
     return found;
 }
 
-"""The portfolio's open positions by ticker."""
-def open_positions(portfolio: Portfolio) -> dict[str, Position] {
-    return {p.ticker: p for p in [portfolio ->:Holds:->[?:Position]] if p.open()};
+"""The portfolio's open stock and coin positions by ticker, or its options too with `options`."""
+def open_positions(portfolio: Portfolio, options: bool = False) -> dict[str, Position] {
+    return {p.ticker: p for p in [portfolio ->:Holds:->[?:Position]] if p.open() and (options or p.asset_class != OPTIONS)};
 }
 
 """The equity the drawdown breaker measures `portfolio` from under `gate`: its highest close
@@ -196,7 +247,10 @@ def execute_run(
     }
     run.executed_at = now.isoformat();
     account = broker.account();
-    held = {t: p for (t, p) in broker.positions().items() if p.qty > 0};
+    every = broker.positions();
+    held = {t: p for (t, p) in every.items() if p.qty > 0 and p.asset_class != OPTIONS};
+    # Options are action/options.jac's, but their value still counts toward gross exposure.
+    other_value = sum(abs(p.market_value) for p in every.values() if p.asset_class == OPTIONS);
     decided = decisions_of(run);
     tickers = sorted(set(decided) | set(held));
     seen = view or market_view(tickers);
@@ -214,7 +268,8 @@ def execute_run(
             conviction=min(1.0, max(0.0, d.conviction)) if d is not None else 0.0,
             price=price,
             realized_vol_20=cov.realized_vol_20 if cov is not None else None,
-            current_qty=held[t].qty if t in held else 0
+            current_qty=held[t].qty if t in held else 0,
+            increment=seen.increment(t)
         ));
     }
     plan = size_positions(candidates, account.equity, sizing);
@@ -233,23 +288,30 @@ def execute_run(
     instruments: dict[str, Instrument] = {};
     for t in tickers {
         asset = seen.assets.get(t);
+        coin = seen.coins.get(t);
         cov = decided[t][0] if t in decided else None;
+        listed = coin.tradable if coin is not None else asset.tradable if asset is not None else None;
         instruments[t] = Instrument(
             ticker=t,
             price=seen.price(t) or 0.0,
             sector=sector_of(t),
             # With no asset list, a held stock may still be sold; a buy is refused.
-            tradable=asset.tradable if asset is not None else t in held,
+            tradable=listed if listed is not None else t in held,
             trade_age_minutes=seen.trade_age(t, now),
             atr_14=cov.atr_14 if cov is not None else None,
             volume_20=cov.volume_20 if cov is not None else None,
-            sessions_to_earnings=cov.sessions_to_earnings if cov is not None else None
+            sessions_to_earnings=cov.sessions_to_earnings if cov is not None else None,
+            increment=seen.increment(t),
+            min_qty=coin.min_order_size if coin is not None else 0.0,
+            crypto=is_crypto(t),
+            enabled=class_enabled(t, run.asset_classes)
         );
     }
     book = Book(
         equity=account.equity,
         peak_equity=max(breaker_peak_of(portfolio, gate), account.equity),
-        positions={t: BookPosition(ticker=t, qty=p.qty, price=instruments[t].price or p.current_price, sector=sector_of(t)) for (t, p) in held.items()}
+        positions={t: BookPosition(ticker=t, qty=p.qty, price=instruments[t].price or p.current_price, sector=sector_of(t)) for (t, p) in held.items()},
+        other_value=other_value
     );
     results = check_orders(proposals, book, instruments, run_regime(run), gate);
 
@@ -266,7 +328,8 @@ def execute_run(
             requested_qty=r.requested_qty,
             price=r.price,
             stop_distance=r.stop_distance,
-            gate_version=GATE_VERSION
+            gate_version=GATE_VERSION,
+            asset_class=asset_class_of(r.ticker)
         );
         if r.ticker in decided {
             public(decided[r.ticker][1] +>:CheckedBy():+> rc);
@@ -276,7 +339,7 @@ def execute_run(
         }
         checks.append((rc, r));
         if r.approved_qty <= 0 {
-            report_.refused.append(f"{r.ticker} {r.side.value} {r.requested_qty}: {r.rejected_by()}");
+            report_.refused.append(f"{r.ticker} {r.side.value} {r.requested_qty:g}: {r.rejected_by()}");
         }
     }
     if orders_disabled() {
@@ -288,7 +351,7 @@ def execute_run(
     ordered = [c for c in checks if c[1].side == OrderSide.SELL] + [c for c in checks if c[1].side == OrderSide.BUY];
     for (rc, r) in ordered {
         if r.approved_qty > 0 {
-            report_.done.append(submit(portfolio, rc, broker, now, run.run_date, positions.get(r.ticker)));
+            report_.done.append(submit(portfolio, rc, broker, now, run.run_date, positions.get(r.ticker), seen.price_increment(r.ticker)));
         }
     }
     report_.note = f"{len(checks)} checks, {len([c for c in checks if c[1].approved_qty > 0])} approved";
@@ -302,18 +365,30 @@ def execute_run(
 """The client order ID for a run's order: the portfolio's `tag`, run date, ticker, and purpose, so
 a second firing finds the first order instead of placing another (TDD §8, idempotency)."""
 def order_id_for(run_day: str, ticker: str, purpose: OrderPurpose, tag: str = "") -> str {
-    found = f"{run_day}-{ticker}-{purpose.value}";
+    found = f"{run_day}-{ticker.replace('/', '')}-{purpose.value}";
     return f"{tag}-{found}" if tag else found;
 }
 
 def limit_price(side: OrderSide, price: float) -> float {
-    return round(price * (1.0 + LIMIT_OFFSET) if side == OrderSide.BUY else price * (1.0 - LIMIT_OFFSET), 2 if price >= 1.0 else 4);
+    return round(price * (1.0 + LIMIT_OFFSET) if side == OrderSide.BUY else price * (1.0 - LIMIT_OFFSET), 2 if price >= 1.0 else 6);
+}
+
+"""A stop price rounded the way it is shown: to the cent at $1 and above, and finer below, where a
+coin can trade for a fraction of a cent."""
+def stop_round(price: float) -> float {
+    return round(price, 2) if price >= 1.0 else round(price, 6);
+}
+
+"""The time in force for a run's order on `ticker`: Alpaca takes no DAY order for a coin."""
+def entry_tif(ticker: str) -> str {
+    return "gtc" if is_crypto(ticker) else "day";
 }
 
 """Submit the order `rc` approved, as a marketable DAY limit at its checked price ±0.3%. A
 position's working stop is canceled first: a buy beside it is a wash trade, and a sell needs
-the shares it reserves. Refuses anything `rc` did not approve. Returns a line for the log."""
-def submit(portfolio: Portfolio, rc: RiskCheck, broker: Broker, now: datetime, run_day: str, position: Position | None = None) -> str {
+the shares it reserves. Refuses anything `rc` did not approve. `tick` is a coin's price increment.
+Returns a line for the log."""
+def submit(portfolio: Portfolio, rc: RiskCheck, broker: Broker, now: datetime, run_day: str, position: Position | None = None, tick: float = 0.0) -> str {
     if rc.side is None or rc.purpose is None or rc.approved_qty <= 0 or rc.price <= 0.0 {
         raise ValueError(f"{rc.ticker}: refusing an order the risk gate did not approve");
     }
@@ -322,7 +397,7 @@ def submit(portfolio: Portfolio, rc: RiskCheck, broker: Broker, now: datetime, r
         closed = broker.cancel_and_wait(stop.id);
         if closed.filled_qty > 0 {
             # The stop fired first: the position the order was sized for is gone or smaller.
-            return _refused(portfolio, rc, now, run_day, qty, f"its stop filled ({closed.filled_qty} shares) before the order");
+            return _refused(portfolio, rc, now, run_day, qty, f"its stop filled ({closed.filled_qty:g}) before the order");
         }
     }
     if position is not None and position.stop_order_id {
@@ -340,9 +415,10 @@ def submit(portfolio: Portfolio, rc: RiskCheck, broker: Broker, now: datetime, r
         side=rc.side.value,
         qty=qty,
         order_type="limit",
-        time_in_force="day",
+        time_in_force=entry_tif(rc.ticker),
         client_order_id=order_id_for(run_day, rc.ticker, rc.purpose, portfolio.order_tag),
-        limit_price=limit_price(rc.side, rc.price)
+        limit_price=limit_price(rc.side, rc.price),
+        price_increment=tick
     );
     order = Order(
         client_order_id=request.client_order_id,
@@ -350,10 +426,11 @@ def submit(portfolio: Portfolio, rc: RiskCheck, broker: Broker, now: datetime, r
         side=rc.side,
         qty=qty,
         order_type="limit",
-        time_in_force="day",
+        time_in_force=request.time_in_force,
         submitted_at=now.isoformat(),
         limit_price=request.limit_price or 0.0,
-        ticker=rc.ticker
+        ticker=rc.ticker,
+        asset_class=asset_class_of(rc.ticker)
     );
     try {
         placed = broker.submit(request);
@@ -364,21 +441,22 @@ def submit(portfolio: Portfolio, rc: RiskCheck, broker: Broker, now: datetime, r
     }
     public(rc +>:Placed():+> order);
     portfolio +>:Sent():+> order;
-    return f"{rc.ticker} {rc.side.value} {qty} @ {order.limit_price:.2f}: {order.status}{' (' + order.reject_reason + ')' if order.reject_reason else ''}";
+    return f"{rc.ticker} {rc.side.value} {qty:g} @ {_money(order.limit_price)}: {order.status}{' (' + order.reject_reason + ')' if order.reject_reason else ''}";
 }
 
-def _refused(portfolio: Portfolio, rc: RiskCheck, now: datetime, run_day: str, qty: int, reason: str) -> str {
+def _refused(portfolio: Portfolio, rc: RiskCheck, now: datetime, run_day: str, qty: float, reason: str) -> str {
     order = Order(
         client_order_id=order_id_for(run_day, rc.ticker, rc.purpose or OrderPurpose.ENTRY, portfolio.order_tag),
         purpose=rc.purpose or OrderPurpose.ENTRY,
         side=rc.side or OrderSide.BUY,
         qty=qty,
         order_type="limit",
-        time_in_force="day",
+        time_in_force=entry_tif(rc.ticker),
         submitted_at=now.isoformat(),
         status="rejected",
         reject_reason=f"not sent: {reason}",
-        ticker=rc.ticker
+        ticker=rc.ticker,
+        asset_class=asset_class_of(rc.ticker)
     );
     public(rc +>:Placed():+> order);
     portfolio +>:Sent():+> order;
@@ -403,6 +481,9 @@ def sync_orders(portfolio: Portfolio, broker: Broker, now: datetime) -> list[str
             continue;
         }
         added = seen.filled_qty - order.filled_qty;
+        if added > 0 and order.asset_class == CRYPTO {
+            added = round(added, 12);
+        }
         if added > 0 and seen.filled_avg_price is not None {
             # Alpaca reports the cumulative fill; the new shares' price follows from the averages.
             price = (seen.filled_avg_price * seen.filled_qty - order.filled_avg_price * order.filled_qty) / added;
@@ -423,8 +504,9 @@ def sync_orders(portfolio: Portfolio, broker: Broker, now: datetime) -> list[str
 """Move the portfolio's position in `order`'s stock by a fill of `qty` at `price`. A new position
 dates from the broker's `filled_at`, not from this sync, so a sync the runtime replays after a
 database conflict names the same stop (`stop_id_for`) and finds the stop it placed."""
-def _apply_fill(portfolio: Portfolio, order: Order, qty: int, price: float, now: datetime, filled_at: str) -> str {
-    position = open_positions(portfolio).get(order.ticker);
+def _apply_fill(portfolio: Portfolio, order: Order, qty: float, price: float, now: datetime, filled_at: str) -> str {
+    position = open_positions(portfolio, True).get(order.ticker);
+    kind = order.asset_class or asset_class_of(order.ticker);
     if order.side == OrderSide.BUY {
         found = [rc for rc in [order <-:Placed:<-[?:RiskCheck]]];
         distance = found[0].stop_distance if found else 0.0;
@@ -437,60 +519,79 @@ def _apply_fill(portfolio: Portfolio, order: Order, qty: int, price: float, now:
                 qty=qty,
                 avg_entry_price=price,
                 opened_at=filled_at,
-                stop_price=round(price - distance, 2) if distance > 0 else 0.0,
+                stop_price=stop_round(price - distance) if distance > 0 else 0.0,
                 last_price=price,
-                priced_at=now.isoformat()
+                priced_at=now.isoformat(),
+                asset_class=kind,
+                multiplier=100.0 if kind == OPTIONS else 1.0
             ));
             if decided {
                 position +>:OpenedBy():+> decided[0];
             }
-            return f"{order.ticker}: opened {qty} @ {price:.2f}, stop {position.stop_price:.2f}";
+            return f"{order.ticker}: opened {qty:g} @ {_money(price)}" + (f", stop {_money(position.stop_price)}" if position.stop_price > 0 else "");
         }
         position.avg_entry_price = (position.avg_entry_price * position.qty + price * qty) / (position.qty + qty);
         position.qty += qty;
+        if kind == CRYPTO {
+            position.qty = round(position.qty, 12);
+        }
         if distance > 0 {
             # An add never loosens the stop.
-            position.stop_price = max(position.stop_price, round(price - distance, 2));
+            position.stop_price = max(position.stop_price, stop_round(price - distance));
         }
-        return f"{order.ticker}: added {qty} @ {price:.2f}, now {position.qty}, stop {position.stop_price:.2f}";
+        return f"{order.ticker}: added {qty:g} @ {_money(price)}, now {position.qty:g}" + (f", stop {_money(position.stop_price)}" if position.stop_price > 0 else "");
     }
     if position is None {
-        return f"{order.ticker}: sold {qty} @ {price:.2f} with no open position on record";
+        return f"{order.ticker}: sold {qty:g} @ {_money(price)} with no open position on record";
     }
+    before = position.qty;
     position.qty -= qty;
+    if kind == CRYPTO {
+        position.qty = round(position.qty, 12);
+        if order.purpose in (OrderPurpose.EXIT, OrderPurpose.STOP) and position.qty <= before * DUST_FRACTION {
+            position.qty = 0;
+        }
+    }
     if position.qty <= 0 {
         position.qty = 0;
         position.closed_at = now.isoformat();
         position.exit_price = price;
         position.stop_order_id = "";
-        return f"{order.ticker}: closed @ {price:.2f} ({order.purpose.value})";
+        return f"{order.ticker}: closed @ {_money(price)} ({order.purpose.value})";
     }
-    return f"{order.ticker}: sold {qty} @ {price:.2f} ({order.purpose.value}), {position.qty} left";
+    return f"{order.ticker}: sold {qty:g} @ {_money(price)} ({order.purpose.value}), {position.qty:g} left";
+}
+
+"""A price in dollars, with the precision a sub-dollar coin needs."""
+def _money(value: float) -> str {
+    return f"{value:.2f}" if abs(value) >= 1.0 else f"{value:.4g}";
 }
 
 """The client order ID for a position's `n`th stop: the portfolio's `tag`, the stock, when the
 position opened, and the count, so a re-placed stop never reuses an ID."""
 def stop_id_for(position: Position, n: int, tag: str = "") -> str {
     opened = "".join(ch for ch in position.opened_at[:19] if ch.isdigit());
-    found = f"{position.ticker}-{opened}-stop{n}";
+    found = f"{position.ticker.replace('/', '')}-{opened}-stop{n}";
     return f"{tag}-{found}" if tag else found;
 }
 
 """Give every open position exactly one working GTC stop sell for all its shares at its stop
 price. A stock with a working buy or non-stop sell waits for that order to finish. When the
 price is already at or below the stop, the position is sold at once with a marketable
-limit, since Alpaca would refuse a sell stop above the market. Returns a line per change."""
-def keep_stops(portfolio: Portfolio, broker: Broker, now: datetime, prices: dict[str, float] | None = None) -> list[str] {
+limit, since Alpaca would refuse a sell stop above the market. A coin's stop is a stop-limit, and
+`coins_only` leaves stocks alone on a day the stock market is closed. Returns a line per change."""
+def keep_stops(portfolio: Portfolio, broker: Broker, now: datetime, prices: dict[str, float] | None = None, coins_only: bool = False) -> list[str] {
     changes: list[str] = [];
     if orders_disabled() {
         return changes;
     }
-    positions = open_positions(portfolio);
+    positions = {t: p for (t, p) in open_positions(portfolio).items() if not coins_only or is_crypto(t)};
     if not positions {
         return changes;
     }
     held = broker.positions();
     working = broker.orders("open", sorted(positions));
+    ticks = coin_ticks([t for t in positions if is_crypto(t)]);
     for (ticker, position) in sorted(positions.items()) {
         at_broker = held.get(ticker);
         if at_broker is None or at_broker.qty <= 0 {
@@ -506,7 +607,8 @@ def keep_stops(portfolio: Portfolio, broker: Broker, now: datetime, prices: dict
             continue;
         }
         stops = [o for o in mine if o.side == "sell"];
-        if len(stops) == 1 and stops[0].qty == at_broker.qty and stops[0].stop_price is not None and abs(stops[0].stop_price - position.stop_price) < 0.005 {
+        coin = is_crypto(ticker);
+        if len(stops) == 1 and _same_qty(stops[0].qty, at_broker.qty, coin) and stops[0].stop_price is not None and abs(stops[0].stop_price - position.stop_price) < (0.005 if position.stop_price >= 1.0 else position.stop_price * 0.001) {
             position.stop_order_id = stops[0].id;
             continue;
         }
@@ -526,11 +628,12 @@ def keep_stops(portfolio: Portfolio, broker: Broker, now: datetime, prices: dict
             symbol=ticker,
             side="sell",
             qty=at_broker.qty,
-            order_type="limit" if stop_out else "stop",
-            time_in_force="day" if stop_out else "gtc",
+            order_type="limit" if stop_out else "stop_limit" if coin else "stop",
+            time_in_force="gtc" if coin else "day" if stop_out else "gtc",
             client_order_id=stop_id_for(position, position.stops_placed, portfolio.order_tag),
-            limit_price=limit_price(OrderSide.SELL, last) if stop_out else None,
-            stop_price=None if stop_out else position.stop_price
+            limit_price=limit_price(OrderSide.SELL, last) if stop_out else stop_round(position.stop_price * (1.0 - CRYPTO_STOP_SLIPPAGE)) if coin else None,
+            stop_price=None if stop_out else position.stop_price,
+            price_increment=ticks.get(ticker, 0.0)
         );
         order = Order(
             client_order_id=request.client_order_id,
@@ -542,7 +645,8 @@ def keep_stops(portfolio: Portfolio, broker: Broker, now: datetime, prices: dict
             submitted_at=now.isoformat(),
             limit_price=request.limit_price or 0.0,
             stop_price=position.stop_price,
-            ticker=ticker
+            ticker=ticker,
+            asset_class=asset_class_of(ticker)
         );
         try {
             placed = broker.submit(request);
@@ -554,28 +658,50 @@ def keep_stops(portfolio: Portfolio, broker: Broker, now: datetime, prices: dict
         }
         public(position +>:StoppedBy():+> order);
         portfolio +>:Sent():+> order;
-        what = f"sold at {order.limit_price:.2f}, the price {last:.2f} is at or below the stop {position.stop_price:.2f}" if stop_out else f"stop for {at_broker.qty} at {position.stop_price:.2f}";
+        what = f"sold at {_money(order.limit_price)}, the price {_money(last)} is at or below the stop {_money(position.stop_price)}" if stop_out else f"stop for {at_broker.qty:g} at {_money(position.stop_price)}";
         changes.append(f"{ticker}: {what}: {order.status}{' (' + order.reject_reason + ')' if order.reject_reason else ''}");
     }
     return changes;
 }
 
+"""Each coin's price increment, from Alpaca's asset list (cached for a day), so a stop's prices are
+ones Alpaca takes. A failed read leaves the cent tick, which a coin above $1 accepts."""
+def coin_ticks(coins: list[str]) -> dict[str, float] {
+    if not coins {
+        return {};
+    }
+    try {
+        listed = crypto_assets(run_budget());
+    } except Exception {
+        return {};
+    }
+    return {c: listed[c].price_increment for c in coins if c in listed};
+}
+
+"""True when a stop for `ordered` covers a position of `held`: exactly for shares, and within a
+millionth for a coin's fraction."""
+def _same_qty(ordered: float, held: float, coin: bool) -> bool {
+    return abs(ordered - held) <= max(abs(held), 1.0) * 1e-6 if coin else ordered == held;
+}
+
 """Cancel `run`'s DAY orders that are still working (TDD §8: unfilled orders are canceled at
-3:50 p.m. and re-evaluated the next morning), then record what filled and re-place stops.
-Runs once per run."""
-def close_day_orders(portfolio: Portfolio, run: Run, broker: Broker, now: datetime) -> list[str] {
+3:50 p.m. and re-evaluated the next morning), then record what filled and re-place stops; only
+coins' stops with `coins_only`, on a day the stock market is closed. Runs once per run."""
+def close_day_orders(portfolio: Portfolio, run: Run, broker: Broker, now: datetime, coins_only: bool = False) -> list[str] {
     if run.day_orders_closed_at {
         return [f"day orders already closed at {run.day_orders_closed_at}"];
     }
     run.day_orders_closed_at = now.isoformat();
     changes = sync_orders(portfolio, broker, now);
     for order in working_orders(portfolio) {
-        if order.time_in_force == "day" {
+        # A coin's entries and exits are GTC, since Alpaca takes no DAY order for one, but the run
+        # closes them at the same time as a stock's.
+        if order.time_in_force == "day" or (order.asset_class == CRYPTO and order.purpose != OrderPurpose.STOP) {
             closed = broker.cancel_and_wait(order.alpaca_order_id);
-            changes.append(f"{order.client_order_id}: canceled at the close window ({closed.filled_qty} of {order.qty} filled)");
+            changes.append(f"{order.client_order_id}: canceled at the close window ({closed.filled_qty:g} of {order.qty:g} filled)");
         }
     }
     changes.extend(sync_orders(portfolio, broker, now));
-    changes.extend(keep_stops(portfolio, broker, now));
+    changes.extend(keep_stops(portfolio, broker, now, coins_only=coins_only));
     return changes;
 }

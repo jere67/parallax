@@ -260,3 +260,47 @@ test "no approved order set breaks any cap, over thousands of random decision se
     run = settings(max_examples=3000, deadline=None, suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large])(given(strategies.data())(gate_never_breaks_a_cap));
     run();
 }
+
+def coin(ticker: str = "BTC/USD", price: float = 50000.0) -> Instrument {
+    return Instrument(ticker=ticker, price=price, sector="Crypto", trade_age_minutes=1.0, atr_14=price * 0.04, volume_20=1e9, increment=0.0001, min_qty=0.0001, crypto=True);
+}
+
+test "a coin buy is capped at its own per-position weight, in its increment" {
+    found = check_orders([Proposal(ticker="BTC/USD", action=TradeAction.BUY, side=OrderSide.BUY, qty=0.3, conviction=0.9)], book(), {"BTC/USD": coin()}, CALM);
+    # 5% of $100,000 at $50,000 is 0.1 BTC.
+    assert abs(found[0].approved_qty - 0.1) < 1e-12 and found[0].outcome() == RiskOutcome.RESIZED;
+}
+
+test "a coin under $5 passes the price floor, and every coin shares one cap" {
+    held = [BookPosition(ticker="ETH/USD", qty=6.0, price=3000.0, sector="Crypto")];
+    instruments = {"DOGE/USD": coin("DOGE/USD", 0.20), "ETH/USD": coin("ETH/USD", 3000.0)};
+    found = check_orders([Proposal(ticker="DOGE/USD", action=TradeAction.BUY, side=OrderSide.BUY, qty=25000.0, conviction=0.9)], book(positions=held), instruments, CALM);
+    # ETH holds 18% of equity, so 2% ($2,000, 10,000 DOGE) is left under the 20% crypto cap.
+    assert abs(found[0].approved_qty - 10000.0) < 1e-6;
+    assert [r.rule for r in found[0].rules if not r.passed] == ["crypto cap"];
+}
+
+test "a buy in an asset class its agent does not trade is refused, and a sell still passes" {
+    off = coin();
+    off.enabled = False;
+    held = [BookPosition(ticker="BTC/USD", qty=0.05, price=50000.0, sector="Crypto")];
+    found = check_orders([Proposal(ticker="BTC/USD", action=TradeAction.BUY, side=OrderSide.BUY, qty=0.01, conviction=0.9)], book(), {"BTC/USD": off}, CALM);
+    assert found[0].outcome() == RiskOutcome.REJECTED and found[0].rejected_by() == "asset class";
+    sold = check_orders([Proposal(ticker="BTC/USD", action=TradeAction.SELL, side=OrderSide.SELL, qty=0.05, conviction=0.9)], book(positions=held), {"BTC/USD": off}, CALM);
+    assert sold[0].approved_qty == 0.05;
+}
+
+test "a coin order cut below its minimum size is refused" {
+    small = coin();
+    small.min_qty = 0.5;
+    found = check_orders([Proposal(ticker="BTC/USD", action=TradeAction.BUY, side=OrderSide.BUY, qty=0.3, conviction=0.9)], book(), {"BTC/USD": small}, CALM);
+    assert found[0].outcome() == RiskOutcome.REJECTED and found[0].rejected_by() == "minimum order";
+}
+
+test "options' value counts toward gross exposure" {
+    stuffed = book();
+    stuffed.other_value = 88000.0;
+    found = check_orders([Proposal(ticker="AAA", action=TradeAction.BUY, side=OrderSide.BUY, qty=50, conviction=0.9)], stuffed, {"AAA": stock("AAA")}, CALM);
+    # 90% gross less $88,000 in options leaves $2,000: 20 shares.
+    assert found[0].approved_qty == 20;
+}

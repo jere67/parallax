@@ -89,7 +89,8 @@ def shortlist(run: Run | None) -> dict[str, Coverage] {
     if run is None or run.status in (RunStatus.RUNNING, RunStatus.SKIPPED) {
         return {};
     }
-    return {c.ticker: c for c in [run ->:Covers:->[?:Coverage]] if c.reason == CoverageReason.SCREEN};
+    # Coins are covered beside the screen, not by it, so the baselines that copy the screen skip them.
+    return {c.ticker: c for c in [run ->:Covers:->[?:Coverage]] if c.reason == CoverageReason.SCREEN and "/" not in c.ticker};
 }
 
 """The stop price of each stock's working stop sell in `orders`, the highest when it has more than
@@ -178,7 +179,7 @@ obj SimDay {
 """A simulated buy: `qty` shares at `price`, its stop `stop_distance` below, and its time stop."""
 obj SimBuy {
     has ticker: str,
-        qty: int,
+        qty: float,
         price: float;
     has sector: str = "",
         stop_distance: float = 0.0,
@@ -350,7 +351,7 @@ def buy(baseline: Baseline, order: SimBuy, day: str) -> str {
     return f"{day} {order.ticker} added {order.qty} at {order.price:.2f}, now {position.qty}, stop {position.stop_price:.2f}";
 }
 
-def sell(baseline: Baseline, position: Position, qty: int, price: float, day: str, reason: str) -> str {
+def sell(baseline: Baseline, position: Position, qty: float, price: float, day: str, reason: str) -> str {
     baseline.cash += qty * price;
     position.qty -= qty;
     if position.qty <= 0 {

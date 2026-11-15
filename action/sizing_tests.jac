@@ -1,6 +1,6 @@
 """Position sizing (action/sizing.jac): the volatility ratio, the per-position cap before the
 gross cap, whole shares, and the long-only actions."""
-import from action.sizing { SizingCandidate, SizingConfig, size_positions }
+import from action.sizing { SizingCandidate, SizingConfig, size_positions, units }
 import from models.graph { OrderSide, TradeAction }
 
 def buy(ticker: str, conviction: float, vol: float, price: float = 100.0, held: int = 0) -> SizingCandidate {
@@ -89,4 +89,17 @@ test "bad inputs are refused" {
             assert False, "a bad config was accepted";
         } except ValueError {}
     }
+}
+
+test "a coin sizes in its trade increment, and a stock's shares stay whole numbers" {
+    coin = SizingCandidate(ticker="BTC/USD", action=TradeAction.BUY, conviction=0.5, price=50000.0, realized_vol_20=0.2, increment=0.0001);
+    plan = size_positions([coin, buy("AAA", 0.5, 0.2)], 100000.0);
+    # Both get 0.08 * 0.5 = 4% of equity: 0.08 BTC and 40 shares.
+    assert abs(plan.position("BTC/USD").target_qty - 0.08) < 1e-12;
+    assert plan.position("AAA").target_qty == 40 and isinstance(plan.position("AAA").target_qty, int);
+}
+
+test "units round down to the increment, without floating-point slips" {
+    assert units(0.3, 0.1) == 0.3 and units(0.29999, 0.1) == 0.2 and units(7.9, 1.0) == 7;
+    assert units(-1.0, 0.1) == 0 and units(0.0, 1.0) == 0;
 }
