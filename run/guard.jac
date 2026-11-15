@@ -52,6 +52,7 @@ import from models.graph {
     TradeAction
 }
 import from research.alpaca { market_calendar }
+import from research.crypto { is_crypto }
 import from research.briefs { Brief, macro_brief, regime_inputs }
 import from research.collector { run_budget, utc_now }
 import from research.screener { ScreenConfig }
@@ -710,23 +711,27 @@ def daily_run(
     if run is None {
         return RunOutcome(run_day=run_day, status=RunStatus.SKIPPED, preflight=checked, note=f"the run for {run_day} was already claimed");
     }
+    holdings = holdings_of(portfolio);
     stocks = checked.trading_day and (STOCKS in limits.classes or OPTIONS in limits.classes);
-    coins = CRYPTO in limits.classes;
-    if not stocks and not coins {
+    # Stocks held after their class was turned off are still reviewed on a trading day, so they can
+    # be sold; and so are held coins, whatever the day.
+    held_stocks = checked.trading_day and any(not is_crypto(t) for t in holdings);
+    coins = CRYPTO in limits.classes or any(is_crypto(t) for t in holdings);
+    if not stocks and not held_stocks and not coins {
         note = checked.note if not checked.trading_day else "this agent trades no asset class the run covers";
         _close(run, RunStatus.SKIPPED, f"Skipped: {note}.");
         return RunOutcome(run_day=run_day, status=RunStatus.SKIPPED, run=run, preflight=checked, note=note);
     }
     run.reduced_mode = checked.reduced;
     run.asset_classes = list(limits.classes);
-    holdings = holdings_of(portfolio);
     (policy, version) = in_force;
     run.policy_version = version;
     coin_count = limits.coins if stocks else limits.coins_alone;
     pass_config = PassConfig(
         screen=ScreenConfig(shortlist_size=min(limits.reduced_shortlist, limits.shortlist) if checked.reduced else limits.shortlist),
         stocks=stocks,
-        crypto=coins,
+        held_stocks=held_stocks,
+        crypto=CRYPTO in limits.classes,
         crypto_size=min(limits.reduced_coins, coin_count) if checked.reduced else coin_count
     );
     try {

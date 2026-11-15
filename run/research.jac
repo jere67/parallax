@@ -93,11 +93,12 @@ glob COVERAGE_REASONS: dict[PickReason, CoverageReason] = {
 };
 
 """How far back each source looks in one pass, in calendar days, and which assets it covers:
-the stock screen and held stocks when `stocks`, and the `crypto_size` most traded coins and held
-coins when `crypto`."""
+the stock screen and held stocks when `stocks`, held stocks alone when only `held_stocks`, the
+`crypto_size` most traded coins when `crypto`, and held coins always."""
 obj PassConfig {
     has screen: ScreenConfig = ScreenConfig(),
         stocks: bool = True,
+        held_stocks: bool = True,
         crypto: bool = False,
         crypto_size: int = 5,
         news_days: int = 7,
@@ -240,10 +241,14 @@ def collect_pass(run_day: str, open_positions: list[str], config: PassConfig = P
 
     clock = time.monotonic();
     held_stocks = [t for t in open_positions if not is_crypto(t)];
-    members = index_members(run_day, budget, gaps) if config.stocks or requested_ticker else [];
+    reviewing = config.held_stocks and bool(held_stocks);
+    members = index_members(run_day, budget, gaps) if config.stocks or requested_ticker or reviewing else [];
     shortlist: Shortlist;
     if not config.stocks and not requested_ticker {
-        shortlist = Shortlist(picks=[], scores=[], excluded={});
+        # No screen: only the stocks still held, so they can be sold.
+        sectors = {m.symbol: m.sector for m in members};
+        held = [Pick(symbol=t, sector=sectors.get(t, ""), reason=PickReason.OPEN_POSITION, note="open position") for t in held_stocks] if reviewing else [];
+        shortlist = Shortlist(picks=held, scores=[], excluded={});
     } elif requested_ticker {
         selected = [m for m in members if m.symbol == requested_ticker];
         if not selected { raise ValueError("Ticker is not in the S&P 500."); }
