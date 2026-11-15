@@ -9,6 +9,10 @@ the guard makes sure every covered ticker ends with a decision before the run is
 
 Model calls run on worker threads, which lose the graph context, so the session only holds
 values; `record_run` writes everything afterwards, on the caller's thread (TDD §3, rule 6).
+
+A run covers the asset classes its agent trades (models/assets.jac): stocks when it trades stocks
+or options, and coins when it trades crypto. Crypto trades every day, so on a day the stock market
+is closed an agent that trades crypto still runs, on its coins alone.
 """
 import re;
 import threading;
@@ -23,6 +27,7 @@ import from agents.research { MacroResult, ResearchResult, fallback, macro_resea
 import from analysis.consensus { CONSENSUS_VERSION, ConsensusConfig }
 import from analysis.policy { Facts, POLICY_ENGINE_VERSION, consensus_config }
 import from models.agents { Domain }
+import from models.assets { CRYPTO, DEFAULT_CLASSES, OPTIONS, STOCKS, asset_class_of }
 import from models.policy { Policy }
 import from models.graph {
     Counted,
@@ -47,19 +52,21 @@ import from models.graph {
     TradeAction
 }
 import from research.alpaca { market_calendar }
+import from research.crypto { is_crypto }
 import from research.briefs { Brief, macro_brief, regime_inputs }
 import from research.collector { run_budget, utc_now }
 import from research.screener { ScreenConfig }
 import from research.sources { SOURCES_VERSION }
 import from policy.facts { MarketFacts, stock_facts, stock_from_technicals }
-import from run.analysis { DecisionRule, Holding, TickerAnalysis, analyze, record_analysis, settle }
+import from run.analysis { DecisionRule, Holding, TickerAnalysis, analyze, record_analysis, settle, specialists_for }
 import from run.public { public }
-import from run.research { COVERAGE_REASONS, Collection, PassConfig, briefs_for, collect_pass }
+import from run.research { COVERAGE_REASONS, STOCK_DOMAINS, Collection, PassConfig, briefs_for, collect_pass, domains_for }
 import from run.switches { DEMO_ENV, demo_mode }
 import from run.workers { NETWORK }
 
 glob NEW_YORK: ZoneInfo = ZoneInfo("America/New_York");
-glob TICKER_DOMAINS: list[Domain] = [Domain.MARKET, Domain.FUNDAMENTALS, Domain.NEWS];
+# Every research domain a ticker can be covered by; a coin needs only some (`domains_for`).
+glob TICKER_DOMAINS: list[Domain] = STOCK_DOMAINS;
 glob TEAM_PORTFOLIO: str = "team";
 # The weekday morning window, in minutes after midnight New York time, in which a scheduled run
 # may start: from 7:30, and until 9:15 so a run that starts late still finishes before the orders
@@ -78,7 +85,9 @@ glob MAX_REASON_CHARS: int = 300;
 glob MAX_SUMMARY_CHARS: int = 2000;
 
 """The run's budgets and modes (TDD §4, §12). `run_requests` covers a standard 20-ticker run,
-about 460 requests with retries; the day's allowance can lower it."""
+about 460 requests with retries; the day's allowance can lower it. `classes` are the asset classes
+the agent trades (models/assets.jac); `coins` is how many coins a run covers beside the stocks, and
+`coins_alone` on a day it covers coins alone."""
 obj RunLimits {
     has run_requests: int = 600,
         reduced_below: int = 500,
@@ -87,6 +96,10 @@ obj RunLimits {
         deadline_s: float = 5400.0,
         shortlist: int = 15,
         reduced_shortlist: int = 10,
+        coins: int = 5,
+        coins_alone: int = 10,
+        reduced_coins: int = 3,
+        classes: list[str] = DEFAULT_CLASSES,
         samples: int = 3,
         reduced_samples: int = 1;
 }
@@ -192,13 +205,14 @@ def reopen(run: Run) -> Run {
     return run;
 }
 
-"""The portfolio's open positions by ticker, each with the time stop its opening decision set,
-its average entry price, and the date it opened. Closed positions keep their nodes and are
-skipped."""
+"""The portfolio's open stock and coin positions by ticker, each with the time stop its opening
+decision set, its average entry price, and the date it opened. Closed positions keep their nodes
+and are skipped, and so are options."""
 def holdings_of(portfolio: Portfolio) -> dict[str, Holding] {
     found: dict[str, Holding] = {};
     for p in [portfolio ->:Holds:->[?:Position]] {
-        if not p.open() {
+        # An option is managed by its own exits (action/options.jac), not by a panel.
+        if not p.open() or p.asset_class == OPTIONS {
             continue;
         }
         opened = [p ->:OpenedBy:->[?:Decision]];
@@ -279,9 +293,10 @@ obj RunSession {
         return max(0, self.run_requests - self.requests_used());
     }
 
-    """Requests one ticker's panel and Arbiter need at K samples, without retries."""
-    def panel_cost -> int {
-        return 5 * self.config.samples + 1;
+    """Requests one ticker's panel and Arbiter need at K samples, without retries: a coin's panel
+    has fewer specialists than a stock's."""
+    def panel_cost(ticker: str = "") -> int {
+        return len(specialists_for(ticker)) * self.config.samples + 1;
     }
 
     def overdue -> bool {
@@ -357,7 +372,9 @@ obj RunSession {
                     continue;
                 }
                 for domain in wanted {
-                    if domain in self.latest.get(ticker, {}) {
+                    if domain not in domains_for(ticker) {
+                        notes.append(f"{ticker} {domain.value}: not researched for a coin");
+                    } elif domain in self.latest.get(ticker, {}) {
                         notes.append(f"{ticker} {domain.value}: already researched");
                     } else {
                         jobs.append((ticker, domain));
@@ -410,6 +427,8 @@ obj RunSession {
                     refusal = f"{ticker}: not covered in this run";
                 } elif found is None {
                     refusal = f"{item.domain}: not a research domain; use market, fundamentals, or news";
+                } elif found not in domains_for(ticker) {
+                    refusal = f"{ticker} is a coin, so it has no {found.value} research";
                 } elif found not in self.latest.get(ticker, {}) {
                     refusal = f"{ticker} {found.value}: dispatch research first";
                 } elif ticker in self.analyses {
@@ -491,8 +510,8 @@ obj RunSession {
                 } elif ticker in self.flags {
                     self.analyses[ticker] = self.held_back(ticker, f"flagged by the Orchestrator: {self.flags[ticker]}");
                     notes.append(f"{ticker}: {self.analyses[ticker].action().value} (flagged)");
-                } elif any(d not in self.latest.get(ticker, {}) for d in TICKER_DOMAINS) {
-                    notes.append(f"{ticker}: dispatch market, fundamentals, and news research first");
+                } elif any(d not in self.latest.get(ticker, {}) for d in domains_for(ticker)) {
+                    notes.append(f"{ticker}: dispatch {_listed([d.value for d in domains_for(ticker)])} research first");
                 } else {
                     ready[ticker] = self.latest[ticker];
                 }
@@ -500,11 +519,11 @@ obj RunSession {
             (room, admitted) = (self.requests_left(), 0);
             for ticker in list(ready) {
                 complete = all(r.complete() for r in ready[ticker].values());
-                if complete and room < self.panel_cost() {
+                if complete and room < self.panel_cost(ticker) {
                     self.analyses[ticker] = self.held_back(ticker, "the run's request budget was spent before the panel");
                     del ready[ticker];
                 } elif complete {
-                    room -= self.panel_cost();
+                    room -= self.panel_cost(ticker);
                     admitted += 1;
                 }
             }
@@ -564,7 +583,7 @@ obj RunSession {
     deadline as its reason (#240). Never raises; a ticker it cannot decide holds."""
     def complete_in_order {
         try {
-            unresearched = [t for t in self.tickers() if any(d not in self.latest.get(t, {}) for d in TICKER_DOMAINS)];
+            unresearched = [t for t in self.tickers() if any(d not in self.latest.get(t, {}) for d in domains_for(t))];
             if unresearched and not self.overdue() {
                 self.dispatch_research(unresearched, [d.value for d in TICKER_DOMAINS]);
             }
@@ -639,7 +658,7 @@ obj RunSession {
             return _decision_line(self.analyses[ticker]);
         }
         found = self.latest.get(ticker, {});
-        parts = [f"{d.value} {_report_line(found[d])}" if d in found else f"{d.value} not yet researched" for d in TICKER_DOMAINS];
+        parts = [f"{d.value} {_report_line(found[d])}" if d in found else f"{d.value} not yet researched" for d in domains_for(ticker)];
         if ticker in self.flags {
             parts.append(f"flagged: {self.flags[ticker]}");
         }
@@ -692,15 +711,29 @@ def daily_run(
     if run is None {
         return RunOutcome(run_day=run_day, status=RunStatus.SKIPPED, preflight=checked, note=f"the run for {run_day} was already claimed");
     }
-    if not checked.trading_day {
-        _close(run, RunStatus.SKIPPED, f"Skipped: {checked.note}.");
-        return RunOutcome(run_day=run_day, status=RunStatus.SKIPPED, run=run, preflight=checked, note=checked.note);
+    holdings = holdings_of(portfolio);
+    stocks = checked.trading_day and (STOCKS in limits.classes or OPTIONS in limits.classes);
+    # Stocks held after their class was turned off are still reviewed on a trading day, so they can
+    # be sold; and so are held coins, whatever the day.
+    held_stocks = checked.trading_day and any(not is_crypto(t) for t in holdings);
+    coins = CRYPTO in limits.classes or any(is_crypto(t) for t in holdings);
+    if not stocks and not held_stocks and not coins {
+        note = checked.note if not checked.trading_day else "this agent trades no asset class the run covers";
+        _close(run, RunStatus.SKIPPED, f"Skipped: {note}.");
+        return RunOutcome(run_day=run_day, status=RunStatus.SKIPPED, run=run, preflight=checked, note=note);
     }
     run.reduced_mode = checked.reduced;
-    holdings = holdings_of(portfolio);
+    run.asset_classes = list(limits.classes);
     (policy, version) = in_force;
     run.policy_version = version;
-    pass_config = PassConfig(screen=ScreenConfig(shortlist_size=min(limits.reduced_shortlist, limits.shortlist) if checked.reduced else limits.shortlist));
+    coin_count = limits.coins if stocks else limits.coins_alone;
+    pass_config = PassConfig(
+        screen=ScreenConfig(shortlist_size=min(limits.reduced_shortlist, limits.shortlist) if checked.reduced else limits.shortlist),
+        stocks=stocks,
+        held_stocks=held_stocks,
+        crypto=CRYPTO in limits.classes,
+        crypto_size=min(limits.reduced_coins, coin_count) if checked.reduced else coin_count
+    );
     try {
         collection = collect_pass(run_day, sorted(holdings), pass_config);
     } except Exception as e {
@@ -839,6 +872,7 @@ def record_run(portfolio: Portfolio, run: Run, s: RunSession, status: RunStatus)
             reason=COVERAGE_REASONS[pick.reason],
             screen_score=pick.score or 0.0,
             reason_note=pick.note,
+            asset_class=asset_class_of(pick.symbol),
             fetch_errors=inputs.fetch_errors if inputs is not None else [],
             flag_reason=s.flags.get(pick.symbol, ""),
             last_close=stock.close if stock is not None else 0.0,
@@ -872,7 +906,7 @@ def record_run(portfolio: Portfolio, run: Run, s: RunSession, status: RunStatus)
 a decision (FR-01)."""
 def hold_positions(run: Run, holdings: dict[str, Holding], reason: str, mode: str = "") {
     for ticker in sorted(holdings) {
-        cov = public(run +>:Covers():+> Coverage(ticker=ticker, sector="", reason=CoverageReason.HELD, reason_note="open position"));
+        cov = public(run +>:Covers():+> Coverage(ticker=ticker, sector="", reason=CoverageReason.HELD, reason_note="open position", asset_class=asset_class_of(ticker)));
         public(cov +>:Decided():+> Decision(ticker=ticker, action=TradeAction.HOLD, conviction=0.0, thesis=f"No panel decision: {reason}.", forced_hold_reason=reason));
         publish_card(cov, run.run_date, mode, utc_now().isoformat());
     }
@@ -906,11 +940,12 @@ def find_team_portfolio -> Portfolio | None {
     return None;
 }
 
-"""True during a weekday's morning window (`MORNING_START` to `MORNING_END`) at `local`, a New York
-time. Holidays are left to preflight, which reads the market calendar."""
-def morning_window(local: datetime) -> bool {
+"""True during the morning window (`MORNING_START` to `MORNING_END`) at `local`, a New York time:
+on weekdays, and on weekends too when `weekends` (an agent that trades crypto). Holidays are left
+to preflight, which reads the market calendar."""
+def morning_window(local: datetime, weekends: bool = False) -> bool {
     minute = local.hour * 60 + local.minute;
-    return local.weekday() < 5 and MORNING_START <= minute < MORNING_END;
+    return (weekends or local.weekday() < 5) and MORNING_START <= minute < MORNING_END;
 }
 
 """When a scheduled run for `run_day` stops its model work: SCHEDULED_CUTOFF, New York time."""
@@ -947,6 +982,14 @@ def _decision_line(a: TickerAnalysis) -> str {
     stats = f"C {c.score:+.2f}, A {c.agreement:.2f}, interval [{c.ci_low:+.2f}, {c.ci_high:+.2f}]" if c is not None else "no consensus";
     verdict = a.ruling.verdict if a.ruling is not None else "no review";
     return f"{a.action().value} (draft {a.draft.value}; {stats}; conviction {a.conviction():.2f}; Arbiter {verdict})";
+}
+
+"""Words joined as a sentence lists them: "market and news", "market, fundamentals, and news"."""
+def _listed(words: list[str]) -> str {
+    if len(words) <= 2 {
+        return " and ".join(words);
+    }
+    return ", ".join(words[:-1]) + ", and " + words[-1];
 }
 
 def _unique(items: list[str]) -> list[str] {

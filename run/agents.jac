@@ -19,7 +19,9 @@ import threading;
 import from datetime { datetime, timezone }
 import from jaclang { JacRuntime as Jac }
 import from accounts.sharing { account_of, sharing_problem }
+import from accounts.assets { account_classes }
 import from accounts.store { all_accounts, credentials_of, demo_mode, has_required_keys, order_tag_for, own_portfolio }
+import from models.assets { CRYPTO }
 import from action.baselines { baselines_of }
 import from models.accounts { AgentAccount }
 import from models.graph { PortfolioMode, Run }
@@ -68,7 +70,7 @@ def claim(owner: str, day: str) -> bool {
     }
 }
 
-def release(owner: str, day: str) -> None {
+def release(owner: str, day: str) {
     with _LOCK {
         _CLAIMED.discard(f"{day}:{owner}");
     }
@@ -76,10 +78,14 @@ def release(owner: str, day: str) -> None {
 
 """True when `account` should run on `day`: it was asked to, or it is the morning window (run/guard.jac),
 which is long enough for a server's later agents, three at a time and about half an hour each, to
-start and still finish before the orders go out at 9:45. An agent whose keys are incomplete never
-runs."""
+start and still finish before the orders go out at 9:45. On a weekend only an agent that trades
+crypto runs. An agent whose keys are incomplete never runs."""
 def due(account: AgentAccount, day: str, local: datetime) -> bool {
-    return has_required_keys(account) and (account.run_requested_day == day or morning_window(local));
+    weekend = local.weekday() >= 5;
+    if weekend and CRYPTO not in account_classes(account) {
+        return False;
+    }
+    return has_required_keys(account) and (account.run_requested_day == day or morning_window(local, weekend));
 }
 
 """The agent's run for `day`, if one is on record. Must run as the owner."""
@@ -108,13 +114,14 @@ def next_due(day: str, local: datetime) -> AgentAccount | None {
     return None;
 }
 
-"""One agent's morning pipeline under its owner's policy. Must run as the owner."""
-def run_owner(day: str) -> RunOutcome | None {
+"""One agent's morning pipeline under its owner's policy, on the asset classes they chose
+(`classes`). Must run as the owner."""
+def run_owner(day: str, classes: list[str]) -> RunOutcome | None {
     portfolio = own_portfolio();
     if portfolio is None {
         return None;
     }
-    return daily_run(portfolio, day, orchestrate, RunLimits(), current_of(personal_versions()));
+    return daily_run(portfolio, day, orchestrate, RunLimits(classes=classes), current_of(personal_versions()));
 }
 
 """Run the next agent due, if any. The slots share this, so at most RUN_SLOTS agents run at once."""
@@ -123,9 +130,6 @@ def run_next_agent(now: datetime) -> str {
         return "";
     }
     local = now.astimezone(NEW_YORK);
-    if local.weekday() >= 5 {
-        return "";
-    }
     day = local.date().isoformat();
     account = next_due(day, local);
     if account is None {
@@ -136,7 +140,8 @@ def run_next_agent(now: datetime) -> str {
         _RUNNING[owner] = day;
     }
     try {
-        outcome = as_agent(account, lambda { run_owner(day); });
+        classes = account_classes(account);
+        outcome = as_agent(account, lambda { run_owner(day, classes); });
         status = outcome.status.value if outcome is not None else "no portfolio";
         LOG.info("%s an agent's run finished: %s", day, status);
         return status;
@@ -192,24 +197,26 @@ def tick_agents(now: datetime) {
     }
 }
 
-# Fired every weekday minute, since an owner can ask for a run at any time. `due` decides.
-@schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * 0-4")
+# Fired every minute, since an owner can ask for a run at any time, and an agent that trades crypto
+# runs on weekends too. `due` decides.
+@schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * *")
 def agent_run_slot_1 {
     run_next_agent(datetime.now(timezone.utc));
 }
 
-@schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * 0-4")
+@schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * *")
 def agent_run_slot_2 {
     run_next_agent(datetime.now(timezone.utc));
 }
 
-@schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * 0-4")
+@schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * *")
 def agent_run_slot_3 {
     run_next_agent(datetime.now(timezone.utc));
 }
 
-"""The same hours as the team's trading job (run/jobs.jac)."""
-@schedule(trigger=ScheduleTrigger.STATIC, cron="* 13-21 * * 0-4")
+"""The same hours as the team's trading job (run/jobs.jac), every day: a weekend tick does nothing
+for an agent without coins (run/trading.jac, `coins_due`)."""
+@schedule(trigger=ScheduleTrigger.STATIC, cron="* 13-21 * * *")
 def agents_trading_job {
     tick_agents(datetime.now(timezone.utc));
 }

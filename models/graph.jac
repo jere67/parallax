@@ -26,6 +26,10 @@ defaults freely; rename fields only with schema_alias.
 
 Timestamps are ISO 8601 strings in UTC, and trading dates are "YYYY-MM-DD" in New York time
 (TDD §3, rule 11).
+
+Asset classes use Alpaca's names (models/assets.jac): "us_equity" for stocks and funds, "crypto"
+for coins, which trade in fractions, and "us_option" for option contracts. Quantities are floats
+so a coin's fraction fits; a stock's or a contract's is always whole.
 """
 import from models.agents { Domain, MacroReport, ResearchReport, Specialist, Vote }
 import from models.evaluation { Evaluation }
@@ -98,8 +102,10 @@ node Portfolio {
         order_tag: str = "";
 }
 
-"""A position the team portfolio holds or held. `stop_price` is where its protective stop
-sits; `stops_placed` numbers its stop orders, so each gets a fresh client order ID. A closed
+"""A position the team portfolio holds or held: shares, coins, or option contracts
+(`asset_class`), where one contract covers `multiplier` shares. `stop_price` is where its
+protective stop sits; `stops_placed` numbers its stop orders, so each gets a fresh client order
+ID. A closed
 position keeps its node, with `closed_at` set, so the dashboard can show its history. A
 baseline's simulated position carries its own `time_stop`; the team's comes from the
 decision that opened it. `last_price` is the price it was last marked at (`priced_at`), so
@@ -107,7 +113,7 @@ the dashboard can show unrealized P&L without asking Alpaca."""
 node Position {
     has ticker: str,
         sector: str,
-        qty: int,
+        qty: float,
         avg_entry_price: float,
         opened_at: str;
     has stop_price: float = 0.0,
@@ -117,7 +123,9 @@ node Position {
         exit_price: float = 0.0,
         time_stop: str = "",
         last_price: float = 0.0,
-        priced_at: str = "";
+        priced_at: str = "",
+        asset_class: str = "us_equity",
+        multiplier: float = 1.0;
 
     def open -> bool {
         return not self.closed_at;
@@ -127,7 +135,9 @@ node Position {
 """One day's run. The `screen_*` figures score its screen once its ten-session window closes
 (analysis/scoring.jac, `score_screens`): the mean excess return over SPY of the names it
 shortlisted and of the rest of the S&P 500. `evaluated_at` is when the evening review last
-refreshed the portfolio's evaluation on this run's day."""
+refreshed the portfolio's evaluation on this run's day. `asset_classes` are the classes its agent
+traded when it ran (models/assets.jac), and `options_at` when its option entries were placed
+(action/options.jac)."""
 node Run {
     has run_date: str,
         started_at: str;
@@ -153,7 +163,9 @@ node Run {
         screen_rest_excess: float | None = None,
         screen_names: int = 0,
         screen_scored_at: str = "",
-        evaluated_at: str = "";
+        evaluated_at: str = "",
+        asset_classes: list[str] = ["us_equity"],
+        options_at: str = "";
 }
 
 """Free-model requests the app made on one UTC day (TDD §12, request controls), kept in the
@@ -196,7 +208,8 @@ node Coverage {
         sma_50: float | None = None,
         sma_200: float | None = None,
         range_52w_position: float | None = None,
-        rs_spy_20: float | None = None;
+        rs_spy_20: float | None = None,
+        asset_class: str = "us_equity";
 }
 
 node ResearchRecord {
@@ -260,24 +273,25 @@ obj RuleResult {
     has rule: str,
         passed: bool;
     has detail: str = "",
-        qty_before: int = 0,
-        qty_after: int = 0;
+        qty_before: float = 0,
+        qty_after: float = 0;
 }
 
 """The risk gate's ruling on one sized order (TDD §8, risk gate). `price` is the latest trade
 it was judged at, and `stop_distance` how far below the fill a buy's protective stop goes."""
 node RiskCheck {
     has outcome: RiskOutcome,
-        approved_qty: int,
+        approved_qty: float,
         checked_at: str;
     has rules: list[RuleResult] = [],
         ticker: str = "",
         side: OrderSide | None = None,
         purpose: OrderPurpose | None = None,
-        requested_qty: int = 0,
+        requested_qty: float = 0,
         price: float = 0.0,
         stop_distance: float = 0.0,
-        gate_version: str = "";
+        gate_version: str = "",
+        asset_class: str = "us_equity";
 }
 
 """One order sent to Alpaca, or refused by it (`status` "rejected" with the reason).
@@ -287,7 +301,7 @@ node Order {
     has client_order_id: str,
         purpose: OrderPurpose,
         side: OrderSide,
-        qty: int,
+        qty: float,
         order_type: str,
         time_in_force: str,
         submitted_at: str;
@@ -297,9 +311,10 @@ node Order {
         status: str = "new",
         reject_reason: str = "",
         ticker: str = "",
-        filled_qty: int = 0,
+        filled_qty: float = 0,
         filled_avg_price: float = 0.0,
-        updated_at: str = "";
+        updated_at: str = "",
+        asset_class: str = "us_equity";
 }
 
 """The portfolio after one trading day's close (TDD §8, reconciliation): equity, cash, and
@@ -335,7 +350,7 @@ node Baseline {
 }
 
 node Fill {
-    has qty: int,
+    has qty: float,
         price: float,
         filled_at: str;
 }

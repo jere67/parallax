@@ -19,7 +19,9 @@ account's). `paper_trading` is the owner's choice and `trading_start_day` the Ne
 their forward test starts: the trading job turns these into the portfolio's mode, because a
 morning run holds the portfolio for its whole transaction, and a write here must not conflict
 with it. `run_requested_day` is a run asked for by hand. `alpaca_account` is the fingerprint of
-the paper account the Alpaca keys open (accounts/sharing.jac), so no two agents trade one account."""
+the paper account the Alpaca keys open (accounts/sharing.jac), so no two agents trade one account.
+`asset_classes` are the kinds of assets the owner lets their agent research and trade
+(models/assets.jac); stocks alone until they choose more."""
 node AgentAccount {
     has owner_root: str,
         created_at: str;
@@ -30,7 +32,24 @@ node AgentAccount {
         paper_trading: bool = False,
         trading_start_day: str = "",
         run_requested_day: str = "",
-        alpaca_account: str = "";
+        alpaca_account: str = "",
+        asset_classes: list[str] = ["us_equity"];
+}
+
+"""One saved choice of the asset classes the team's agent trades, on root.shared. A save adds a
+node and the newest wins, since a request can attach a node to root.shared but not change one
+another admin made (policy/store.jac works the same way)."""
+node AssetChoice {
+    has classes: list[str],
+        saved_at: str;
+}
+
+"""One asset class on the settings page: whether the agent trades it, and what that means."""
+obj AssetOption {
+    has name: str,
+        label: str,
+        enabled: bool;
+    has note: str = "";
 }
 
 """One key on the settings page, without its value."""
@@ -66,7 +85,8 @@ obj AgentSettings {
         run: RunState;
     has requests_note: str = "",
         trading_started: bool = False,
-        alpaca_problem: str = "";
+        alpaca_problem: str = "",
+        assets: list[AssetOption] = [];
 }
 
 """What a save did: the page as it now is, and why each refused field was refused, by the

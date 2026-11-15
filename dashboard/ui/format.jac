@@ -57,6 +57,30 @@ def money(x: float | None, digits: int = 2) -> str {
     return ("-" if x < 0 and not is_zero(x, digits) else "") + "$" + grouped(x, digits);
 }
 
+"""A price per share, coin, or contract: cents, or under a dollar, which a coin can trade at, four
+significant digits: $0.15, $0.1623, $0.0123, $0.00001234. An amount of money uses `money`, so a few
+tenths of a cent of profit still reads $0.00."""
+def price(x: float | None) -> str {
+    if x is None {
+        return MISSING;
+    }
+    places = 2;
+    if 0.0 < abs(x) < 1.0 {
+        scaled = abs(x);
+        places = 0;
+        while scaled < 1000.0 and places < 8 {
+            scaled *= 10.0;
+            places += 1;
+        }
+    }
+    text = grouped(x, places);
+    while places > 2 and text.endswith("0") {
+        text = text[:-1];
+        places -= 1;
+    }
+    return ("-" if x < 0 and not is_zero(x, places) else "") + "$" + text;
+}
+
 def signed_money(x: float | None, digits: int = 2) -> str {
     if x is None {
         return MISSING;
@@ -76,12 +100,35 @@ def signed_pct(x: float | None, digits: int = 2) -> str {
     return MISSING if x is None else signed(x * 100.0, digits) + "%";
 }
 
-def qty(x: int | None) -> str {
-    return MISSING if x is None else num(float(x), 0);
+"""A quantity: whole shares as they are, and a coin's fraction to as many places as it has, up to
+eight: 3, 1,200, 0.0125."""
+def qty(x: float | None) -> str {
+    if x is None {
+        return MISSING;
+    }
+    if float(x) == float(int(x)) {
+        return num(float(x), 0);
+    }
+    text = num(float(x), 8);
+    while text.endswith("0") {
+        text = text[:-1];
+    }
+    return text;
+}
+
+"""A ticker as a page address holds it: a coin's slash ("BTC/USD") would split the path, so it
+travels as a dash ("BTC-USD"). No stock symbol holds a dash."""
+def ticker_path(ticker: str) -> str {
+    return ticker.replace("/", "-");
+}
+
+"""The ticker a page address names (`ticker_path`)."""
+def ticker_from_path(text: str) -> str {
+    return text.replace("-", "/");
 }
 
 """A count with its noun: "1 order", "3 orders", "1,200 shares"."""
-def count(n: int, noun: str, plural: str = "") -> str {
+def count(n: float, noun: str, plural: str = "") -> str {
     return qty(n) + " " + (noun if n == 1 else (plural or noun + "s"));
 }
 

@@ -81,7 +81,7 @@ Up to three agents run at a time, the oldest account first.
 A run takes about half an hour.
 
 You can also press **Start today's run** in Settings.
-It starts within a minute or two, uses your own keys, and is refused on a weekend, while a run is working, or when the day already has a run.
+It starts within a minute or two, uses your own keys, and is refused while a run is working, when the day already has a run, or on a weekend unless your agent trades crypto.
 A run needs your Alpaca and OpenRouter keys.
 
 ## Turn on paper trading
@@ -95,6 +95,23 @@ If it holds anything, Settings says how many positions and orders, and you close
 
 Once on, the agent places paper orders from its next morning run, after 9:45 a.m. New York time.
 Turning it off stops new orders; the agent keeps researching, and open positions stay on Alpaca with their stops.
+
+## Choose what it trades
+
+Under **Asset classes** on the settings page, turn on the kinds of assets your agent may research and trade.
+Stocks and ETFs are on until you choose otherwise.
+
+- **Stocks and ETFs**: the S&P 500 stocks from the morning screen.
+- **Crypto**: the most traded coins quoted in dollars, bought in fractions.
+  Crypto trades every day, so an agent that trades it also runs at 7:30 a.m. on weekends and market holidays, on its coins alone.
+  A coin's stop is a stop-limit order 1% under its stop price, and no coin takes more than 5% of equity, or 20% for all coins together.
+- **Options**: long calls on the panel's confident buys, and long puts on its confident sells of stocks you do not hold.
+  The most an option can lose is what was paid for it: each costs at most 1% of equity, and all of them together at most 5%.
+  The agent sells a contract a week before it expires, when its price halves or doubles, or when the panel turns against it.
+
+A change takes effect from the agent's next morning run.
+Turning a class off never sells what the agent holds; it keeps reviewing those positions and can still sell them.
+On the admin's settings page the same card sets what the team's agent trades.
 
 ## Your policy and reports
 

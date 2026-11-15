@@ -13,6 +13,7 @@ import from dashboard.ui.format {
     pct,
     qty,
     count,
+    price,
     signed,
     signed_money,
     signed_pct,
@@ -32,6 +33,13 @@ test "numbers group thousands and carry a sign only where a change is meant" {
     assert compact(52300000.0) == "52.3M" and compact(840000.0) == "840K" and compact(None) == "-";
     assert money(None) == "-" and pct(None) == "-" and tone(None) == "text-muted";
     assert tone(0.1) == "text-up" and tone(-0.1) == "text-down" and tone(0.0) == "text-muted";
+}
+
+test "a price under a dollar keeps its digits, and a coin's quantity its fraction" {
+    assert price(187.456) == "$187.46" and price(0.15) == "$0.15" and price(0.16234) == "$0.1623";
+    assert price(0.0123) == "$0.0123" and price(0.0000123456) == "$0.00001235" and price(0.0) == "$0.00";
+    assert price(None) == "-" and price(-0.5) == "-$0.50";
+    assert qty(0.0125) == "0.0125" and qty(3.0) == "3" and qty(1.5) == "1.5";
 }
 
 test "dates and times read in New York time, across daylight saving" {

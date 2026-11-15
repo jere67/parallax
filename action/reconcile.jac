@@ -14,10 +14,16 @@ shares and cash:
   the drawdown breaker measures from moves up.
 
 Drift and bypasses must stay empty; the Action exit criterion counts bypasses.
+
+A coin's quantity on record is corrected quietly when it is within COIN_FEE_TOLERANCE of Alpaca's:
+Alpaca takes its crypto fee in the coin, so the account holds a little less than the order filled.
+Option contracts are reconciled like shares, but an adopted one gets no stop: its exits are
+action/options.jac's.
 """
 import from datetime { datetime }
 import from action.broker { Broker, BrokerPosition }
-import from action.executor { open_positions, sync_orders }
+import from action.executor { open_positions, stop_round, sync_orders }
+import from models.assets { CRYPTO, OPTIONS }
 import from models.graph {
     Coverage,
     Covers,
@@ -42,6 +48,7 @@ import from run.public { public }
 # this fraction below otherwise.
 glob FALLBACK_STOP_FRACTION: float = 0.10;
 glob STOP_ATR_MULTIPLE: float = 2.0;
+glob COIN_FEE_TOLERANCE: float = 0.01;
 
 def marks_of(portfolio: Portfolio) -> dict[str, DailyMark] {
     return {m.day: m for m in [portfolio ->:Marked:->[?:DailyMark]]};
@@ -70,7 +77,19 @@ def default_stop(portfolio: Portfolio, ticker: str, price: float) -> float {
 """Put the shares Alpaca reports in `at` on `portfolio`'s record as an open position, protected
 at `stop`. The stop keeper places its order (action/executor.jac, `keep_stops`)."""
 def adopt_position(portfolio: Portfolio, at: BrokerPosition, stop: float, now: datetime) -> Position {
-    return public(portfolio +>:Holds():+> Position(ticker=at.symbol, sector="", qty=at.qty, avg_entry_price=at.avg_entry_price, opened_at=now.isoformat(), stop_price=round(max(0.01, stop), 2), last_price=at.current_price, priced_at=now.isoformat()));
+    option = at.asset_class == OPTIONS;
+    return public(portfolio +>:Holds():+> Position(
+        ticker=at.symbol,
+        sector="",
+        qty=at.qty,
+        avg_entry_price=at.avg_entry_price,
+        opened_at=now.isoformat(),
+        stop_price=0.0 if option else stop_round(max(0.000001 if at.asset_class == CRYPTO else 0.01, stop)),
+        last_price=at.current_price,
+        priced_at=now.isoformat(),
+        asset_class=at.asset_class,
+        multiplier=100.0 if option else 1.0
+    ));
 }
 
 """Orders that bypassed the risk gate: an Order sent without an approving RiskCheck (or, for
@@ -91,17 +110,22 @@ def audit_orders(portfolio: Portfolio, broker: Broker, since: str) -> list[str] 
         }
         checks = [rc for rc in [o <-:Placed:<-[?:RiskCheck]]];
         if not checks or checks[0].outcome == RiskOutcome.REJECTED or checks[0].approved_qty < o.qty {
-            problems.append(f"{o.client_order_id}: {o.side.value} {o.qty} {o.ticker} without a risk-gate approval for it");
+            problems.append(f"{o.client_order_id}: {o.side.value} {o.qty:g} {o.ticker} without a risk-gate approval for it");
         }
     }
     for seen in broker.orders("all", after=since) {
         for o in [seen] + seen.legs {
             if o.client_order_id not in sent {
-                problems.append(f"{o.client_order_id or o.id}: {o.side} {o.qty} {o.symbol} placed outside the executor");
+                problems.append(f"{o.client_order_id or o.id}: {o.side} {o.qty:g} {o.symbol} placed outside the executor");
             }
         }
     }
     return problems;
+}
+
+"""What a quantity of `asset_class` counts: shares, contracts, or a coin's units."""
+def _unit(asset_class: str) -> str {
+    return "contracts" if asset_class == OPTIONS else "units" if asset_class == CRYPTO else "shares";
 }
 
 """Bring the record in line with Alpaca and mark the portfolio for trading day `day` (New
@@ -109,17 +133,20 @@ York date). Returns the day's DailyMark; a second call the same day updates it."
 def reconcile(portfolio: Portfolio, broker: Broker, now: datetime, day: str) -> DailyMark {
     sync_orders(portfolio, broker, now);
     held = broker.positions();
-    positions = open_positions(portfolio);
+    positions = open_positions(portfolio, True);
     drift: list[str] = [];
     for (ticker, p) in sorted(positions.items()) {
         at = held.get(ticker);
         if at is None or at.qty <= 0 {
-            drift.append(f"{ticker}: {p.qty} shares on record, none at Alpaca; closed on the record");
+            drift.append(f"{ticker}: {p.qty:g} {_unit(p.asset_class)} on record, none at Alpaca; closed on the record");
             p.qty = 0;
             p.closed_at = now.isoformat();
         } else {
+            fee_only = p.asset_class == CRYPTO and abs(at.qty - p.qty) <= p.qty * COIN_FEE_TOLERANCE;
+            if at.qty != p.qty and not fee_only {
+                drift.append(f"{ticker}: {p.qty:g} {_unit(p.asset_class)} on record, {at.qty:g} at Alpaca; record corrected");
+            }
             if at.qty != p.qty {
-                drift.append(f"{ticker}: {p.qty} shares on record, {at.qty} at Alpaca; record corrected");
                 p.qty = at.qty;
             }
             p.last_price = at.current_price;
@@ -131,7 +158,7 @@ def reconcile(portfolio: Portfolio, broker: Broker, now: datetime, day: str) -> 
             continue;
         }
         adopted = adopt_position(portfolio, at, default_stop(portfolio, ticker, at.avg_entry_price), now);
-        drift.append(f"{ticker}: {at.qty} shares at Alpaca not on record; adopted with a stop at {adopted.stop_price:.2f}");
+        drift.append(f"{ticker}: {at.qty:g} {_unit(at.asset_class)} at Alpaca not on record; adopted" + (f" with a stop at {adopted.stop_price:.2f}" if adopted.stop_price >= 1.0 else f" with a stop at {adopted.stop_price:g}" if adopted.stop_price > 0 else ""));
     }
 
     marks = marks_of(portfolio);

@@ -8,24 +8,7 @@ import from "lucide-react" { ChevronRight }
 import from dashboard.ui.rpc { get_performance, get_portfolio }
 import from dashboard.ui.AgentSetup { AgentSetup }
 import from dashboard.ui.EquityChart { EquityChart }
-import from dashboard.ui.format {
-    MISSING,
-    count,
-    day_et,
-    day_long,
-    day_short,
-    money,
-    num,
-    order_label,
-    pct,
-    qty,
-    signed_money,
-    signed_pct,
-    stamp_et,
-    time_et,
-    title,
-    tone
-}
+import from dashboard.ui.format { MISSING, count, day_et, day_long, day_short, money, price, num, order_label, pct, qty, signed_money, signed_pct, stamp_et, ticker_path, time_et, title, tone }
 
 # How often an open page asks for the account's value again; the server reads Alpaca at most
 # once a minute per portfolio (dashboard/live.jac).
@@ -85,11 +68,13 @@ def series_of(perf: PerformanceData | None, key: str) -> SeriesData | None {
 
 """A decision trail's address, or "" when the decision's run is unknown."""
 def trail_link(day: str, ticker: str) -> str {
-    return "/app/runs/" + day + "/" + ticker if day else "";
+    return "/app/runs/" + day + "/" + ticker_path(ticker) if day else "";
 }
 
-def TickerCell(ticker: str, day: str, sub: str = "") -> JsxElement {
-    to = trail_link(day, ticker);
+"""A position's ticker, linked to the decision that opened it: an option's is its stock's decision,
+named first in its label ("AAPL $200 call, Dec 18, 2026")."""
+def TickerCell(ticker: str, day: str, sub: str = "", label: str = "") -> JsxElement {
+    to = trail_link(day, label.split(" ")[0] if label else ticker);
     <div className="min-w-0">
         {if to {
             <Link to={to} className="font-semibold text-text hover:text-accent">{ticker}</Link>
@@ -284,7 +269,7 @@ the thesis and the rest."""
 def PositionCard(p: PositionData, opened: bool, toggle: Callable[[], None]) -> JsxElement {
     <li data-testid="position-card" className={CARD}>
         <div className="flex items-start justify-between gap-3">
-            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/>
+            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector} label={p.label}/>
             <div className="shrink-0 text-right">
                 <div className="num text-[13px]">{money(p.market_value, 0)}</div>
                 <div className={"num text-[12px] " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</div>
@@ -312,9 +297,9 @@ def PositionCard(p: PositionData, opened: bool, toggle: Callable[[], None]) -> J
                 <ThesisText p={p}/>
                 <CardFigures>
                     <CardFigure label="Qty">{qty(p.qty)}</CardFigure>
-                    <CardFigure label="Avg cost">{money(p.avg_entry_price)}</CardFigure>
-                    <CardFigure label="Last">{money(p.last_price)}</CardFigure>
-                    <CardFigure label="Stop">{money(p.stop_price)}</CardFigure>
+                    <CardFigure label="Avg cost">{price(p.avg_entry_price)}</CardFigure>
+                    <CardFigure label="Last">{price(p.last_price)}</CardFigure>
+                    <CardFigure label="Stop">{price(p.stop_price)}</CardFigure>
                     <CardFigure label="Time stop">{day_short(p.time_stop)}</CardFigure>
                     <CardFigure label="Opened">{day_short(day_et(p.opened_at))}</CardFigure>
                 </CardFigures>
@@ -382,17 +367,17 @@ def PositionsTable(positions: list[PositionData]) -> JsxElement {
                                                     className={"transition-[rotate] duration-150 ease-out motion-reduce:transition-none " + ("rotate-90" if opened == p.ticker else "")}
                                                 />
                                             </button>
-                                            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/>
+                                            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector} label={p.label}/>
                                         </div>
                                     </td>
                                     <td className={TD_NUM}>{qty(p.qty)}</td>
-                                    <td className={TD_NUM}>{money(p.avg_entry_price)}</td>
-                                    <td className={TD_NUM}>{money(p.last_price)}</td>
+                                    <td className={TD_NUM}>{price(p.avg_entry_price)}</td>
+                                    <td className={TD_NUM}>{price(p.last_price)}</td>
                                     <td className={TD_NUM}>{money(p.market_value, 0)}</td>
                                     <td className={TD_NUM}>{pct(p.weight, 1)}</td>
                                     <td className={TD_NUM + " " + tone(p.pnl)}>{signed_money(p.pnl)}</td>
                                     <td className={TD_NUM + " " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</td>
-                                    <td className={TD_NUM}>{money(p.stop_price)}</td>
+                                    <td className={TD_NUM}>{price(p.stop_price)}</td>
                                     <td className={TD_NUM + " text-muted"}>{pct(p.stop_distance, 1)}</td>
                                     <td className={TD_NUM + " text-muted"}>{day_short(p.time_stop)}</td>
                                     <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.opened_at))}</td>
@@ -439,9 +424,9 @@ def OrderCard(o: OrderData) -> JsxElement {
             {" " + title(o.purpose) + ("" if o.purpose == o.order_type else " · " + title(o.order_type)) + " · " + o.time_in_force.upper()}
         </p>
         <CardFigures>
-            <CardFigure label="Price">{money(o.limit_price if o.limit_price is not None else o.stop_price)}</CardFigure>
+            <CardFigure label="Price">{price(o.limit_price if o.limit_price is not None else o.stop_price)}</CardFigure>
             <CardFigure label="Filled">{qty(o.filled_qty) + " / " + qty(o.qty)}</CardFigure>
-            <CardFigure label="Avg fill">{money(o.filled_avg_price)}</CardFigure>
+            <CardFigure label="Avg fill">{price(o.filled_avg_price)}</CardFigure>
         </CardFigures>
         <p className="num mt-2 text-[11px] text-faint">{stamp_et(o.submitted_at)}</p>
     </li>
@@ -484,9 +469,9 @@ def OrdersTable(orders: list[OrderData]) -> JsxElement {
                             <td className={TD + " font-semibold uppercase " + side_tone(o.side)}>{o.side}</td>
                             <td className={TD + " text-muted"}>{title(o.purpose)}</td>
                             <td className={TD + " text-muted"}>{title(o.order_type) + " · " + o.time_in_force.upper()}</td>
-                            <td className={TD_NUM}>{money(o.limit_price if o.limit_price is not None else o.stop_price)}</td>
+                            <td className={TD_NUM}>{price(o.limit_price if o.limit_price is not None else o.stop_price)}</td>
                             <td className={TD_NUM}>{qty(o.filled_qty) + " / " + qty(o.qty)}</td>
-                            <td className={TD_NUM}>{money(o.filled_avg_price)}</td>
+                            <td className={TD_NUM}>{price(o.filled_avg_price)}</td>
                             <td className={TD} title={o.reject_reason}><StatusBadge status={o.status} label={order_label(o.status, o.reject_reason)}/></td>
                         </tr>
                     }}
@@ -500,7 +485,7 @@ def OrdersTable(orders: list[OrderData]) -> JsxElement {
 def ClosedCard(p: PositionData) -> JsxElement {
     <li data-testid="closed-card" className={CARD}>
         <div className="flex items-start justify-between gap-3">
-            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/>
+            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector} label={p.label}/>
             <div className="shrink-0 text-right">
                 <div className={"num text-[13px] " + tone(p.pnl)}>{signed_money(p.pnl)}</div>
                 <div className={"num text-[12px] " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</div>
@@ -508,8 +493,8 @@ def ClosedCard(p: PositionData) -> JsxElement {
         </div>
         <CardFigures>
             <CardFigure label="Shares sold">{qty(p.entry_qty)}</CardFigure>
-            <CardFigure label="Avg cost">{money(p.avg_entry_price)}</CardFigure>
-            <CardFigure label="Exit">{money(p.exit_price)}</CardFigure>
+            <CardFigure label="Avg cost">{price(p.avg_entry_price)}</CardFigure>
+            <CardFigure label="Exit">{price(p.exit_price)}</CardFigure>
         </CardFigures>
         <p className="num mt-2 text-[11px] text-faint">{day_short(day_et(p.opened_at)) + " to " + day_short(day_et(p.closed_at))}</p>
     </li>
@@ -546,12 +531,12 @@ def ClosedTable(closed: list[PositionData]) -> JsxElement {
                 <tbody>
                     {for p in closed {
                         <tr key={p.ticker + p.opened_at} className={ROW + " group"}>
-                            <td className={TD + FROZEN_CELL}><TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/></td>
+                            <td className={TD + FROZEN_CELL}><TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector} label={p.label}/></td>
                             <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.opened_at))}</td>
                             <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.closed_at))}</td>
                             <td className={TD_NUM}>{qty(p.entry_qty)}</td>
-                            <td className={TD_NUM}>{money(p.avg_entry_price)}</td>
-                            <td className={TD_NUM}>{money(p.exit_price)}</td>
+                            <td className={TD_NUM}>{price(p.avg_entry_price)}</td>
+                            <td className={TD_NUM}>{price(p.exit_price)}</td>
                             <td className={TD_NUM + " " + tone(p.pnl)}>{signed_money(p.pnl)}</td>
                             <td className={TD_NUM + " " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</td>
                         </tr>

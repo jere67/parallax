@@ -146,6 +146,10 @@ def score_votes(portfolio: Portfolio, now: datetime, history: History = History(
         }
         votes: list[VoteRecord] = [];
         for cov in [run ->:Covers:->[?:Coverage]] {
+            # Votes are scored against S&P 500 sessions and SPY, which a coin is not measured by.
+            if "/" in cov.ticker {
+                continue;
+            }
             mine = [v for v in [cov ->:Voted:->[?:VoteRecord]]];
             votes.extend(mine);
             pending.extend(Pending(run_day=run.run_date, ticker=v.ticker, horizon=v.body.horizon_days, vote=v) for v in mine if not v.scored_at);
@@ -242,7 +246,7 @@ def score_screens(portfolio: Portfolio, now: datetime, history: History = Histor
             found.waiting += 1;
             continue;
         }
-        picks = sorted({c.ticker for c in [run ->:Covers:->[?:Coverage]] if c.reason == CoverageReason.SCREEN});
+        picks = sorted({c.ticker for c in [run ->:Covers:->[?:Coverage]] if c.reason == CoverageReason.SCREEN and "/" not in c.ticker});
         if not picks {
             run.screen_scored_at = stamp;
             found.unscorable += 1;

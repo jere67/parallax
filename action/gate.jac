@@ -22,13 +22,21 @@ is never cut short, so risk can always come off. Buys then pass, in order:
 10. daily turnover, which exits use first, scaling every buy down together.
 
 Every scaling floors to whole shares, so no cap is crossed by rounding.
+
+A coin (research/crypto.jac) passes the same rules, with three differences: its quantities are
+multiples of its trade increment rather than whole shares; it has no price floor, since many coins
+trade below $5, and no earnings; and it has its own caps, a smaller per-position weight and a cap on
+all coins together in place of the sector cap. A buy below the coin's minimum order is refused.
+Before any of this, a buy in an asset class its agent does not trade is refused (models/assets.jac);
+a sell never is, so a position can always be closed.
 """
 import math;
+import from action.sizing { units }
 import from models.graph { OrderPurpose, OrderSide, RiskOutcome, RuleResult, TradeAction }
 import from models.research { RegimeInputs }
 
 # Bump with any change to the rules or their defaults, so each check records what judged it.
-glob GATE_VERSION: str = "2026-11-11.1";
+glob GATE_VERSION: str = "2026-11-14.1";
 
 glob UNKNOWN_SECTOR: str = "unknown sector";
 
@@ -51,13 +59,18 @@ obj GateConfig {
         adv_fraction: float = 0.01,
         min_price: float = 5.0,
         stop_atr_multiple: float = 2.0,
-        max_trade_age_minutes: float = 15.0;
+        max_trade_age_minutes: float = 15.0,
+        crypto_position_weight: float = 0.05,
+        crypto_cap: float = 0.20;
 }
 
 """What the gate needs to know about one stock at the moment of the check. `price` is the
 latest trade; `trade_age_minutes` is how old that trade is (None when unknown); `volume_20`
 is the 20-day average daily volume in shares; `sessions_to_earnings` counts trading sessions
-from today to the next earnings release (0 when it reports today, None when none is due)."""
+from today to the next earnings release (0 when it reports today, None when none is due).
+`increment` is the smallest quantity it trades in (a share, or a fraction of a coin) and
+`min_qty` the smallest order; `crypto` marks a coin, and `enabled` False an asset class its agent
+does not trade."""
 obj Instrument {
     has ticker: str,
         price: float;
@@ -67,12 +80,16 @@ obj Instrument {
         trade_age_minutes: float | None = None,
         atr_14: float | None = None,
         volume_20: float | None = None,
-        sessions_to_earnings: int | None = None;
+        sessions_to_earnings: int | None = None,
+        increment: float = 1.0,
+        min_qty: float = 0.0,
+        crypto: bool = False,
+        enabled: bool = True;
 }
 
 obj BookPosition {
     has ticker: str,
-        qty: int,
+        qty: float,
         price: float;
     has sector: str = "";
 }
@@ -87,29 +104,32 @@ def breaker_peak(start: float, closes: list[float], window: int) -> float {
 
 """The portfolio at the moment of the check. `peak_equity` is what the drawdown breaker measures
 from (`breaker_peak`). `new_positions_today` and `turnover_today`
-(dollars traded so far today) count what earlier orders today already used."""
+(dollars traded so far today) count what earlier orders today already used. `other_value` is the
+market value of what the gate does not trade, such as options, which still counts toward gross
+exposure."""
 obj Book {
     has equity: float,
         peak_equity: float;
     has positions: dict[str, BookPosition] = {},
         new_positions_today: int = 0,
-        turnover_today: float = 0.0;
+        turnover_today: float = 0.0,
+        other_value: float = 0.0;
 
-    def held(ticker: str) -> int {
+    def held(ticker: str) -> float {
         p = self.positions.get(ticker);
         return p.qty if p is not None else 0;
     }
 }
 
-"""One sized order before the gate: `qty` whole shares on `side`."""
+"""One sized order before the gate: `qty` shares or coins on `side`."""
 obj Proposal {
     has ticker: str,
         action: TradeAction,
         side: OrderSide,
-        qty: int,
+        qty: float,
         conviction: float;
 
-    def purpose(held: int) -> OrderPurpose {
+    def purpose(held: float) -> OrderPurpose {
         if self.side == OrderSide.BUY {
             return OrderPurpose.ADD if held > 0 else OrderPurpose.ENTRY;
         }
@@ -124,12 +144,13 @@ obj GateResult {
         action: TradeAction,
         side: OrderSide,
         purpose: OrderPurpose,
-        requested_qty: int,
-        approved_qty: int,
+        requested_qty: float,
+        approved_qty: float,
         conviction: float;
     has rules: list[RuleResult] = [],
         stop_distance: float = 0.0,
-        price: float = 0.0;
+        price: float = 0.0,
+        increment: float = 1.0;
 
     def outcome -> RiskOutcome {
         if self.approved_qty <= 0 {
@@ -144,9 +165,12 @@ obj GateResult {
     }
 
     """Record a rule. A rule that cut the quantity, or failed, is recorded as not passed."""
-    def apply(rule: str, qty: int, detail: str = "") {
+    def apply(rule: str, qty: float, detail: str = "") {
         before = self.approved_qty;
-        after = max(0, min(before, qty));
+        after: float = before;
+        if qty < before {
+            after = units(qty, self.increment);
+        }
         self.rules.append(RuleResult(rule=rule, passed=after == before, detail=detail, qty_before=before, qty_after=after));
         self.approved_qty = after;
     }
@@ -194,10 +218,11 @@ def check_orders(
             action=p.action,
             side=p.side,
             purpose=p.purpose(held),
-            requested_qty=max(0, p.qty),
-            approved_qty=max(0, p.qty),
+            requested_qty=p.qty if p.qty > 0 else 0,
+            approved_qty=p.qty if p.qty > 0 else 0,
             conviction=p.conviction,
-            price=found.price if found is not None else 0.0
+            price=found.price if found is not None else 0.0,
+            increment=found.increment if found is not None else 1.0
         ));
     }
     sells = [r for r in results if r.side == OrderSide.SELL];
@@ -210,7 +235,7 @@ def check_orders(
             r.apply("instrument checks", 0, "the broker cannot trade this stock today; the exit waits for the next run");
             continue;
         }
-        r.apply("shares held", book.held(r.ticker), f"{book.held(r.ticker)} shares held");
+        r.apply("shares held", book.held(r.ticker), f"{book.held(r.ticker):g} {'held' if found.crypto else 'shares held'}");
     }
     sold = {r.ticker: r.approved_qty for r in sells};
     after_sells = {t: p.qty - sold.get(t, 0) for (t, p) in book.positions.items()};
@@ -222,6 +247,10 @@ def check_orders(
         }
         held_at = book.positions.get(ticker);
         return held_at.price if held_at is not None else 0.0;
+    }
+    def is_coin(ticker: str) -> bool {
+        found = instruments.get(ticker);
+        return found is not None and found.crypto;
     }
     def sector_of(ticker: str) -> str {
         found = instruments.get(ticker);
@@ -240,14 +269,20 @@ def check_orders(
             r.apply("instrument checks", 0, "no instrument data");
             continue;
         }
+        if not found.enabled {
+            r.apply("asset class", 0, "this agent does not trade this asset class; its owner can turn it on in Settings");
+            continue;
+        }
         if not found.active or not found.tradable {
             r.apply("instrument checks", 0, "not active and tradable on Alpaca");
-        } elif not math.isfinite(found.price) or found.price <= config.min_price {
+        } elif not math.isfinite(found.price) or found.price <= 0.0 {
+            r.apply("instrument checks", 0, "no positive price");
+        } elif not found.crypto and found.price <= config.min_price {
             r.apply("instrument checks", 0, f"price {found.price:.2f} is not above ${config.min_price:.0f}");
         } elif found.trade_age_minutes is None or found.trade_age_minutes > config.max_trade_age_minutes {
             r.apply("instrument checks", 0, "no trade in the last 15 minutes, so it may be halted" if found.trade_age_minutes is not None else "no recent trade");
         } else {
-            r.apply("instrument checks", r.approved_qty, f"active, tradable, last trade {found.price:.2f}");
+            r.apply("instrument checks", r.approved_qty, f"active, tradable, last trade {_money(found.price)}");
         }
         if not r.alive() {
             continue;
@@ -271,14 +306,15 @@ def check_orders(
             continue;
         }
         r.stop_distance = config.stop_atr_multiple * atr;
-        r.apply("protective stop", r.approved_qty, f"stop {r.stop_distance:.2f} below the fill (2 x ATR {atr:.2f})");
+        r.apply("protective stop", r.approved_qty, f"stop {_money(r.stop_distance)} below the fill (2 x ATR {_money(atr)})");
     }
 
     # 5 and 6: per-order caps that resize.
     for r in [b for b in buys if b.alive()] {
         found = instruments[r.ticker];
-        room = int(math.floor(config.max_position_weight * equity / found.price)) - book.held(r.ticker);
-        r.apply("per-position cap", room, f"at most {config.max_position_weight:.0%} of equity, {max(0, room)} more shares");
+        weight = config.crypto_position_weight if found.crypto else config.max_position_weight;
+        room = units(max(0.0, weight * equity / found.price - book.held(r.ticker)), found.increment);
+        r.apply("per-position cap", room, f"at most {weight:.0%} of equity, {room:g} more {'units' if found.crypto else 'shares'}");
         if not r.alive() {
             continue;
         }
@@ -286,7 +322,7 @@ def check_orders(
         if adv is None or not math.isfinite(adv) or adv <= 0.0 {
             r.apply("liquidity", 0, "no 20-day average volume");
         } else {
-            r.apply("liquidity", int(math.floor(config.adv_fraction * adv)), f"at most 1% of {adv:,.0f} average daily shares");
+            r.apply("liquidity", config.adv_fraction * adv, f"at most 1% of {adv:,.0f} average daily {'units' if found.crypto else 'shares'}");
         }
     }
 
@@ -307,6 +343,7 @@ def check_orders(
 
     # 8: sector cap, in conviction order.
     sector_value: dict[str, float] = {};
+    coin_value: float = sum(qty * price_of(t) for (t, qty) in after_sells.items() if qty > 0 and is_coin(t));
     for (t, qty) in after_sells.items() {
         if qty > 0 {
             sector_value[sector_of(t)] = sector_value.get(sector_of(t), 0.0) + qty * price_of(t);
@@ -315,7 +352,14 @@ def check_orders(
     for r in [b for b in ranked if b.alive()] {
         sector = sector_of(r.ticker);
         used = sector_value.get(sector, 0.0);
-        room = int(math.floor(max(0.0, config.sector_cap * equity - used) / price_of(r.ticker)));
+        if is_coin(r.ticker) {
+            # Every coin counts toward one cap, whatever sector a held coin was recorded under.
+            room = max(0.0, config.crypto_cap * equity - coin_value) / price_of(r.ticker);
+            r.apply("crypto cap", room, f"coins hold {coin_value / equity:.1%} of equity before this order, capped at {config.crypto_cap:.0%}");
+            coin_value += r.approved_qty * price_of(r.ticker);
+            continue;
+        }
+        room = units(max(0.0, config.sector_cap * equity - used) / price_of(r.ticker));
         r.apply("sector cap", room, f"{sector} holds {used / equity:.1%} of equity before this order");
         sector_value[sector] = used + r.approved_qty * price_of(r.ticker);
     }
@@ -323,23 +367,35 @@ def check_orders(
     # 9: gross exposure, lower under the regime filter.
     (filtered, why) = regime_on(regime, config);
     limit = min(config.gross_limit, config.regime_gross_limit) if filtered else config.gross_limit;
-    held_value = sum(qty * price_of(t) for (t, qty) in after_sells.items() if qty > 0);
+    held_value = sum(qty * price_of(t) for (t, qty) in after_sells.items() if qty > 0) + book.other_value;
     scale_buys(buys, max(0.0, limit * equity - held_value), "gross exposure", f"gross capped at {limit:.0%} ({why})");
 
     # 10: turnover, exits first.
     sell_value = sum(r.approved_qty * price_of(r.ticker) for r in sells);
     budget = config.turnover_limit * equity - book.turnover_today - sell_value;
     scale_buys(buys, max(0.0, budget), "daily turnover", f"{config.turnover_limit:.0%} of equity a day, exits first");
+    # Last: a coin's order must still be at least its minimum size after every cut.
+    for r in [b for b in buys if b.alive()] {
+        found = instruments[r.ticker];
+        if found.min_qty > 0.0 and r.approved_qty < found.min_qty {
+            r.apply("minimum order", 0, f"{r.approved_qty:g} is below the minimum order of {found.min_qty:g}");
+        }
+    }
     return results;
 }
 
+"""A price in dollars, with the precision a sub-dollar coin needs."""
+def _money(value: float) -> str {
+    return f"{value:.2f}" if abs(value) >= 1.0 else f"{value:.4g}";
+}
+
 """Scale every live buy down together so their value fits `room`, flooring each to whole
-shares, and record `rule` on each."""
+shares (or its coin's increment), and record `rule` on each."""
 def scale_buys(buys: list[GateResult], room: float, rule: str, detail: str) {
     live = [b for b in buys if b.alive()];
     asked = sum(b.approved_qty * b.price for b in live);
     factor = min(1.0, room / asked) if asked > 0.0 else 1.0;
     for b in live {
-        b.apply(rule, int(math.floor(b.approved_qty * factor)), f"{detail}; buys scaled by {factor:.2f}" if factor < 1.0 else detail);
+        b.apply(rule, b.approved_qty * factor if factor < 1.0 else b.approved_qty, f"{detail}; buys scaled by {factor:.2f}" if factor < 1.0 else detail);
     }
 }

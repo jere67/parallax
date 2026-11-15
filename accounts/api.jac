@@ -7,6 +7,7 @@ describes it.
 """
 import from datetime { datetime }
 import logging;
+import from accounts.assets { account_classes, asset_options, classes_problem, save_team_classes, team_classes }
 import from accounts.providers { KeyCheck, check_alpaca, check_finnhub, check_openrouter, tail_of }
 import from accounts.store {
     REQUIRED_KEYS,
@@ -24,6 +25,7 @@ import from action.baselines { baselines_of }
 import from accounts.sharing { account_of, sharing_problem }
 import from action.broker { Broker, BrokerError }
 import from models.accounts { AgentAccount, AgentReply, AgentSettings, KeyStatus, KeysReply, RunState }
+import from models.assets { ASSET_LABELS, CRYPTO, clean_classes }
 import from research.collector { utc_now }
 import from research.credentials { ALPACA_KEY, ALPACA_SECRET, FINNHUB_KEY, OPENROUTER_KEY, enter_credentials, leave_credentials }
 import from run.agents { is_running }
@@ -69,8 +71,8 @@ def own_run_refusal(account: AgentAccount | None, day: str, local: datetime) -> 
     if account is None or not has_required_keys(account) or not keys_open(account) {
         return "Connect your Alpaca and OpenRouter keys first.";
     }
-    if local.weekday() >= 5 {
-        return f"{day} is a weekend; the market is closed.";
+    if local.weekday() >= 5 and CRYPTO not in account_classes(account) {
+        return f"{day} is a weekend; the stock market is closed, and only an agent that trades crypto runs then.";
     }
     if is_running(account.owner_root) {
         return "Today's run is working now.";
@@ -88,7 +90,7 @@ def run_state(account: AgentAccount | None, admin: bool) -> RunState {
     found = run_for(portfolio, day) if portfolio is not None else None;
     status = found.status.value if found is not None else "";
     if admin {
-        refusal = manual_refusal(True, find_team_portfolio(), day, local);
+        refusal = manual_refusal(True, find_team_portfolio(), day, local, CRYPTO in team_classes());
         return RunState(day=day, status=status, can_start=not refusal, note=refusal);
     }
     if found is not None {
@@ -117,7 +119,8 @@ def settings_view -> AgentSettings {
         run=run_state(account, admin),
         requests_note=account.requests_note if account is not None else "",
         trading_started=portfolio is not None and bool(baselines_of(portfolio)),
-        alpaca_problem=sharing_problem(account_of(account), account.owner_root) if account is not None and not admin and ALPACA_KEY in account.sealed else ""
+        alpaca_problem=sharing_problem(account_of(account), account.owner_root) if account is not None and not admin and ALPACA_KEY in account.sealed else "",
+        assets=asset_options(team_classes() if admin else account_classes(account))
     );
 }
 
@@ -322,7 +325,7 @@ def:priv start_my_run -> AgentReply {
     local = datetime.now(NEW_YORK);
     day = local.date().isoformat();
     if caller_is_admin() {
-        refusal = manual_refusal(True, find_team_portfolio(), day, local);
+        refusal = manual_refusal(True, find_team_portfolio(), day, local, CRYPTO in team_classes());
         if not refusal {
             request_run(day, local);
         }
@@ -339,4 +342,30 @@ def:priv start_my_run -> AgentReply {
     }
     account.run_requested_day = day;
     return AgentReply(ok=True, message="Your run starts within a minute or two and takes about half an hour.", settings=settings_view());
+}
+
+"""Choose the asset classes the caller's agent researches and trades: the team's for an admin, the
+caller's own otherwise. The next morning run uses the choice; a position already open in a class
+turned off is still watched, protected, and sold by its exit rules."""
+def:priv set_asset_classes(classes: list[str]) -> AgentReply {
+    wanted = [str(c) for c in classes] if isinstance(classes, list) else [];
+    problem = classes_problem(wanted);
+    if problem {
+        return AgentReply(ok=False, message=problem, settings=settings_view());
+    }
+    chosen = clean_classes(wanted);
+    admin = caller_is_admin();
+    if admin {
+        save_team_classes(chosen);
+    } else {
+        account = my_account();
+        if account is None {
+            return AgentReply(ok=False, message="Connect your Alpaca and OpenRouter keys first.", settings=settings_view());
+        }
+        account.asset_classes = chosen;
+    }
+    names = [ASSET_LABELS[c][0].lower() + ASSET_LABELS[c][1:] for c in chosen];
+    listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + (", and " if len(names) > 2 else " and ") + names[-1];
+    whose = "The team's agent" if admin else "Your agent";
+    return AgentReply(ok=True, message=f"{whose} now trades {listed}, from its next morning run.", settings=settings_view());
 }

@@ -214,3 +214,13 @@ test "a policy can turn time stops off" {
     (found, _, _) = run_with({"AAPL": research("AAPL")}, MockRawResponse(content=vote_json("HOLD", 0.5)), MockRawResponse(content=review_json()), holdings=held, rule=under(Policy(time_stop=False)));
     assert not found[0].exit_triggered and found[0].action() != TradeAction.SELL;
 }
+
+test "a coin needs only market and news research, and only three specialists vote on it" {
+    coin = {d: result("BTC/USD", d) for d in [Domain.MARKET, Domain.NEWS]};
+    (found, panel, judge) = run_with({"BTC/USD": coin}, MockRawResponse(content=vote_json("STRONG_BUY", 0.9)), MockRawResponse(content=review_json()));
+    a = found[0];
+    assert not a.forced_hold_reason and a.action() == TradeAction.BUY;
+    # Technical, News, and Macro, three samples each, then one Arbiter review.
+    assert len(panel.seen_prompts) == 9 and len(judge.seen_prompts) == 1;
+    assert {r.specialist for r in a.votes} == {Specialist.TECHNICAL, Specialist.NEWS, Specialist.MACRO};
+}

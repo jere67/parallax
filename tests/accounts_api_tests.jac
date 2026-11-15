@@ -193,6 +193,43 @@ test "the admin's agent runs on the server's keys, which this page does not chan
     }
 }
 
+def enabled(settings: dict[str, object]) -> list[str] {
+    return [a["name"] for a in settings["assets"] if a["enabled"]];
+}
+
+test "each agent trades the asset classes its owner turns on, and the admin's choice is the team's" {
+    c = server();
+    try {
+        c.register_user("owner", PASSWORD);
+        assert not call(c, "set_asset_classes", {"classes": ["crypto"]})["ok"];
+        call(c, "save_agent_keys", FULL_KEYS);
+        assert enabled(call(c, "get_agent_settings")) == ["us_equity"];
+        reply = call(c, "set_asset_classes", {"classes": ["crypto", "us_equity"]});
+        assert reply["ok"] and reply["message"] == "Your agent now trades stocks and ETFs and crypto, from its next morning run.";
+        assert enabled(reply["settings"]) == ["us_equity", "crypto"];
+        refused = call(c, "set_asset_classes", {"classes": []});
+        assert not refused["ok"] and refused["message"] == "Choose at least one asset class.";
+        unknown = call(c, "set_asset_classes", {"classes": ["us_equity", "treasury"]});
+        assert not unknown["ok"] and "treasury" in unknown["message"];
+        assert enabled(call(c, "get_agent_settings")) == ["us_equity", "crypto"];
+        c.clear_auth();
+
+        c.register_user("admin-like", PASSWORD);
+        call(c, "set_admin", {"on": True});
+        assert enabled(call(c, "get_agent_settings")) == ["us_equity"];
+        team = call(c, "set_asset_classes", {"classes": ["us_equity", "crypto", "us_option"]});
+        assert team["ok"] and team["message"] == "The team's agent now trades stocks and ETFs, crypto, and options, from its next morning run.";
+        assert enabled(call(c, "get_agent_settings")) == ["us_equity", "crypto", "us_option"];
+        call(c, "set_admin", {"on": False});
+        c.clear_auth();
+
+        c.login("owner", PASSWORD);
+        assert enabled(call(c, "get_agent_settings")) == ["us_equity", "crypto"];
+    } finally {
+        c.close();
+    }
+}
+
 test "a server at its limit refuses a new agent, and an existing one keeps working" {
     c = server();
     os.environ["PARALLAX_MAX_AGENTS"] = "1";

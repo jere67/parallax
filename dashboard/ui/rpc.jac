@@ -74,6 +74,10 @@ async def:pub set_paper_trading(on: bool) -> AgentReply | None {
     return await call("accounts/api.jac", "set_paper_trading", {"on": on});
 }
 
+async def:pub set_asset_classes(classes: list[str]) -> AgentReply | None {
+    return await call("accounts/api.jac", "set_asset_classes", {"classes": classes});
+}
+
 async def:pub start_my_run -> AgentReply | None {
     return await call("accounts/api.jac", "start_my_run");
 }

@@ -2,7 +2,12 @@
 // is never cached, so a figure on screen is never older than the page says. Hashed bundles under
 // /static/ never change, so they are served from the cache once seen; a page comes from the
 // network, falling back to the last copy, and every API call goes straight to the server.
-const CACHE = "parallax-v1";
+//
+// A page is fetched past the browser's HTTP cache. The server marks it no-cache, but its ETag is
+// made from the file's time and size, and a built app's files all carry the same time while its
+// page keeps the same length from one release to the next. So a revalidation is answered "not
+// modified", and the browser would keep loading the last release's bundle after a deploy.
+const CACHE = "parallax-v2";
 const SHELL = "/";
 const API = /^\/(function|walker|user|sso|healthz|admin|docs|cl)(\/|$)/;
 
@@ -28,7 +33,7 @@ self.addEventListener("activate", (event) => {
 async function page(request) {
   const cache = await caches.open(CACHE);
   try {
-    const fresh = await fetch(request);
+    const fresh = await fetch(new Request(request, { cache: "no-store" }));
     if (fresh.ok) {
       await cache.put(SHELL, fresh.clone());
     }

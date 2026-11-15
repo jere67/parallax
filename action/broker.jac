@@ -11,8 +11,13 @@ the order's `client_order_id` shows it did not happen.
   reads (research/sources.jac).
 - Keys go in headers, which nothing here logs or stores.
 - Prices go out rounded to the tick Alpaca accepts: a cent at $1 and above, a hundredth of a
-  cent below, since a sub-penny limit or stop price is rejected.
+  cent below, since a sub-penny limit or stop price is rejected; a crypto pair's own increment
+  when the order names one.
+- Quantities are whole for stocks and option contracts and may be fractional for crypto. A whole
+  quantity is read back as an int, so a stock's shares never print as "3.0". Alpaca names a crypto
+  position "BTCUSD"; it is reported here by its pair, "BTC/USD", as orders and data name it.
 """
+import from decimal { Decimal, ROUND_HALF_UP }
 import json;
 import math;
 import os;
@@ -20,6 +25,7 @@ import time;
 import from urllib.parse { urlsplit }
 import httpx;
 import from research.alpaca { alpaca_headers }
+import from research.crypto { pair_of }
 import from research.collector { TokenBucket, bucket_for }
 import from research.sources { SOURCES }
 
@@ -71,14 +77,16 @@ obj Account {
 
 obj BrokerPosition {
     has symbol: str,
-        qty: int,
-        qty_available: int,
+        qty: float,
+        qty_available: float,
         avg_entry_price: float,
         current_price: float,
         market_value: float;
+    has asset_class: str = "us_equity";
 }
 
-"""One order as Alpaca reports it. Quantities are whole shares (TDD §8, position sizing)."""
+"""One order as Alpaca reports it. Quantities are whole shares or contracts, or a crypto pair's
+coins (TDD §8, position sizing)."""
 obj BrokerOrder {
     has id: str,
         client_order_id: str,
@@ -86,8 +94,8 @@ obj BrokerOrder {
         side: str,
         order_type: str,
         time_in_force: str,
-        qty: int,
-        filled_qty: int,
+        qty: float,
+        filled_qty: float,
         status: str;
     has filled_avg_price: float | None = None,
         limit_price: float | None = None,
@@ -96,6 +104,7 @@ obj BrokerOrder {
         submitted_at: str = "",
         filled_at: str = "",
         canceled_at: str = "",
+        asset_class: str = "us_equity",
         legs: list[BrokerOrder] = [];
 
     def working -> bool {
@@ -104,21 +113,24 @@ obj BrokerOrder {
 }
 
 """An order to submit. `stop_loss_price` attaches a stop to a one-triggers-other entry,
-which only the order-rule spike uses (#13)."""
+which only the order-rule spike uses (#13). `price_increment` is a crypto pair's tick, which its
+prices are rounded to; `position_intent` says whether an option order opens or closes."""
 obj OrderRequest {
     has symbol: str,
         side: str,
-        qty: int,
+        qty: float,
         order_type: str,
         time_in_force: str,
         client_order_id: str;
     has limit_price: float | None = None,
         stop_price: float | None = None,
-        stop_loss_price: float | None = None;
+        stop_loss_price: float | None = None,
+        price_increment: float = 0.0,
+        position_intent: str = "";
 
     def postinit {
-        if self.qty <= 0 {
-            raise ValueError(f"{self.symbol}: an order needs a positive whole-share quantity, not {self.qty}");
+        if not math.isfinite(self.qty) or self.qty <= 0 {
+            raise ValueError(f"{self.symbol}: an order needs a positive quantity, not {self.qty}");
         }
         if self.side not in ("buy", "sell") {
             raise ValueError(f"{self.symbol}: side must be buy or sell, not {self.side!r}");
@@ -129,6 +141,9 @@ obj OrderRequest {
         if self.order_type == "stop" and self.stop_price is None {
             raise ValueError(f"{self.symbol}: a stop order needs a stop price");
         }
+        if self.order_type == "stop_limit" and (self.stop_price is None or self.limit_price is None) {
+            raise ValueError(f"{self.symbol}: a stop-limit order needs a stop and a limit price");
+        }
         if not self.client_order_id or len(self.client_order_id) > 128 {
             raise ValueError(f"{self.symbol}: client_order_id must be 1 to 128 characters");
         }
@@ -138,16 +153,19 @@ obj OrderRequest {
         found: dict[str, str | dict[str, str]] = {
             "symbol": self.symbol,
             "side": self.side,
-            "qty": str(self.qty),
+            "qty": quantity_text(self.qty),
             "type": self.order_type,
             "time_in_force": self.time_in_force,
             "client_order_id": self.client_order_id
         };
         if self.limit_price is not None {
-            found["limit_price"] = tick_price(self.limit_price);
+            found["limit_price"] = step_price(self.limit_price, self.price_increment) if self.price_increment > 0 else tick_price(self.limit_price);
         }
         if self.stop_price is not None {
-            found["stop_price"] = tick_price(self.stop_price);
+            found["stop_price"] = step_price(self.stop_price, self.price_increment) if self.price_increment > 0 else tick_price(self.stop_price);
+        }
+        if self.position_intent {
+            found["position_intent"] = self.position_intent;
         }
         if self.stop_loss_price is not None {
             found["order_class"] = "oto";
@@ -172,6 +190,28 @@ def tick_price(price: float) -> str {
         raise ValueError(f"a price must be positive, not {price}");
     }
     return f"{price:.2f}" if price >= 1.0 else f"{price:.4f}";
+}
+
+"""`qty` as Alpaca reads it: a whole number without a decimal point, and a fraction with up to nine
+places and no trailing zeros."""
+def quantity_text(qty: float) -> str {
+    if float(qty).is_integer() {
+        return str(int(qty));
+    }
+    return f"{qty:.9f}".rstrip("0").rstrip(".");
+}
+
+"""`price` rounded to a multiple of `increment`, as a decimal string."""
+def step_price(price: float, increment: float) -> str {
+    if not math.isfinite(price) or price <= 0.0 {
+        raise ValueError(f"a price must be positive, not {price}");
+    }
+    step = Decimal(str(increment));
+    found = (Decimal(str(price)) / step).quantize(Decimal(1), rounding=ROUND_HALF_UP) * step;
+    if found <= 0 {
+        found = step;
+    }
+    return format(found.normalize(), "f");
 }
 
 """The trading API base URL: ALPACA_BASE_URL when set, else the paper host. Raises NotPaper
@@ -240,17 +280,7 @@ obj Broker {
 
     """Every open position, by symbol."""
     def positions -> dict[str, BrokerPosition] {
-        return {
-            _text(row, "symbol"): BrokerPosition(
-                symbol=_text(row, "symbol"),
-                qty=_shares(row.get("qty")),
-                qty_available=_shares(row.get("qty_available", row.get("qty"))),
-                avg_entry_price=_number(row, "avg_entry_price"),
-                current_price=_number(row, "current_price"),
-                market_value=_number(row, "market_value")
-            )
-            for row in self._list("GET", "/v2/positions")
-        };
+        return {p.symbol: p for p in [_position(row) for row in self._list("GET", "/v2/positions")]};
     }
 
     """Orders in `status` ("open", "closed", or "all"), newest first, with legs nested."""
@@ -428,8 +458,28 @@ def _number(row: dict[str, object], key: str) -> float {
     return float(str(value)) if value is not None and str(value) != "" else 0.0;
 }
 
-def _shares(value: object) -> int {
-    return int(float(str(value))) if value is not None and str(value) != "" else 0;
+"""A quantity Alpaca sent: an int when whole, so shares stay whole numbers, and a float for a
+fraction of a coin."""
+def _shares(value: object) -> float {
+    if value is None or str(value) == "" {
+        return 0;
+    }
+    found = float(str(value));
+    return int(found) if found.is_integer() else found;
+}
+
+def _position(row: dict[str, object]) -> BrokerPosition {
+    asset_class = _text(row, "asset_class") or "us_equity";
+    symbol = _text(row, "symbol");
+    return BrokerPosition(
+        symbol=pair_of(symbol) if asset_class == "crypto" else symbol,
+        qty=_shares(row.get("qty")),
+        qty_available=_shares(row.get("qty_available", row.get("qty"))),
+        avg_entry_price=_number(row, "avg_entry_price"),
+        current_price=_number(row, "current_price"),
+        market_value=_number(row, "market_value"),
+        asset_class=asset_class
+    );
 }
 
 def _price(value: object) -> float | None {
@@ -454,6 +504,7 @@ def _order(row: dict[str, object]) -> BrokerOrder {
         submitted_at=_text(row, "submitted_at"),
         filled_at=_text(row, "filled_at"),
         canceled_at=_text(row, "canceled_at"),
+        asset_class=_text(row, "asset_class") or "us_equity",
         legs=[_order(leg) for leg in _rows(row.get("legs"))]
     );
 }

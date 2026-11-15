@@ -5,7 +5,7 @@ import from datetime { datetime, timezone }
 import from jaclang { JacRuntime as Jac }
 import accounts.api as accounts_api;
 import accounts.store as store;
-import from accounts.api { get_agent_settings, remove_agent_keys, save_agent_keys, set_paper_trading, start_my_run }
+import from accounts.api { get_agent_settings, remove_agent_keys, save_agent_keys, set_asset_classes, set_paper_trading, start_my_run }
 import from accounts.store { all_accounts, ensure_own_portfolio, my_account, own_portfolio }
 import from models.accounts { AgentAccount, AgentReply, AgentSettings, KeysReply }
 import from models.graph { Portfolio, Ran, Run, RunStatus, PortfolioMode }

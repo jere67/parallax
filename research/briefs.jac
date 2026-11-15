@@ -128,7 +128,9 @@ def market_brief(ticker: str, as_of: str, inputs: MarketInputs) -> Brief {
     } else {
         brief.add(f"{ticker} technical indicators from daily bars (computed in code)", stock.stamp.source_url, stock.stamp.published_at, technicals_text(stock, sector_etf));
     }
-    for (name, benchmark) in [("SPY (S&P 500 fund)", spy), (f"{sector_etf} (sector fund)" if sector_etf else "sector fund", sector)] {
+    # A coin's benchmark is BTC/USD, where a stock's is its sector fund.
+    peer = f"{sector_etf} (crypto benchmark)" if "/" in sector_etf else f"{sector_etf} (sector fund)" if sector_etf else "sector fund";
+    for (name, benchmark) in [("SPY (S&P 500 fund)", spy), (peer, sector)] {
         if benchmark is None {
             brief.gaps.append(f"market: no bars for {name}, so no relative strength against it");
         } else {
@@ -316,7 +318,8 @@ def technicals_text(t: Technicals, sector_etf: str = "") -> str {
         f"Relative strength against SPY: 20-day {change(t.rs_spy_20)}, 60-day {change(t.rs_spy_60)}."
     ];
     if sector_etf {
-        lines.append(f"Relative strength against its sector fund {sector_etf}: 20-day {change(t.rs_sector_20)}, 60-day {change(t.rs_sector_60)}.");
+        against = f"the crypto benchmark {sector_etf}" if "/" in sector_etf else f"its sector fund {sector_etf}";
+        lines.append(f"Relative strength against {against}: 20-day {change(t.rs_sector_20)}, 60-day {change(t.rs_sector_60)}.");
     }
     return "\n".join(lines);
 }
@@ -539,6 +542,10 @@ def usd(value: float | None) -> str {
         if size >= scale {
             return f"{sign}${size / scale:,.1f}{suffix}";
         }
+    }
+    if 0.0 < size < 1.0 {
+        # A coin can trade for a fraction of a cent.
+        return f"{sign}${size:.4g}";
     }
     return f"{sign}${size:,.2f}";
 }

@@ -84,6 +84,8 @@ import from models.views {
     TrailView
 }
 import from dashboard.live { live_view }
+import from models.assets { OPTIONS }
+import from research.options { describe_option }
 import from run.guard { TEAM_PORTFOLIO }
 
 glob TRADING_DAYS: int = 252;
@@ -318,16 +320,20 @@ def position_view(position: Position, equity: float | None, sent: list[Order]) -
         stop_price=position.stop_price or None,
         time_stop=position.time_stop or (d.time_stop if d is not None else ""),
         thesis=d.thesis if d is not None else "",
-        decision_day=day
+        decision_day=day,
+        asset_class=position.asset_class,
+        label=describe_option(position.ticker) if position.asset_class == OPTIONS else ""
     );
+    # One option contract covers `multiplier` shares, and its price is per share.
+    size = position.multiplier or 1.0;
     if position.open() {
         price = position.last_price or None;
         view.last_price = price;
         view.priced_at = position.priced_at;
         view.entry_qty = position.qty;
         if price is not None {
-            view.market_value = price * position.qty;
-            view.pnl = (price - position.avg_entry_price) * position.qty;
+            view.market_value = price * position.qty * size;
+            view.pnl = (price - position.avg_entry_price) * position.qty * size;
             view.pnl_pct = price / position.avg_entry_price - 1.0 if position.avg_entry_price > 0 else None;
             view.weight = view.market_value / equity if equity else None;
             if position.stop_price > 0 {
@@ -338,20 +344,20 @@ def position_view(position: Position, equity: float | None, sent: list[Order]) -
     }
     view.closed_at = position.closed_at;
     view.exit_price = position.exit_price or None;
-    sold = 0;
+    sold: float = 0;
     realized = 0.0;
     for o in sent {
         if o.ticker == position.ticker and o.side == OrderSide.SELL and position.opened_at <= (o.submitted_at or "") <= position.closed_at {
             for f in [o ->:FilledBy:->[?:Fill]] {
                 sold += f.qty;
-                realized += (f.price - position.avg_entry_price) * f.qty;
+                realized += (f.price - position.avg_entry_price) * f.qty * size;
             }
         }
     }
     view.entry_qty = sold;
     if sold > 0 {
         view.pnl = realized;
-        view.pnl_pct = realized / (position.avg_entry_price * sold) if position.avg_entry_price > 0 else None;
+        view.pnl_pct = realized / (position.avg_entry_price * sold * size) if position.avg_entry_price > 0 else None;
     } elif position.exit_price and position.avg_entry_price > 0 {
         view.pnl_pct = position.exit_price / position.avg_entry_price - 1.0;
     }

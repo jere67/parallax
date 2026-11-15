@@ -92,7 +92,7 @@ obj ProfileView {
 """What the investment committee last did about a stock, when it has looked at it."""
 obj CommitteeView {
     has held: bool = False,
-        held_qty: int | None = None,
+        held_qty: float | None = None,
         run_day: str = "",
         action: str = "",
         trail: str = "";

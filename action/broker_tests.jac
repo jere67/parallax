@@ -1,7 +1,7 @@
 """The paper broker client (action/broker.jac) against the fake broker, so no test reaches
 Alpaca."""
 import os;
-import from action.broker { Broker, BrokerError, NotPaper, OrderRequest, tick_price, trading_base_url }
+import from action.broker { Broker, BrokerError, NotPaper, OrderRequest, _position, quantity_text, step_price, tick_price, trading_base_url }
 import from tests.fakes.broker_server { FakeBroker, Scripted }
 
 glob KEYS: dict[str, str] = {"APCA-API-KEY-ID": "test-key", "APCA-API-SECRET-KEY": "test-secret"};
@@ -156,4 +156,24 @@ test "prices go out on Alpaca's tick and a bad order never leaves" {
     }
     body = OrderRequest(symbol="F", side="buy", qty=1, order_type="limit", time_in_force="day", client_order_id="x", limit_price=10.0, stop_loss_price=9.0).body();
     assert body["order_class"] == "oto" and body["stop_loss"] == {"stop_price": "9.00"} and body["qty"] == "1";
+}
+
+test "quantities and coin prices go out as Alpaca reads them" {
+    assert quantity_text(3) == "3" and quantity_text(3.0) == "3" and quantity_text(0.0125) == "0.0125";
+    assert step_price(0.123456, 0.0001) == "0.1235" and step_price(64123.456, 0.01) == "64123.46";
+    coin = OrderRequest(symbol="BTC/USD", side="buy", qty=0.0125, order_type="limit", time_in_force="gtc", client_order_id="c1", limit_price=64123.456, price_increment=0.01);
+    assert coin.body()["qty"] == "0.0125" and coin.body()["limit_price"] == "64123.46";
+    option = OrderRequest(symbol="AAPL261218C00200000", side="buy", qty=2, order_type="limit", time_in_force="day", client_order_id="o1", limit_price=3.45, position_intent="buy_to_open");
+    assert option.body()["position_intent"] == "buy_to_open" and option.body()["qty"] == "2";
+    try {
+        OrderRequest(symbol="BTC/USD", side="sell", qty=0.01, order_type="stop_limit", time_in_force="gtc", client_order_id="s1", stop_price=60000.0);
+        assert False, "a stop-limit without a limit was accepted";
+    } except ValueError {}
+}
+
+test "a coin position is reported by its pair, with a fractional quantity" {
+    found = _position({"symbol": "BTCUSD", "asset_class": "crypto", "qty": "0.0125", "qty_available": "0.0125", "avg_entry_price": "64000", "current_price": "65000", "market_value": "812.5"});
+    assert found.symbol == "BTC/USD" and found.qty == 0.0125 and found.asset_class == "crypto";
+    shares = _position({"symbol": "AAPL", "asset_class": "us_equity", "qty": "10", "avg_entry_price": "1", "current_price": "1", "market_value": "10"});
+    assert shares.qty == 10 and isinstance(shares.qty, int);
 }

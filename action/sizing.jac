@@ -2,7 +2,7 @@
 
 The caller supplies the portfolio equity and, for every covered ticker and every open
 holding, the final decision, its conviction, the latest price, the 20-day realized
-volatility, and the shares held. This module returns target positions and whole-share
+volatility, and the quantity held. This module returns target positions and quantity
 changes only; the risk gate (action/gate.jac) and the executor stay separate layers, and an
 order exists only once the gate approves it.
 
@@ -14,13 +14,33 @@ order exists only once the gate approves it.
   from a weight would trade a share either way on rounding alone.
 - When the buys would take gross exposure over the limit, only the buys shrink, together;
   positions that are not buying are never sold to make room.
+- Quantities are whole shares for a stock, and multiples of a coin's trade increment for a coin
+  (`increment`), always rounded down. A whole quantity stays an int, so a stock's figures are
+  exactly what they were before coins.
 """
 import math;
+import from decimal { Decimal, ROUND_FLOOR }
 import statistics;
 import from models.graph { OrderSide, TradeAction }
 
 # Bump with any change to the sizing rules or defaults, so a run records what sized it.
-glob SIZING_VERSION: str = "2026-10-20.1";
+glob SIZING_VERSION: str = "2026-11-14.2";
+
+"""`qty` rounded down to a multiple of `increment`: an int when the increment is whole, so a
+stock's shares stay whole numbers. Never more than `qty`, since a cap's limit arrives here."""
+def units(qty: float, increment: float = 1.0) -> float {
+    if not math.isfinite(qty) or qty <= 0.0 or increment <= 0.0 {
+        return 0;
+    }
+    # In decimals, as the numbers print: 0.3 in steps of 0.1 is 3 steps, not 2 as in floats, and
+    # no tolerance for float error can lift 0.9999999999 to 1.
+    step = Decimal(str(increment));
+    steps = (Decimal(str(qty)) / step).to_integral_value(rounding=ROUND_FLOOR);
+    if increment >= 1.0 {
+        return int(steps * step);
+    }
+    return float(steps * step);
+}
 
 obj SizingConfig {
     has scale: float = 0.08,
@@ -48,21 +68,22 @@ obj SizingConfig {
 }
 
 """Sizing inputs for one ticker. Include every open holding, so gross exposure counts the
-whole portfolio."""
+whole portfolio. `increment` is the smallest quantity the ticker trades in: 1 share for a stock."""
 obj SizingCandidate {
     has ticker: str,
         action: TradeAction,
         conviction: float,
         price: float;
     has realized_vol_20: float | None = None,
-        current_qty: int = 0;
+        current_qty: float = 0,
+        increment: float = 1.0;
 }
 
 obj SizedPosition {
     has ticker: str,
         target_weight: float,
-        target_qty: int,
-        share_delta: int;
+        target_qty: float,
+        share_delta: float;
     has side: OrderSide | None = None,
         note: str = "";
 }
@@ -109,7 +130,7 @@ def size_positions(
 
     vols = [c.realized_vol_20 for c in candidates if c.realized_vol_20 is not None and math.isfinite(c.realized_vol_20) and c.realized_vol_20 > 0.0];
     median_vol = statistics.median(vols) if vols else None;
-    kept_qty: dict[str, int] = {};
+    kept_qty: dict[str, float] = {};
     notes: dict[str, str] = {};
     wanted: dict[str, float] = {};
     for c in candidates {
@@ -117,7 +138,7 @@ def size_positions(
             case TradeAction.SELL:
                 kept_qty[c.ticker] = 0;
             case TradeAction.TRIM:
-                kept_qty[c.ticker] = int(math.floor(c.current_qty * (1.0 - config.trim_fraction)));
+                kept_qty[c.ticker] = units(c.current_qty * (1.0 - config.trim_fraction), c.increment);
             case TradeAction.BUY | TradeAction.ADD:
                 kept_qty[c.ticker] = c.current_qty;
                 volatility = c.realized_vol_20;
@@ -144,9 +165,12 @@ def size_positions(
     for c in candidates {
         target_qty = kept_qty[c.ticker];
         if c.ticker in wanted {
-            target_qty += int(math.floor(wanted[c.ticker] * scale / c.price));
+            target_qty += units(wanted[c.ticker] * scale / c.price, c.increment);
         }
         delta = target_qty - c.current_qty;
+        if c.increment < 1.0 {
+            delta = round(delta, 12);
+        }
         weight = target_qty * c.price / equity if target_qty > 0 else 0.0;
         gross += weight;
         positions.append(SizedPosition(

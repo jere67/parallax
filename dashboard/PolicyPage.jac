@@ -9,7 +9,7 @@ import from dashboard.ui.retry { call_function }
 import from "lucide-react" { ChevronLeft, ChevronRight, MessageCircle, Pause, Play, Plus, RotateCcw, Trash2 }
 import from "react" { useEffect }
 import from dashboard.PolicyChat { PolicyChat }
-import from dashboard.ui.format { day_long, day_short, num, signed, stamp_et }
+import from dashboard.ui.format { day_long, day_short, num, signed, stamp_et, ticker_path }
 import from dashboard.ui.parts { ActionBadge, ErrorBox, Loading, Overline, PILL_BASE, Panel, TAP_BUTTON, TAP_INPUT, TAP_QUIET, TONE_ACCENT, TONE_QUIET, TONE_WARN }
 import from models.policy { Knob as KnobData, Metric as MetricData, PolicyRule as RuleData }
 import from models.policy_views {
@@ -303,7 +303,7 @@ def RuleCard(rule: RuleData, sentence: str, editable: bool, toggle: Callable[[],
 def ReplayCard(row: RowData, day: str) -> JsxElement {
     <li className="border-b border-line/60 py-2.5 last:border-b-0" data-testid="replay-row">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <Link to={"/app/runs/" + day + "/" + row.ticker} className="display min-h-6 text-[17px] leading-6 hover:text-accent">{row.ticker}</Link>
+            <Link to={"/app/runs/" + day + "/" + ticker_path(row.ticker)} className="display min-h-6 text-[17px] leading-6 hover:text-accent">{row.ticker}</Link>
             <div className="flex items-center gap-1.5">
                 {if row.changed {
                     <span className="flex items-center gap-1.5">

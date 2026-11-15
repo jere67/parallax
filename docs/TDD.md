@@ -797,6 +797,28 @@ Every step rounds down to whole shares, and a property test checks over 3,000 ge
   Alpaca refuses a buy beside a working stop as a wash trade and a sell of shares a stop reserves, so each sequence cancels the stop first; marketable limits filled in under a second; and a same-day sell is allowed.
   A [one-triggers-other entry](https://docs.alpaca.markets/us/docs/orders-at-alpaca) is accepted, but its stop leg stays a DAY order after the fill, so the separate GTC stop stays.
 
+### Asset classes
+
+Alpaca's trading API lists stocks and funds (`us_equity`), crypto (`crypto`), and options (`us_option`) for a paper account; fixed income, perpetual futures, and the other classes in its asset enum are Broker-API or account-specific products a paper Trading API account cannot trade.
+Each agent opts into the classes it trades on the settings page (`accounts/assets.jac`); stocks are the default.
+The team agent follows the newest choice an admin saved, stored as an append-only `AssetChoice` on `root.shared` like a policy version.
+Each run records the classes it traded under (`Run.asset_classes`), and the gate refuses a buy in a class the run did not trade; a sell is never refused for its class, so a position can always be closed.
+
+- **Crypto.** A run that trades crypto also covers the most traded USD pairs by 20-day dollar volume (five beside the stock screen, ten on a day the stock market is closed) and every held pair (`research/crypto.jac`).
+  A coin gets Market and News research only, and a panel of the Technical, News, and Macro specialists, since it has no filings, analysts, or insiders.
+  Its technicals use UTC daily bars that are final once the UTC day ends, measured against SPY and BTC/USD.
+  Crypto trades every day, so an agent that trades it also runs at 7:30 a.m. on weekends and holidays, on its coins alone, and its orders follow the same clock: entries from 9:45 a.m., fills and stops every five minutes, unfilled orders canceled at 3:50 p.m., and no reconciliation until the next session.
+  Quantities are fractions down to the pair's trade increment; Alpaca takes no DAY order for crypto, so entries are GTC limits the 3:50 window cancels, and a stop is a GTC stop-limit 1% under its stop price, since Alpaca has no plain stop for crypto ([crypto orders](https://docs.alpaca.markets/us/docs/crypto-orders)).
+  The gate skips the $5 price floor and the earnings blackout for a coin, caps one coin at 5% of equity and all coins together at 20%, and refuses an order under the pair's minimum size.
+  Alpaca takes its crypto fee in the coin received, so reconciliation corrects a coin's quantity quietly within 1%, and an exit that leaves under 2% of the position closes it.
+  Coins are scored by neither the vote scoring nor the screen baselines, which measure against S&P 500 sessions.
+- **Options.** Only long calls and puts, so a contract can lose at most its premium (`action/options.jac`).
+  Right after the run's stock orders, a BUY or ADD decision buys a call, and a confident sell on a stock the portfolio does not hold (consensus score at or below -0.25 with the whole interval below zero) buys a put.
+  The contract is the one 21 to 60 days out nearest 35, at the strike nearest the money on the side of the view, with a spread at most 25% of its mid on the free indicative feed.
+  Each costs at most 1% of equity, all options together at most 5%, at most two new ones a day, and none while the drawdown breaker is on; orders are DAY limits at the mid plus a quarter of the spread.
+  Every half hour the agent sells a contract with seven or fewer days left, whose premium has halved or doubled, whose stock's latest decision turned the other way, or whose time stop arrived.
+  Each entry and exit is a `RiskCheck` with the rules it passed, so reconciliation traces it like any order, and options count toward gross exposure.
+
 ### Insight mode
 
 In insight mode the same decision becomes an insight card instead of an order: ticker, action, conviction, the specialist vote breakdown, the consensus and its interval, the Arbiter's thesis, the two key risks, the exit condition and time stop, linked sources, and the disclaimer.
