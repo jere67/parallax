@@ -9,7 +9,7 @@ Every base URL can be overridden through its environment variable, which is how 
 replay recorded fixtures from a local server instead of calling the provider.
 """
 
-glob SOURCES_VERSION: str = "2026-11-06.1";
+glob SOURCES_VERSION: str = "2026-11-14.1";
 
 glob HOUR: float = 1.0;
 glob DAY: float = 24.0;
@@ -68,7 +68,7 @@ glob SOURCES: dict[str, Source] = {
             base_url_env="ALPACA_BASE_URL",
             per_minute=180,
             burst=10,
-            run_budget=50
+            run_budget=80
         ),
         # SEC fair access: under 10 requests a second across every sec.gov host (TDD §14).
         Source(
@@ -134,6 +134,34 @@ glob DATASETS: dict[str, Dataset] = {
             source="alpaca_trading",
             max_age_hours=2 * DAY,
             cache_ttl_hours=24 * HOUR
+        ),
+        # Crypto trades every day, so its daily bars (UTC days) and latest trades go stale faster
+        # than a stock's (research/crypto.jac).
+        Dataset(name="alpaca.crypto_bars", source="alpaca_data", max_age_hours=2 * DAY),
+        Dataset(
+            name="alpaca.crypto_trade",
+            source="alpaca_data",
+            max_age_hours=DAY,
+            cache_ttl_hours=HOUR / 60
+        ),
+        Dataset(
+            name="alpaca.crypto_assets",
+            source="alpaca_trading",
+            max_age_hours=2 * DAY,
+            cache_ttl_hours=24 * HOUR
+        ),
+        # Option contracts list and quote by the minute (research/options.jac).
+        Dataset(
+            name="alpaca.option_contracts",
+            source="alpaca_trading",
+            max_age_hours=2 * DAY,
+            cache_ttl_hours=6 * HOUR
+        ),
+        Dataset(
+            name="alpaca.option_snapshots",
+            source="alpaca_data",
+            max_age_hours=DAY,
+            cache_ttl_hours=HOUR / 60
         ),
         Dataset(
             name="alpaca.calendar",
