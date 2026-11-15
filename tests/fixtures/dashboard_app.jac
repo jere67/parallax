@@ -58,3 +58,11 @@ def:priv seed_team_graph -> str {
     public(team +>:Marked():+> DailyMark(day="2026-10-21", equity=100500.0, cash=95000.0, positions_value=5500.0, peak_equity=100500.0, marked_at="2026-10-21T20:30:00+00:00"));
     return "ok";
 }
+
+"""Add a weekend run that covered a coin alone, as an agent that trades crypto runs on a Saturday."""
+def:priv seed_weekend_run -> str {
+    for team in [p for p in [root.shared -->[?:Portfolio]] if p.name == "team"] {
+        finished_run(team, "2026-10-24", [Call(ticker="BTC/USD", action=TradeAction.BUY, conviction=0.5)]);
+    }
+    return "ok";
+}

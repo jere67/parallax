@@ -9,7 +9,7 @@ import logging;
 import re;
 import threading;
 import from datetime { date, datetime, time as day_time, timezone }
-import from dashboard.api { get_portfolio, my_latest_run }
+import from dashboard.api { get_portfolio, my_latest_stock_run }
 import from market.companies { CompanyRecord }
 import from market.demo { demo_history, demo_intraday, demo_state }
 import from run.switches { demo_mode }
@@ -220,7 +220,7 @@ def committee_of(symbol: str) -> CommitteeView {
                 found.held_qty = position.qty;
             }
         }
-        run = my_latest_run();
+        run = my_latest_stock_run();
         if run is not None {
             for row in run.rows {
                 if row.ticker == symbol {
@@ -240,7 +240,7 @@ def committee_of(symbol: str) -> CommitteeView {
 covered, from the cached run view, as `committee_of` reads it."""
 def decisions_on(symbols: set[str]) -> tuple[str, dict[str, str]] {
     try {
-        run = my_latest_run();
+        run = my_latest_stock_run();
         if run is None {
             return ("", {});
         }
