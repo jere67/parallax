@@ -10,6 +10,7 @@ import from uuid { UUID }
 import from jaclang { JacRuntime as Jac }
 import jaclang.runtime.runtime as jac_runtime;
 import from jaclang.data.store { PgStore }
+import from accounts.store { DEMO_PORTFOLIO }
 import from accounts.transfer {
     JOBS,
     LEASE_OWNER,
@@ -36,6 +37,9 @@ glob OLD: str = "_jac_app_0123456789abcdef.";
 glob PORTFOLIO_ID: str = "11111111-1111-1111-1111-111111111111";
 glob RUN_ID: str = "22222222-2222-2222-2222-222222222222";
 glob RAN_ID: str = "33333333-3333-3333-3333-333333333333";
+glob DEMO_PORTFOLIO_ID: str = "44444444-4444-4444-4444-444444444444";
+glob DEMO_RUN_ID: str = "55555555-5555-5555-5555-555555555555";
+glob DEMO_RAN_ID: str = "66666666-6666-6666-6666-666666666666";
 glob SCHEDULED: re.Pattern[str] = re.compile(r"@schedule\([^)]*\)\s*(?:async\s+)?def(?::\w+)?\s+(\w+)");
 
 def node_props(id: str, module: str, archetype: dict[str, object]) -> dict[str, object] {
@@ -180,6 +184,46 @@ test "a move replaces the graph and the accounts, once, and lets the jobs go" {
         again = read_state(store);
         assert again["state"] == "failed" and "runs of its own" in again["message"], again;
         assert store.rows("SELECT count(*) FROM anchors", {})[0][0] == 4;
+    } finally {
+        store.close();
+    }
+}
+
+"""`doc` with the demo account's history in it too: its portfolio, one run, and their edge."""
+def with_demo_history(doc: dict[str, object], module_prefix: str = OLD) -> dict[str, object] {
+    graph_module = module_prefix + "models.graph";
+    anchors = list(doc["anchors"]);
+    anchors.extend([
+        [DEMO_PORTFOLIO_ID, "NodeAnchor", "Portfolio", graph_module, "fp-demo", SUPER_ROOT, None, None, False, node_props(DEMO_PORTFOLIO_ID, graph_module, {"name": DEMO_PORTFOLIO}), 1, 1, 14],
+        [DEMO_RUN_ID, "NodeAnchor", "Run", graph_module, "fp-demo-run", SUPER_ROOT, None, None, False, node_props(DEMO_RUN_ID, graph_module, {"run_date": "2026-11-13"}), 1, 1, 15],
+        [DEMO_RAN_ID, "EdgeAnchor", "Ran", graph_module, "fp-demo-ran", SUPER_ROOT, DEMO_PORTFOLIO_ID, DEMO_RUN_ID, False, {"id": DEMO_RAN_ID, "archetype": {"__module__": graph_module}}, 1, 0, 16]
+    ]);
+    return {**doc, "anchors": anchors};
+}
+
+test "the demo account's history neither blocks a move nor counts as moved" {
+    store = own_store();
+    try {
+        store.rows("CREATE TABLE IF NOT EXISTS identity_users (user_id text PRIMARY KEY, doc jsonb NOT NULL)", {});
+        store.rows("CREATE TABLE IF NOT EXISTS identity_lookups (value_normalized text PRIMARY KEY, user_id text NOT NULL)", {});
+        prefix = module_prefix();
+        moved = prepare(decode(upload(with_demo_history(export_doc()))), prefix);
+        assert moved.runs == 1, moved.runs;
+        carry_out(store.conninfo, moved, "2026-11-15T21:00:00+00:00", settle_s=0.0, wait_s=5.0);
+        assert read_state(store)["state"] == "done", read_state(store);
+        assert "Moved 1 runs, 7 records" in read_state(store)["message"], read_state(store);
+        # The team's run is this server's own, so it keeps its records.
+        status = status_of(store, True);
+        assert status.runs == 1 and not status.ready, status;
+
+        # A server whose only runs are the demo account's, as every server is after its first boot.
+        store.rows("DELETE FROM anchors WHERE id IN (CAST(:run AS uuid), CAST(:ran AS uuid))", {"run": RUN_ID, "ran": RAN_ID});
+        status = status_of(store, True);
+        assert status.runs == 0 and status.ready, status;
+        carry_out(store.conninfo, prepare(decode(upload(export_doc())), prefix), "2026-11-15T21:05:00+00:00", settle_s=0.0, wait_s=5.0);
+        assert read_state(store)["state"] == "done", read_state(store);
+        ids = [r[0] for r in store.rows("SELECT CAST(id AS text) FROM anchors ORDER BY seq", {})];
+        assert ids == [SUPER_ROOT, PORTFOLIO_ID, RUN_ID, RAN_ID], ids;
     } finally {
         store.close();
     }
