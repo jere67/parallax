@@ -19,25 +19,27 @@ order exists only once the gate approves it.
   exactly what they were before coins.
 """
 import math;
+import from decimal { Decimal, ROUND_FLOOR }
 import statistics;
 import from models.graph { OrderSide, TradeAction }
 
 # Bump with any change to the sizing rules or defaults, so a run records what sized it.
-glob SIZING_VERSION: str = "2026-11-14.1";
+glob SIZING_VERSION: str = "2026-11-14.2";
 
 """`qty` rounded down to a multiple of `increment`: an int when the increment is whole, so a
-stock's shares stay whole numbers. A tiny amount is added first, so 0.3 / 0.1 does not round
-down to 2 on floating-point error."""
+stock's shares stay whole numbers. Never more than `qty`, since a cap's limit arrives here."""
 def units(qty: float, increment: float = 1.0) -> float {
-    if not math.isfinite(qty) or qty <= 0.0 {
+    if not math.isfinite(qty) or qty <= 0.0 or increment <= 0.0 {
         return 0;
     }
+    # In decimals, as the numbers print: 0.3 in steps of 0.1 is 3 steps, not 2 as in floats, and
+    # no tolerance for float error can lift 0.9999999999 to 1.
+    step = Decimal(str(increment));
+    steps = (Decimal(str(qty)) / step).to_integral_value(rounding=ROUND_FLOOR);
     if increment >= 1.0 {
-        step = int(increment);
-        return int(math.floor(qty / step + 1e-9)) * step;
+        return int(steps * step);
     }
-    steps = math.floor(qty / increment + 1e-9);
-    return round(steps * increment, 12);
+    return float(steps * step);
 }
 
 obj SizingConfig {

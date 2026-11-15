@@ -102,4 +102,7 @@ test "a coin sizes in its trade increment, and a stock's shares stay whole numbe
 test "units round down to the increment, without floating-point slips" {
     assert units(0.3, 0.1) == 0.3 and units(0.29999, 0.1) == 0.2 and units(7.9, 1.0) == 7;
     assert units(-1.0, 0.1) == 0 and units(0.0, 1.0) == 0;
+    # A cap's limit a hair under a whole share allows none, never the share.
+    assert units(0.9999999999, 1.0) == 0 and units(2.9999999999, 0.0001) == 2.9999;
+    assert units(0.12345678, 0.000001) == 0.123456 and type(units(5.0, 1.0)) is int;
 }
