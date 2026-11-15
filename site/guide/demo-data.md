@@ -65,6 +65,25 @@ When it is set, the job:
 The Run Guard, the trading tick, and the manual run all skip a portfolio with `demo` set.
 So a demo portfolio is never run, traded, reconciled, or scored by the scheduled jobs.
 
+## The demo account
+
+Every server, deployed or not, also has a shared account named `demo`, with no password, for visitors who have no API keys.
+Press **Browse the demo** on the front page, open `/demo`, or log in as `demo` with the password left empty.
+
+It shows the same simulated history, written into a portfolio of its own named `demo`, so the team's portfolio and every other agent are never touched.
+On a server in demo mode it shows the team's demo history instead, since that is already made up.
+
+It can look at every page but change nothing: its keys, paper trading, runs, asset classes, policy saves, the policy assistant, and reports are all refused.
+On the Policy page it can still try a draft and see what it would have done.
+Everyone who browses shares the one account, so nothing it did would stay its own.
+
+Two scheduled jobs set it up, a minute at a time:
+
+- `demo_account_job` writes a record of the demo account on `root.shared`, then makes the `demo` user with a random password no one is told, and records its ids.
+  The `open_demo` endpoint hands out a sign-in token for that user instead of a password.
+  If someone signed up as `demo` before the record was written, that account is left alone and the demo sign-in stays off; the server log says so.
+- `demo_history_job` simulates the history once, outside demo mode, ending on the weekday before the day it runs.
+
 ::: danger Never on a deployed server
 Never set `TRADING_AGENT_DEMO` on a deployed server.
 It would fill the team portfolio with made-up history, and the scheduled jobs never run or trade a demo portfolio, so the real forward test could not use it.

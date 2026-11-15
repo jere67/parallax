@@ -841,6 +841,7 @@ The front page says what it does, and everything past it takes an account: each 
 | Surface | Who | What they get |
 | --- | --- | --- |
 | Front page | Anyone | What the product does, with a worked example, and no user's data |
+| Demo account | Anyone, with no password | A filled-in agent to browse: the demo environment's simulated history, read-only |
 | Your agent | Signed-in users | Their own morning runs, decisions, positions, and performance against SPY, with the full trail behind each decision |
 | Your policy | Signed-in users | The rules behind every decision, in plain English, with a replay of their latest run under any draft and an assistant that proposes changes (Section 7) |
 | On-demand insight reports | Signed-in users with keys | A full analysis of any S&P 500 ticker, cached per day, on the requester's keys; three new reports per user per day |
@@ -853,6 +854,12 @@ There is no Google, passkey, or single sign-on, and no forgot-password link, bec
 Privacy is enforced by the server.
 Every data endpoint is `def:priv`, so an anonymous call gets a 401, and only the front page, health, and static files are public.
 A guard in the client sends a reader with no token to log in and back, but it is only a courtesy: the endpoints are the control.
+
+**The demo account.** A shared account named `demo`, with no password, lets a visitor without keys browse a filled-in agent (`accounts/demo.jac`).
+Its user is made by a scheduled job with a random password no one is told, and the public `open_demo` endpoint hands out a sign-in token instead.
+It sees the demo environment's simulated history (Section 10, demo history), written into its own `demo` portfolio on `root.shared`, so no real portfolio is touched.
+It is read-only: every endpoint that writes refuses it, since every visitor shares it.
+A "demo" user someone made before the server's record of the account is never handed out.
 
 ### Agents
 
