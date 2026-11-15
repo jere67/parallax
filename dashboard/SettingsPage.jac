@@ -408,7 +408,7 @@ def AssetsPanel(settings: SettingsData, done: Callable[[SettingsData, str], None
                             role="switch"
                             aria-checked={a.enabled}
                             aria-label={a.label}
-                            disabled={busy or settings.demo}
+                            disabled={busy}
                             onClick={lambda { toggle(a.name); }}
                             className={"relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors disabled:opacity-50 " + ("border-accent bg-accent" if a.enabled else "border-line-strong bg-panel-2")}
                         >

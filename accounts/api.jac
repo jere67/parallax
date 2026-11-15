@@ -354,7 +354,8 @@ def:priv set_asset_classes(classes: list[str]) -> AgentReply {
         return AgentReply(ok=False, message=problem, settings=settings_view());
     }
     chosen = clean_classes(wanted);
-    if caller_is_admin() {
+    admin = caller_is_admin();
+    if admin {
         save_team_classes(chosen);
     } else {
         account = my_account();
@@ -363,6 +364,8 @@ def:priv set_asset_classes(classes: list[str]) -> AgentReply {
         }
         account.asset_classes = chosen;
     }
-    names = ", ".join(ASSET_LABELS[c] for c in chosen);
-    return AgentReply(ok=True, message=f"Your agent now trades {names}, from its next morning run.", settings=settings_view());
+    names = [ASSET_LABELS[c][0].lower() + ASSET_LABELS[c][1:] for c in chosen];
+    listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + (", and " if len(names) > 2 else " and ") + names[-1];
+    whose = "The team's agent" if admin else "Your agent";
+    return AgentReply(ok=True, message=f"{whose} now trades {listed}, from its next morning run.", settings=settings_view());
 }
