@@ -523,6 +523,26 @@ test("account: sign up, connect keys, log out, and log back in to where you were
   await expect(page.locator("body")).not.toContainText("sk-or-e2e-good-key-1");
   await fitsWidth(page);
 
+  // The agent trades stocks until its owner turns on another asset class, and keeps one on.
+  const assets = page.locator("section", { has: page.getByRole("heading", { name: "Asset classes" }) });
+  const stocks = assets.getByRole("switch", { name: "Stocks and ETFs" });
+  const crypto = assets.getByRole("switch", { name: "Crypto" });
+  const options = assets.getByRole("switch", { name: "Options" });
+  await expect(stocks).toHaveAttribute("aria-checked", "true");
+  await expect(crypto).toHaveAttribute("aria-checked", "false");
+  await expect(options).toHaveAttribute("aria-checked", "false");
+  await stocks.click();
+  await expect(assets.getByRole("status")).toHaveText("Choose at least one asset class.");
+  await expect(stocks).toHaveAttribute("aria-checked", "true");
+  await crypto.click();
+  await expect(assets.getByRole("status")).toHaveText("Your agent now trades stocks and ETFs and crypto, from its next morning run.");
+  await expect(crypto).toHaveAttribute("aria-checked", "true");
+  await page.reload();
+  await expect(crypto).toHaveAttribute("aria-checked", "true");
+  await expect(options).toHaveAttribute("aria-checked", "false");
+  await expect(assets.getByText("2 of 3")).toBeVisible();
+  await fitsWidth(page);
+
   await page.getByRole("button", { name: "Log out" }).last().click();
   await expect(page).toHaveURL(/\/$/);
   await page.goto("/app/runs");
