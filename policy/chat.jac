@@ -20,7 +20,7 @@ import re;
 import time;
 import from concurrent.futures { Future }
 import from datetime { datetime, timedelta, timezone }
-import from accounts.store { caller_is_admin, credentials_of, demo_mode, my_account, my_portfolio }
+import from accounts.store { caller_is_admin, caller_is_demo, credentials_of, demo_mode, my_account, my_portfolio }
 import from accounts.vault { VaultError }
 import from agents.models { FREE_REQUESTS_PER_DAY, REQUEST_BUDGET, RequestBudget, limiter_now, models_disabled }
 import from agents.policy_assistant { PolicyAnswer, answer_policy_message }
@@ -123,6 +123,9 @@ def server_chat_refusal(now: datetime) -> str {
 
 """Why no new message can be sent right now, or "" when one can."""
 def unavailable_reason(now: datetime) -> str {
+    if caller_is_demo() {
+        return "The demo account cannot use the assistant. Create an account to talk your own policy through with it.";
+    }
     if models_disabled() {
         return "The assistant is off on this server. You can still edit the policy here.";
     }

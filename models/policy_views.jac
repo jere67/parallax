@@ -39,7 +39,8 @@ obj VersionView {
 }
 
 """A policy in force: version 0 is the defaults, with nothing saved. `sentences` say what it
-does, and `rule_sentences` say each rule's condition, in the order of `policy.rules`."""
+does, and `rule_sentences` say each rule's condition, in the order of `policy.rules`. `read_only`
+is the demo account's, which can replay a draft but not save it."""
 obj PolicyDoc {
     has scope: str,
         version: int,
@@ -47,7 +48,8 @@ obj PolicyDoc {
     has saved_at: str = "",
         sentences: list[str] = [],
         rule_sentences: list[str] = [],
-        history: list[VersionView] = [];
+        history: list[VersionView] = [],
+        read_only: bool = False;
 }
 
 """What a save did, and the policy now in force."""

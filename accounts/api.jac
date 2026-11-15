@@ -12,7 +12,9 @@ import from accounts.providers { KeyCheck, check_alpaca, check_finnhub, check_op
 import from accounts.store {
     REQUIRED_KEYS,
     caller_is_admin,
+    caller_is_demo,
     credentials_of,
+    demo_refusal,
     demo_mode,
     ensure_own_portfolio,
     has_required_keys,
@@ -65,6 +67,9 @@ def key_rows(account: AgentAccount | None) -> list[KeyStatus] {
 
 """Why the caller's own agent cannot start a run on `day`, or "" when it can."""
 def own_run_refusal(account: AgentAccount | None, day: str, local: datetime) -> str {
+    if caller_is_demo() {
+        return demo_refusal();
+    }
     if demo_mode() {
         return "This server only shows demo history, so it runs nothing.";
     }
@@ -120,7 +125,8 @@ def settings_view -> AgentSettings {
         requests_note=account.requests_note if account is not None else "",
         trading_started=portfolio is not None and bool(baselines_of(portfolio)),
         alpaca_problem=sharing_problem(account_of(account), account.owner_root) if account is not None and not admin and ALPACA_KEY in account.sealed else "",
-        assets=asset_options(team_classes() if admin else account_classes(account))
+        assets=asset_options(team_classes() if admin else account_classes(account)),
+        demo_account=caller_is_demo()
     );
 }
 
@@ -185,6 +191,9 @@ def check_sent(alpaca_key: str, alpaca_secret: str, openrouter_key: str, finnhub
 
 """Why the caller cannot change their keys, or "" when they can."""
 def keys_refusal(account: AgentAccount | None) -> str {
+    if caller_is_demo() {
+        return demo_refusal();
+    }
     if caller_is_admin() {
         return "This agent runs on the server's own keys.";
     }
@@ -240,6 +249,9 @@ def:priv save_agent_keys(alpaca_key: str = "", alpaca_secret: str = "", openrout
 """Disconnect a provider's keys. Without Alpaca or OpenRouter the agent stops running and trading;
 its positions stay open on Alpaca, where its owner can close them."""
 def:priv remove_agent_keys(provider: str) -> AgentReply {
+    if caller_is_demo() {
+        return AgentReply(ok=False, message=demo_refusal(), settings=settings_view());
+    }
     account = my_account();
     names = {"alpaca": [ALPACA_KEY, ALPACA_SECRET], "openrouter": [OPENROUTER_KEY], "finnhub": [FINNHUB_KEY]}.get(provider);
     if account is None or names is None {
@@ -286,6 +298,9 @@ def flat_problem(account: AgentAccount) -> str {
 """Turn the agent's paper orders on or off. On asks only for its next chance to trade: the trading
 job carries it out, since a morning run may hold the portfolio."""
 def:priv set_paper_trading(on: bool) -> AgentReply {
+    if caller_is_demo() {
+        return AgentReply(ok=False, message=demo_refusal(), settings=settings_view());
+    }
     account = my_account();
     if caller_is_admin() {
         return AgentReply(ok=False, message="This agent's trading is set on the server.", settings=settings_view());
@@ -348,6 +363,9 @@ def:priv start_my_run -> AgentReply {
 caller's own otherwise. The next morning run uses the choice; a position already open in a class
 turned off is still watched, protected, and sold by its exit rules."""
 def:priv set_asset_classes(classes: list[str]) -> AgentReply {
+    if caller_is_demo() {
+        return AgentReply(ok=False, message=demo_refusal(), settings=settings_view());
+    }
     wanted = [str(c) for c in classes] if isinstance(classes, list) else [];
     problem = classes_problem(wanted);
     if problem {

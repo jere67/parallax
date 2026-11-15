@@ -3,14 +3,15 @@
 Every endpoint that shows or changes an agent goes through `my_portfolio` and `my_account`,
 which take no argument from the client: a request can only ever reach its caller's own agent.
 The admin's agent is the team portfolio on root.shared, which runs on the server's own keys.
-A server in demo mode shows every user the made-up history, since it runs nothing.
+A server in demo mode shows every user the made-up history, since it runs nothing, and the demo
+account (accounts/demo.jac) sees its own made-up history on any server, and changes nothing.
 """
 import hashlib;
 import os;
 import time;
 import from jaclang { JacRuntime as Jac }
 import from jaclang.server.identity.user_manager { UserManager }
-import from models.accounts { AgentAccount }
+import from models.accounts { AgentAccount, DemoLogin }
 import from models.graph { Portfolio, PortfolioMode }
 import from research.collector { utc_now }
 import from research.credentials { ALPACA_KEY, ALPACA_SECRET, Credentials, OPENROUTER_KEY }
@@ -30,6 +31,13 @@ glob USER_PAGE: int = 100;
 # it walks the user table.
 glob ROLE_TTL_S: float = 60.0;
 glob _ROLES: dict[str, tuple[bool, float]] = {};
+# The demo account (accounts/demo.jac): its username, the portfolio it shows on root.shared, and
+# what it answers a request to change anything.
+glob DEMO_USERNAME: str = "demo";
+glob DEMO_PORTFOLIO: str = "demo";
+glob DEMO_REFUSAL: str = "The demo account only browses made-up history, so it cannot change anything. Create an account to run your own agent.";
+# The demo user's graph root, as read last and when, so a request does not read it each time.
+glob _DEMO_ROOT: dict[str, tuple[str, float]] = {};
 
 def max_agents -> int {
     try {
@@ -66,6 +74,56 @@ def caller_is_admin -> bool {
     found = is_admin_root(UserManager(base_path="."), caller);
     _ROLES[caller] = (found, time.monotonic());
     return found;
+}
+
+"""The demo account's sign-in record, or None before the demo job writes it. Read as the server,
+since it carries no grant."""
+def demo_login -> DemoLogin | None {
+    found = read_as_system(demo_logins);
+    return found[0] if found else None;
+}
+
+def demo_logins -> list[DemoLogin] {
+    return [d for d in [root.shared -->[?:DemoLogin]]];
+}
+
+"""The demo user's graph root (`jid(root)`), or "" before the demo job records it."""
+def demo_root -> str {
+    known = _DEMO_ROOT.get("root");
+    if known is not None and known[0] and time.monotonic() - known[1] < ROLE_TTL_S {
+        return known[0];
+    }
+    login = demo_login();
+    found = login.root_id if login is not None else "";
+    _DEMO_ROOT["root"] = (found, time.monotonic());
+    return found;
+}
+
+"""Read the demo user's root again on the next request: it was just recorded."""
+def forget_demo_root {
+    _DEMO_ROOT.clear();
+}
+
+"""True when the caller is the shared demo account."""
+def caller_is_demo -> bool {
+    found = demo_root();
+    return bool(found) and str(jid(root)) == found;
+}
+
+"""Why the caller cannot change anything, or "" when they can: the demo account is shared by
+everyone who browses it, so nothing it does is kept."""
+def demo_refusal -> str {
+    return DEMO_REFUSAL if caller_is_demo() else "";
+}
+
+"""The demo account's made-up portfolio on root.shared, or None before the demo job seeds it."""
+def demo_portfolio -> Portfolio | None {
+    for p in [root.shared -->[?:Portfolio]] {
+        if p.name == DEMO_PORTFOLIO {
+            return p;
+        }
+    }
+    return None;
 }
 
 """The caller's agent account, or None before they connect a key. Another user's account is not
@@ -117,6 +175,9 @@ def own_portfolio -> Portfolio | None {
 def my_portfolio -> Portfolio | None {
     if demo_mode() or caller_is_admin() {
         return find_team_portfolio();
+    }
+    if caller_is_demo() {
+        return demo_portfolio();
     }
     return own_portfolio();
 }

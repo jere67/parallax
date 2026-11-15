@@ -9,7 +9,7 @@ version it was edited from, and is refused when a newer one exists, so two edito
 overwrite each other unseen.
 """
 import logging;
-import from accounts.store { caller_is_admin }
+import from accounts.store { caller_is_admin, demo_refusal }
 import from analysis.policy { changes, copy_policy, validate }
 import from models.policy { Policy, PolicyScope, PolicyVersion }
 import from research.collector { utc_now }
@@ -97,6 +97,10 @@ the policy passes its limits. `source` says how it was made ("form", "chat", "re
 def save_policy(scope: PolicyScope, policy: Policy, base_version: int, source: str = "form", note: str = "") -> SaveResult {
     versions = versions_of(scope);
     (current, number) = current_of(versions);
+    refusal = demo_refusal();
+    if refusal {
+        return SaveResult(saved=False, version=number, message=refusal);
+    }
     if base_version != number {
         return SaveResult(saved=False, version=number, message=f"The policy changed since you opened it (now version {number}). Reload it and make your change again.");
     }
