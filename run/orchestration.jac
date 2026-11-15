@@ -9,6 +9,7 @@ finishes whatever is left in fixed order and marks the run fallback.
 import from datetime { datetime, timezone }
 import from jaclang.byllm.types { IterationAction, IterationContext }
 import from agents.orchestrator { Committee }
+import from accounts.assets { team_classes }
 import from policy.store { team_policy }
 import from models.graph { RunStatus }
 import from run.attempts { begin, finish, forget, working }
@@ -46,7 +47,7 @@ def morning_run(run_day: str = "", cutoff: datetime | None = None, rerun: bool =
     }
     begin(day, datetime.now(timezone.utc));
     try {
-        outcome = daily_run(team_portfolio(), day, orchestrate, RunLimits(), team_policy(), cutoff, rerun);
+        outcome = daily_run(team_portfolio(), day, orchestrate, RunLimits(classes=team_classes()), team_policy(), cutoff, rerun);
     } except Exception {
         # `daily_run` never raises once it has claimed the day, so nothing was written: forget
         # the attempt and let the schedule's next firing try again, as before #240.

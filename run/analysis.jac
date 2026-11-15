@@ -26,12 +26,18 @@ import from models.agents { Domain, MacroReport, Specialist, Vote }
 import from models.policy { Policy }
 import from policy.facts { Entry, add_panel }
 import from models.graph { Concluded, ConsensusResult, Coverage, Decided, Decision, TradeAction, VoteRecord, Voted }
+import from research.crypto { is_crypto }
 import from run.public { public }
+import from run.research { domains_for }
 import from run.workers { NETWORK }
 
-# A ticker needs a complete report in each of these before the panel sees it (TDD §4, Run
-# Guard invariants: coverage).
-glob REQUIRED_DOMAINS: list[Domain] = [Domain.MARKET, Domain.FUNDAMENTALS, Domain.NEWS];
+# A coin's panel: it has no fundamentals, so no Fundamentals or Flow specialist.
+glob CRYPTO_PANEL: list[Specialist] = [Specialist.TECHNICAL, Specialist.NEWS, Specialist.MACRO];
+
+"""The specialists who vote on `ticker`."""
+def specialists_for(ticker: str) -> list[Specialist] {
+    return CRYPTO_PANEL if is_crypto(ticker) else list(Specialist);
+}
 
 # The time stop when no vote gives a horizon, in trading days.
 glob DEFAULT_HORIZON_DAYS: int = 10;
@@ -156,12 +162,14 @@ def analyze(
         holding = holdings.get(ticker);
         due = holding is not None and holding.exit_triggered(run_day) and rule.policy.time_stop;
         result = TickerAnalysis(ticker=ticker, held=holding is not None, exit_triggered=due);
-        missing = [d.value for d in REQUIRED_DOMAINS if d not in found or not found[d].complete()];
+        # A ticker needs a complete report in each of its domains before the panel sees it (TDD
+        # §4, Run Guard invariants: coverage).
+        missing = [d.value for d in domains_for(ticker) if d not in found or not found[d].complete()];
         if missing {
             result.forced_hold_reason = f"insufficient data: no complete {', '.join(missing)} research";
         } else {
             reports = {d: r.body for (d, r) in found.items()};
-            packets[ticker] = [packet(s, ticker, run_day, reports, macro) for s in list(Specialist)];
+            packets[ticker] = [packet(s, ticker, run_day, reports, macro) for s in specialists_for(ticker)];
         }
         results.append(result);
     }

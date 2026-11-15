@@ -21,6 +21,14 @@ afternoon steps with it, and does whatever step is due and not yet done:
   trades that day. Positions the account already held are taken over, and their stops are
   placed in the same tick.
 
+An agent that trades options buys them right after the run's stock orders go out, once, and
+checks its open contracts' exits every half hour (action/options.jac).
+
+Coins trade every day. On a day the stock market is closed, a run that covered coins
+(run/guard.jac) is traded on the same clock: its orders from 9:45, fills and coin stops every five
+minutes, and its unfilled orders canceled at 3:50. Stocks are left alone, and nothing is
+reconciled or scored until the next session.
+
 Every step records that it ran, so a second firing does nothing. Nothing trades unless the
 team portfolio is in auto mode, but votes are scored in both modes. A daily bar is final
 only in the evening (research/alpaca.jac, BARS_FINAL_AT), so a window ending today is scored
@@ -33,6 +41,9 @@ import from datetime { date, datetime, time, timedelta }
 import from action.baselines { advance_baselines, baselines_of, forward_test_day, start_forward_test }
 import from action.broker { Broker }
 import from action.executor { MarketView, close_day_orders, decisions_of, execute_run, keep_stops, market_view, open_positions, sync_orders }
+import from action.options { OptionsDeps, manage_options, open_options }
+import from models.assets { CRYPTO, OPTIONS }
+import from research.crypto { is_crypto }
 import from action.reconcile { marks_of, reconcile }
 import from analysis.evaluation { evaluate, record_evaluation, start_of }
 import from analysis.history { History }
@@ -50,6 +61,9 @@ import from run.switches { demo_mode }
 glob EXECUTION_START: time = time(9, 45);
 glob FAST_POLL_UNTIL: time = time(10, 0);
 glob SLOW_POLL_MINUTES: int = 5;
+glob OPTION_EXIT_MINUTES: int = 30;
+# The clock a day without a stock session keeps for coins.
+glob COIN_DAY_CLOSE: time = time(16, 0);
 glob CANCEL_BEFORE_CLOSE: timedelta = timedelta(minutes=10);
 glob RECONCILE_AFTER_CLOSE: timedelta = timedelta(minutes=30);
 glob MAX_LOG_LINES: int = 400;
@@ -66,7 +80,12 @@ obj TradingDeps {
         view: Callable[[list[str]], MarketView] | None = None,
         calendar: Callable[[str], MarketDay | None] | None = None,
         history: History | None = None,
-        start_day: str | None = None;
+        start_day: str | None = None,
+        options: OptionsDeps | None = None;
+
+    def option_deps -> OptionsDeps {
+        return self.options or OptionsDeps();
+    }
 
     def broker_client -> Broker {
         if self.broker is None {
@@ -119,13 +138,18 @@ def trading_step(portfolio: Portfolio, run: Run | None, day: str, local: datetim
         if run is not None and run.status not in (RunStatus.RUNNING, RunStatus.SKIPPED) and not run.executed_at {
             tickers = sorted(set(decisions_of(run)) | set(open_positions(portfolio)));
             policy = policy_version(run.policy_version);
-            done = execute_run(portfolio, run, broker, now, deps.read_market(tickers), sizing_config(policy), gate_config(policy));
+            seen = deps.read_market(tickers);
+            done = execute_run(portfolio, run, broker, now, seen, sizing_config(policy), gate_config(policy));
             lines.append(f"execute: {done.line()}");
+            lines.extend(f"option: {c}" for c in open_options(portfolio, run, broker, now, seen, gate_config(policy), deps.option_deps()));
             lines.extend(f"fill: {c}" for c in sync_orders(portfolio, broker, now));
             lines.extend(f"stop: {c}" for c in keep_stops(portfolio, broker, now));
         } elif local.time() < FAST_POLL_UNTIL or local.minute % SLOW_POLL_MINUTES == 0 {
             lines.extend(f"fill: {c}" for c in sync_orders(portfolio, broker, now));
             lines.extend(f"stop: {c}" for c in keep_stops(portfolio, broker, now));
+            if local.minute % OPTION_EXIT_MINUTES == 0 {
+                lines.extend(f"option: {c}" for c in manage_options(portfolio, broker, now, deps.option_deps()));
+            }
         }
     } elif local < times.reconcile_at {
         if run is not None and run.executed_at and not run.day_orders_closed_at {
@@ -175,11 +199,12 @@ def trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = Tradin
     }
     local = now.astimezone(NEW_YORK);
     day = local.date().isoformat();
-    if local.weekday() >= 5 {
+    run = run_for(portfolio, day);
+    weekday = local.weekday() < 5;
+    if not weekday and not coins_due(portfolio, run) {
         return [];
     }
-    run = run_for(portfolio, day);
-    lines = start_due(portfolio, run, now, day, deps);
+    lines = start_due(portfolio, run, now, day, deps) if weekday else [];
     if local.time() >= EXECUTION_START {
         lines.extend(day_steps(portfolio, run, day, local, now, deps));
     }
@@ -193,16 +218,58 @@ def trading_tick(portfolio: Portfolio, now: datetime, deps: TradingDeps = Tradin
     return lines;
 }
 
+"""True when a day without a stock session has coin work for `portfolio`: a run that covered
+coins, or coins it holds (their stops)."""
+def coins_due(portfolio: Portfolio, run: Run | None) -> bool {
+    if portfolio.mode != PortfolioMode.AUTO {
+        return False;
+    }
+    if run is not None and CRYPTO in run.asset_classes {
+        return True;
+    }
+    return any(is_crypto(t) for t in open_positions(portfolio));
+}
+
+"""A day without a stock session, for coins: orders from 9:45, fills and coin stops every five
+minutes, and unfilled orders canceled at 3:50. Nothing is reconciled or scored."""
+def coin_steps(portfolio: Portfolio, run: Run | None, local: datetime, now: datetime, deps: TradingDeps) -> list[str] {
+    if not coins_due(portfolio, run) {
+        return [];
+    }
+    close = datetime.combine(local.date(), COIN_DAY_CLOSE, NEW_YORK);
+    lines: list[str] = [];
+    broker = deps.broker_client();
+    if local < close - CANCEL_BEFORE_CLOSE {
+        if run is not None and run.status not in (RunStatus.RUNNING, RunStatus.SKIPPED) and not run.executed_at {
+            tickers = sorted(set(decisions_of(run)) | set(open_positions(portfolio)));
+            policy = policy_version(run.policy_version);
+            done = execute_run(portfolio, run, broker, now, deps.read_market(tickers), sizing_config(policy), gate_config(policy));
+            lines.append(f"execute: {done.line()}");
+            lines.extend(f"fill: {c}" for c in sync_orders(portfolio, broker, now));
+            lines.extend(f"stop: {c}" for c in keep_stops(portfolio, broker, now, coins_only=True));
+        } elif local.minute % SLOW_POLL_MINUTES == 0 {
+            lines.extend(f"fill: {c}" for c in sync_orders(portfolio, broker, now));
+            lines.extend(f"stop: {c}" for c in keep_stops(portfolio, broker, now, coins_only=True));
+        }
+    } elif run is not None and run.executed_at and not run.day_orders_closed_at {
+        lines.extend(f"close: {c}" for c in close_day_orders(portfolio, run, broker, now, coins_only=True));
+    }
+    return lines;
+}
+
 """The steps due from 9:45 a.m.: trading in auto mode, then vote scoring and the baselines
-after the close."""
+after the close. A day without a stock session trades coins alone (`coin_steps`)."""
 def day_steps(portfolio: Portfolio, run: Run | None, day: str, local: datetime, now: datetime, deps: TradingDeps) -> list[str] {
     trading = portfolio.mode == PortfolioMode.AUTO;
+    if local.weekday() >= 5 {
+        return coin_steps(portfolio, run, local, now, deps);
+    }
     if not trading and (run is None or not evening_due(portfolio, run)) {
         return [];
     }
     session = deps.session(day);
     if session is None {
-        return [];
+        return coin_steps(portfolio, run, local, now, deps);
     }
     times = session_times(session);
     lines: list[str] = [];

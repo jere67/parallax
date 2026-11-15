@@ -6,6 +6,10 @@ Collectors and sub-agents run on worker threads, which lose the request's graph 
 `research_pass` only returns values; `record_pass` writes them to the graph afterwards, on
 the caller's thread (TDD §3, rule 6). A failed source becomes a gap,
 and a failed sub-agent a safe default, so one bad ticker or provider never stops the pass.
+
+An agent that trades crypto also covers the most traded coins (research/crypto.jac), with Market
+and News research only: a coin has no company filings, analysts, or insiders. On a day the stock
+market is closed, such an agent's run covers its coins alone (`PassConfig.stocks` False).
 """
 import time;
 import from concurrent.futures { Future }
@@ -43,6 +47,16 @@ import from research.briefs {
     regime_inputs
 }
 import from research.collector { RunBudget, parse_utc, run_budget, split_fresh, utc_now }
+import from research.crypto {
+    CRYPTO_BENCHMARK,
+    CRYPTO_SECTOR,
+    crypto_assets,
+    crypto_bars,
+    crypto_universe,
+    is_crypto,
+    last_final_day,
+    news_symbol
+}
 import from research.finnhub {
     EarningsDate,
     company_news,
@@ -61,6 +75,16 @@ import from run.public { public }
 import from run.workers { NETWORK }
 
 glob BENCHMARK: str = "SPY";
+# The research a ticker needs before its panel: a coin has no fundamentals.
+glob STOCK_DOMAINS: list[Domain] = [Domain.MARKET, Domain.FUNDAMENTALS, Domain.NEWS];
+glob CRYPTO_DOMAINS: list[Domain] = [Domain.MARKET, Domain.NEWS];
+# A year of daily bars and a little more, for the 200-day average and the 52-week range.
+glob CRYPTO_HISTORY_DAYS: int = 400;
+
+"""The research domains `ticker` is covered by."""
+def domains_for(ticker: str) -> list[Domain] {
+    return CRYPTO_DOMAINS if is_crypto(ticker) else STOCK_DOMAINS;
+}
 
 glob COVERAGE_REASONS: dict[PickReason, CoverageReason] = {
     PickReason.SCORE: CoverageReason.SCREEN,
@@ -68,9 +92,14 @@ glob COVERAGE_REASONS: dict[PickReason, CoverageReason] = {
     PickReason.WILDCARD: CoverageReason.WILDCARD
 };
 
-"""How far back each source looks in one pass, in calendar days."""
+"""How far back each source looks in one pass, in calendar days, and which assets it covers:
+the stock screen and held stocks when `stocks`, and the `crypto_size` most traded coins and held
+coins when `crypto`."""
 obj PassConfig {
     has screen: ScreenConfig = ScreenConfig(),
+        stocks: bool = True,
+        crypto: bool = False,
+        crypto_size: int = 5,
         news_days: int = 7,
         events_days: int = 60,
         release_days: int = 100,
@@ -210,19 +239,24 @@ def collect_pass(run_day: str, open_positions: list[str], config: PassConfig = P
     gaps: list[str] = [];
 
     clock = time.monotonic();
-    members = index_members(run_day, budget, gaps);
+    held_stocks = [t for t in open_positions if not is_crypto(t)];
+    members = index_members(run_day, budget, gaps) if config.stocks or requested_ticker else [];
     shortlist: Shortlist;
-    if requested_ticker {
+    if not config.stocks and not requested_ticker {
+        shortlist = Shortlist(picks=[], scores=[], excluded={});
+    } elif requested_ticker {
         selected = [m for m in members if m.symbol == requested_ticker];
         if not selected { raise ValueError("Ticker is not in the S&P 500."); }
         shortlist = Shortlist(picks=[Pick(symbol=requested_ticker, sector=selected[0].sector, reason=PickReason.WILDCARD, note="On-demand research")], scores=[], excluded={});
     } else {
         (candidates, screen_gaps) = gather(run_day, members, budget, config=config.screen);
         gaps.extend(screen_gaps);
-        shortlist = screen(candidates, open_positions, config.screen);
+        shortlist = screen(candidates, held_stocks, config.screen);
     }
     phases["screen"] = time.monotonic() - clock;
-    return collect_shortlist(run_day, shortlist, members, config, PassStart(now=now, budget=budget, gaps=gaps, phases=phases));
+    # Held coins are reviewed even after their agent stops trading crypto, so they can be sold.
+    held_coins = [t for t in open_positions if is_crypto(t)] if not requested_ticker else [];
+    return collect_shortlist(run_day, shortlist, members, config, PassStart(now=now, budget=budget, gaps=gaps, phases=phases, held_coins=held_coins));
 }
 
 """Where a pass stands when its shortlist is set: the clock freshness is judged at, the run's
@@ -231,7 +265,8 @@ obj PassStart {
     has now: datetime,
         budget: RunBudget;
     has gaps: list[str] = [],
-        phases: dict[str, float] = {};
+        phases: dict[str, float] = {},
+        held_coins: list[str] = [];
 }
 
 """Collect every ticker on `shortlist` and the macro inputs for a run on `run_day`, adding to
@@ -259,13 +294,21 @@ def collect_shortlist(run_day: str, shortlist: Shortlist, members: list[Constitu
         if etf in series
     };
     ctx = PassContext(run_day=run_day, now=now, sessions=sessions, series=series, technicals=technicals, budget=budget, config=config);
-    (releases, calendar_gaps) = next_releases(ctx);
-    gaps.extend(calendar_gaps);
-    ciks = company_ciks(symbols, members, budget, gaps);
-    # Collect once before worker fan-out: the same quarter archive serves every ticker.
-    ctx.holdings = institutional_holdings({m.symbol: m.name for m in members if m.symbol in symbols}, run_day, budget);
-    pending = [NETWORK.submit(collect_ticker, p, releases.get(p.symbol), ciks.get(p.symbol, ""), ctx) for p in shortlist.picks];
-    collected = [f.result() for f in pending];
+    collected: list[TickerInputs] = [];
+    if symbols {
+        (releases, calendar_gaps) = next_releases(ctx);
+        gaps.extend(calendar_gaps);
+        ciks = company_ciks(symbols, members, budget, gaps);
+        # Collect once before worker fan-out: the same quarter archive serves every ticker.
+        ctx.holdings = institutional_holdings({m.symbol: m.name for m in members if m.symbol in symbols}, run_day, budget);
+        pending = [NETWORK.submit(collect_ticker, p, releases.get(p.symbol), ciks.get(p.symbol, ""), ctx) for p in shortlist.picks];
+        collected = [f.result() for f in pending];
+    }
+    if config.crypto or start.held_coins {
+        coins = collect_coins(ctx, start.held_coins, gaps);
+        shortlist = Shortlist(picks=shortlist.picks + [c.pick for c in coins], scores=shortlist.scores, excluded=shortlist.excluded, version=shortlist.version);
+        collected.extend(coins);
+    }
     phases["collect"] = time.monotonic() - clock;
 
     macro_inputs = MacroInputs(
@@ -286,9 +329,13 @@ def collect_shortlist(run_day: str, shortlist: Shortlist, members: list[Constitu
     );
 }
 
-"""The three per-ticker briefs for one ticker's collected inputs, by domain."""
+"""The per-ticker briefs for one ticker's collected inputs, by domain: Market and News for a
+coin, and Fundamentals too for a stock."""
 def briefs_for(run_day: str, inputs: TickerInputs) -> dict[Domain, Brief] {
     symbol = inputs.pick.symbol;
+    if is_crypto(symbol) {
+        return {Domain.MARKET: market_brief(symbol, run_day, inputs.market), Domain.NEWS: news_brief(symbol, run_day, inputs.news)};
+    }
     return {
         Domain.MARKET: market_brief(symbol, run_day, inputs.market),
         Domain.FUNDAMENTALS: fundamentals_brief(symbol, run_day, inputs.fundamentals),
@@ -395,6 +442,60 @@ def collect_ticker(pick: Pick, release: EarningsDate | None, cik: str, ctx: Pass
         funda.gaps.extend(facts[1]);
     }
     return TickerInputs(pick=pick, market=market, fundamentals=funda, news=news, fetch_errors=tries.errors);
+}
+
+"""The coins a pass covers and their inputs: the `crypto_size` pairs with the most dollar volume over
+twenty days, then every held pair (`held`), each with its daily bars measured against SPY and
+BTC/USD and its Alpaca news. A coin has no company filings, so it has no fundamentals. A failed
+read of the pair list or the bars is a gap, and the pass goes on without coins."""
+def collect_coins(ctx: PassContext, held: list[str], gaps: list[str]) -> list[TickerInputs] {
+    budget = ctx.budget;
+    try {
+        listed = crypto_assets(budget);
+        end = last_final_day(ctx.now);
+        start = (date.fromisoformat(end) - timedelta(days=CRYPTO_HISTORY_DAYS)).isoformat();
+        wanted = sorted(set([s for (s, a) in listed.items() if a.tradable] + held + [CRYPTO_BENCHMARK]));
+        (bars, bar_gaps) = crypto_bars(wanted, start, end, budget);
+    } except Exception as e {
+        gaps.append(f"alpaca.crypto: unavailable, so no coin is covered ({type(e).__name__}: {str(e)[:300]})");
+        return [];
+    }
+    (fresh, stale) = split_fresh(bars, DATASETS["alpaca.crypto_bars"], ctx.now);
+    series = {s.symbol: s for s in fresh};
+    top = crypto_universe(listed, series, ctx.config.crypto_size if ctx.config.crypto else 0, []);
+    picked = top + sorted(h for h in set(held) if h not in top);
+    gaps.extend(g for g in bar_gaps + stale if any(p in g for p in picked));
+    spy = ctx.series.get(BENCHMARK);
+    btc = series.get(CRYPTO_BENCHMARK);
+    btc_tech = summarize(btc, spy) if btc is not None else None;
+    found: list[TickerInputs] = [];
+    for symbol in picked {
+        ranked = symbol in top;
+        pick = Pick(
+            symbol=symbol,
+            sector=CRYPTO_SECTOR,
+            reason=PickReason.SCORE if ranked else PickReason.OPEN_POSITION,
+            note=f"Among the {ctx.config.crypto_size} most traded coins by 20-day dollar volume" if ranked else "open position"
+        );
+        tries = Attempts();
+        benchmark = symbol != CRYPTO_BENCHMARK;
+        market = MarketInputs(spy=ctx.technicals.get(BENCHMARK), sector=btc_tech if benchmark else None, sector_etf=CRYPTO_BENCHMARK if benchmark else "");
+        if symbol in series {
+            market.stock = summarize(series[symbol], spy, btc if benchmark else None);
+        } else {
+            market.gaps.append(f"alpaca.crypto_bars: no fresh daily bars for {symbol}, so there are no indicators");
+        }
+        news = NewsInputs(gaps=[f"{symbol} is a coin: it has no earnings, company filings, or scheduled releases"]);
+        coin = news_symbol(symbol);
+        fetched = tries.run("alpaca.news", news.gaps, lambda { articles(coin, ctx.since(ctx.config.news_days), budget, limit=ctx.config.articles_per_source); }) or [];
+        (news.articles, stale_articles) = split_fresh(fetched, DATASETS["alpaca.news"], ctx.now);
+        if stale_articles {
+            news.gaps.append(f"news: {len(stale_articles)} articles were past the freshness limit and were excluded");
+        }
+        funda = FundamentalsInputs(gaps=[f"{symbol} is a coin, so it has no fundamentals"]);
+        found.append(TickerInputs(pick=pick, market=market, fundamentals=funda, news=news, fetch_errors=tries.errors));
+    }
+    return found;
 }
 
 """In a replay, keep only the EPS surprises whose quarter was reported before the decision: one an
