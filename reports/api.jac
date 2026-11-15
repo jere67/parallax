@@ -5,7 +5,7 @@ submissions cannot spend the last quota slot twice or create duplicate ticker/da
 """
 import os;
 import from datetime { timedelta }
-import from accounts.store { caller_is_admin, has_required_keys, my_account }
+import from accounts.store { caller_is_admin, caller_is_demo, demo_refusal, has_required_keys, my_account }
 import from models.policy { Policy }
 import from models.users { ReportRequest, ReportStatus }
 import from models.reports { ReportCatalog, ReportJob, ReportView, ReportsView, ReportReply }
@@ -75,7 +75,13 @@ def:priv list_reports -> ReportsView {
     fresh = bool(c.refreshed_at) and utc_now() - parse_utc(c.refreshed_at) < timedelta(minutes=5);
     can_pay = can_request_new(c);
     view.cache_only = not fresh or not c.generation_enabled or not can_pay;
-    if not can_pay and c.generation_enabled {
+    if caller_is_demo() {
+        # It can request nothing, so the page offers nothing to request.
+        view.message = "The demo account cannot request reports. Create an account to request your own.";
+        view.symbols = [];
+        view.remaining = 0;
+        view.cache_only = True;
+    } elif not can_pay and c.generation_enabled {
         view.message = "Connect your Alpaca and OpenRouter keys in Settings to request new reports. Reports already written are still available.";
     } elif view.cache_only {
         view.message = "Only existing reports are available while new analysis is unavailable or the model budget is low.";
@@ -92,6 +98,10 @@ def:priv get_report(request_id: str) -> ReportView | None {
 }
 
 def:priv request_report(ticker: str) -> ReportReply {
+    refusal = demo_refusal();
+    if refusal {
+        return ReportReply(accepted=False, message=refusal);
+    }
     symbol = ticker.strip().upper().replace(".", "-");
     c = catalog();
     if c is None or symbol not in c.symbols {

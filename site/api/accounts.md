@@ -10,6 +10,8 @@ related:
 These endpoints are what the Settings page calls.
 Every one is a `POST` to `/function/<name>` with a JSON body, as described in the [overview](/api/overview), and every one is private: it needs a bearer token and answers `401` to an anonymous caller.
 Each acts on the caller's own account, which no parameter names, so a request can only reach its caller's agent.
+The one exception is `open_demo`, which anyone may call: it signs in to the [demo account](/guide/demo-data#the-demo-account).
+Every endpoint that changes something refuses the demo account, and says so in its `message`.
 
 | Function | Parameters | Returns |
 | --- | --- | --- |
@@ -18,6 +20,7 @@ Each acts on the caller's own account, which no parameter names, so a request ca
 | `remove_agent_keys` | `provider`: `alpaca`, `openrouter`, or `finnhub` | An `AgentReply` |
 | `set_paper_trading` | `on`: boolean | An `AgentReply` |
 | `start_my_run` | None | An `AgentReply` |
+| `open_demo` | None; public, no token | A `DemoSignIn` |
 | `get_transfer_status` | None | A `TransferStatus`; admins only |
 | `send_transfer_part` | `upload`: a name for the upload, `index`, `part`: up to 524,288 base64 characters of the export file | A `TransferStatus`; admins only |
 | `start_transfer` | `upload`, `parts`: how many parts were sent | A `TransferStatus`; admins only |
@@ -76,6 +79,11 @@ What the OpenRouter key allows each day, when it is below what a full run needs.
 Whether the agent's forward test has started.
 
 </Param>
+<Param name="demo_account" type="boolean">
+
+`true` for the shared demo account, which only browses made-up history and changes nothing.
+
+</Param>
 
 ## save_agent_keys
 
@@ -118,6 +126,13 @@ Asks for today's run on the caller's own keys.
 It starts within a minute or two and takes about half an hour.
 It is refused when keys are missing, on a weekend, while a run is working, when the run was already asked for, when the day already has a run, and on a demo server.
 For the admin, it does what [`start_morning_run`](/api/start-morning-run) does.
+
+## open_demo
+
+Signs in to the demo account, which has no password.
+It needs no bearer token.
+A `DemoSignIn` has a `token`, a bearer token for the demo account, and a `message`, which says why there is no token when it is empty: the server makes the demo account in its first two minutes.
+The web app keeps the token as it would after [`user/login`](/api/login).
 
 ## get_transfer_status, send_transfer_part, and start_transfer
 

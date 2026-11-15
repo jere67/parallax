@@ -44,6 +44,22 @@ node AssetChoice {
         saved_at: str;
 }
 
+"""The demo account's sign-in (accounts/demo.jac), on root.shared with no grant, so only the
+server reads it. `created_at` is written before the user is: a user named demo made later is the
+server's own, from a job that stopped before it could record it, while one made earlier is
+someone else's. The ids are empty until the user is recorded."""
+node DemoLogin {
+    has created_at: str;
+    has user_id: str = "",
+        root_id: str = "";
+}
+
+"""What asking to browse the demo account got: a sign-in token, or why there is none yet."""
+obj DemoSignIn {
+    has token: str = "",
+        message: str = "";
+}
+
 """One asset class on the settings page: whether the agent trades it, and what that means."""
 obj AssetOption {
     has name: str,
@@ -73,7 +89,8 @@ obj RunState {
 """The settings page. `managed` is the admin's agent, which runs on the server's own keys and
 which the page does not change; `demo` is a server that only shows the made-up history;
 `can_store` is False when the server has no secret to seal keys with; `full` is a server at its
-limit of agents, for a user who does not have one yet."""
+limit of agents, for a user who does not have one yet. `demo_account` is the shared demo
+account (accounts/demo.jac), which only browses made-up history."""
 obj AgentSettings {
     has managed: bool,
         demo: bool,
@@ -86,7 +103,8 @@ obj AgentSettings {
     has requests_note: str = "",
         trading_started: bool = False,
         alpaca_problem: str = "",
-        assets: list[AssetOption] = [];
+        assets: list[AssetOption] = [],
+        demo_account: bool = False;
 }
 
 """What a save did: the page as it now is, and why each refused field was refused, by the

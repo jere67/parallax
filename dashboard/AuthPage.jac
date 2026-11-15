@@ -1,10 +1,12 @@
 """Logging in and creating an account: one centered card under the drifting arcs, with the
 product's name above it. Email and password only, until other ways work; the form has no control
-that does nothing. A password reset by email needs a mail sender, which this server does not have,
+that does nothing. The demo account has no password: logging in as "demo" with the password left
+empty opens it, as the link under the form does (dashboard/DemoPage.jac). A password reset by email needs a mail sender, which this server does not have,
 so the page does not offer one."""
 import from "@jac/runtime" { Link, Navigate, SignupResult, jacIsLoggedIn, jacLogin, jacSignup, useLocation, useNavigate }
 import from "lucide-react" { Eye, EyeOff }
 import from dashboard.ui.brand { DISCLAIMER, PRODUCT, ThemeSwitch, Wordmark }
+import from dashboard.ui.demo { DEMO_ACCOUNT, sign_in_demo }
 
 glob MIN_PASSWORD: int = 8;
 glob FIELD: str = "min-h-11 w-full rounded-md border border-line-strong bg-bg px-3 text-text outline-none transition-colors duration-150 focus:border-accent max-md:text-[16px]";
@@ -53,7 +55,9 @@ def:pub AuthPage(creating: bool = False) -> JsxElement {
         return <Navigate to={next_page(search, "/app")} replace={True}/>;
     }
 
-    valid: bool = bool(email.strip()) and (len(password) >= MIN_PASSWORD if creating else bool(password));
+    # The demo account needs no password; it cannot be created again.
+    demo: bool = not creating and email.strip().lower() == DEMO_ACCOUNT and not password;
+    valid: bool = bool(email.strip()) and (len(password) >= MIN_PASSWORD if creating else bool(password) or demo);
 
     async def submit(e: FormEvent) {
         e.preventDefault();
@@ -66,6 +70,13 @@ def:pub AuthPage(creating: bool = False) -> JsxElement {
         ok: bool = False;
         name = email.strip();
         try {
+            if demo {
+                error = await sign_in_demo();
+                if not error {
+                    nav(next_page(search, "/app"), {"replace": True});
+                }
+                return;
+            }
             if creating {
                 made = await jacSignup(name, password);
                 if not made.success {
@@ -160,6 +171,7 @@ def:pub AuthPage(creating: bool = False) -> JsxElement {
                     } else {
                         <>{"New to " + PRODUCT + "? "}<Link to={"/signup" + suffix} className="font-medium text-accent hover:underline">Create account</Link></>
                     }}
+                    <p className="mt-1.5">Or <Link to="/demo" className="font-medium text-accent hover:underline">browse the demo</Link>, no keys needed.</p>
                 </div>
             </div>
             <p className="mt-6 max-w-[420px] text-center text-[12px] leading-[18px] text-faint">{DISCLAIMER}</p>

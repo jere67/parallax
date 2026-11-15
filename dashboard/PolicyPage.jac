@@ -540,7 +540,7 @@ def:pub PolicyPage -> JsxElement {
     <div className={"flex flex-col gap-5 " + ("pb-20 md:pb-16" if dirty else "")}>
         <div className="min-w-0">
             <h1 className="display text-[30px] leading-9">Your policy</h1>
-            <p className="mt-1 max-w-2xl text-[13px] text-muted">When to buy, sell, trim, and hold. Your agent uses this from its next morning run.</p>
+            <p className="mt-1 max-w-2xl text-[13px] text-muted">{"When to buy, sell, trim, and hold. " + ("Try a change to see what it would have done; the demo account cannot save one." if doc.read_only else "Your agent uses this from its next morning run.")}</p>
         </div>
 
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -620,11 +620,15 @@ def:pub PolicyPage -> JsxElement {
                         {if len(problems) > 0 or message {
                             <p className="text-[12px] text-down" role="alert">{problems[0] if len(problems) > 0 else message}</p>
                         }}
-                        <input aria-label="Why you made this change (optional)" placeholder="Why this change? (optional)" maxLength={300} value={note} onChange={lambda (e: ChangeEvent) { note = e.target.value; }} className={TAP_INPUT}/>
+                        {if doc.read_only {
+                            <p className="text-[13px] text-muted">The demo account cannot save. Create an account to keep a policy of your own.</p>
+                        } else {
+                            <input aria-label="Why you made this change (optional)" placeholder="Why this change? (optional)" maxLength={300} value={note} onChange={lambda (e: ChangeEvent) { note = e.target.value; }} className={TAP_INPUT}/>
+                        }}
                     </div>
                     <div className="flex shrink-0 gap-2">
                         <button type="button" disabled={busy} onClick={discard_edits} className={TAP_QUIET + " flex-1"}>Discard</button>
-                        <button type="submit" disabled={busy or (replay_view is not None and len(replay_view.problems) > 0)} className={TAP_BUTTON + " flex-1"}>{"Saving…" if busy else "Save"}</button>
+                        <button type="submit" disabled={busy or doc.read_only or (replay_view is not None and len(replay_view.problems) > 0)} className={TAP_BUTTON + " flex-1"}>{"Saving…" if busy else "Save"}</button>
                     </div>
                 </div>
             </form>

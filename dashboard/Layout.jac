@@ -4,6 +4,7 @@ import from "react" { useEffect }
 import from "@jac/runtime" { Link, Outlet, jacLogout, useLocation, useNavigate }
 import from "lucide-react" { BookOpen, ChartCandlestick, ChevronDown, Ellipsis, FileText, History, Newspaper, Settings, SlidersHorizontal, Target, UsersRound }
 import from dashboard.ui.brand { DISCLAIMER, REPO_URL, ThemeSwitch, Wordmark }
+import from dashboard.ui.demo { DEMO_ACCOUNT }
 import from dashboard.ui.rpc { get_portfolio }
 import from models.views { PortfolioView as Portfolio }
 import from dashboard.ui.format { stamp_et, title }
@@ -163,6 +164,11 @@ def:pub Layout -> JsxElement {
         nav("/", {"replace": True});
     }
 
+    def sign_up {
+        jacLogout();
+        nav("/signup");
+    }
+
     <div className="flex min-h-dvh flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0">
         <header className="sticky top-0 z-20 border-b border-line bg-bg/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
             <div className={"mx-auto flex h-12 items-center gap-6 px-4 sm:px-6 lg:px-8 " + width}>
@@ -197,7 +203,15 @@ def:pub Layout -> JsxElement {
                 </div>
             </div>
         </header>
-        {if info is not None and info.demo {
+        {if info is not None and info.demo and info.name == DEMO_ACCOUNT {
+            <div className="border-b border-warn/25 bg-warn/10">
+                <p className={"mx-auto px-4 py-2 text-[12px] text-warn sm:px-6 lg:px-8 " + width}>
+                    <span className="font-semibold">Demo account.</span>
+                    {" "}Made-up history, simulated by the real consensus, risk gate, and baselines with invented prices and votes. Nothing was traded.
+                    {" "}<button type="button" onClick={sign_up} className="font-semibold underline underline-offset-2 hover:opacity-80">Create your own agent</button>
+                </p>
+            </div>
+        } elif info is not None and info.demo {
             <div className="border-b border-warn/25 bg-warn/10">
                 <p className={"mx-auto px-4 py-2 text-[12px] text-warn sm:px-6 lg:px-8 " + width}>
                     <span className="font-semibold">Demo data.</span>

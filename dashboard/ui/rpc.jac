@@ -4,7 +4,7 @@ client bridges for private endpoints, so each goes through the runtime's RPC hel
 by reloading the page, which would cancel a log-in already under way."""
 import from "@jac/runtime" { jacIsLoggedIn }
 import from dashboard.ui.retry { call_function }
-import from models.accounts { AgentReply, AgentSettings, KeysReply, TransferStatus }
+import from models.accounts { AgentReply, AgentSettings, DemoSignIn, KeysReply, TransferStatus }
 import from models.market { HistoryView, ScreenerView, StockAboutView, StockView }
 import from models.evaluation { Evaluation }
 import from models.views { NewsFeed, NewsStory, PerformanceView, PortfolioView, RunSummary, RunView, SpecialistSummaryView, TrailView }
@@ -18,6 +18,11 @@ async def call(file: str, name: str, args: dict[str, any] = {}) -> any {
         return None;
     }
     return await call_function(name, args, contract(file, name));
+}
+
+"""A sign-in token for the demo account. It is asked for while signed out, so it skips `call`."""
+async def:pub open_demo -> DemoSignIn | None {
+    return await call_function("open_demo", {}, contract("accounts/demo.jac", "open_demo"));
 }
 
 async def:pub get_portfolio -> PortfolioView | None {

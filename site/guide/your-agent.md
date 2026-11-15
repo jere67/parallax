@@ -15,6 +15,11 @@ Accounts cannot see each other's data.
 A new agent only researches.
 It places no order until you turn on paper trading.
 
+::: tip Look around first
+To see a filled-in agent before you connect any keys, open `/demo`, or press **Browse the demo** on the front page.
+The [demo account](/guide/demo-data#the-demo-account) shows weeks of simulated history and changes nothing.
+:::
+
 ## Set it up
 
 <Steps>

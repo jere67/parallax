@@ -1,9 +1,10 @@
-"""The routes (TDD §10): the public front page and the log-in pages, and the app under /app, where
-every page needs an account. A manual route table, since file-based routing reads only a pages/
+"""The routes (TDD §10): the public front page, the log-in pages, the demo account's door, and
+the app under /app, where every page needs an account. A manual route table, since file-based routing reads only a pages/
 directory at the project root and the dashboard lives in dashboard/."""
 import from "@jac/runtime" { Navigate, Outlet, Route, Router, Routes, jacIsLoggedIn, useLocation }
 import from dashboard.AuthPage { AuthPage }
 import from dashboard.DecisionPage { DecisionPage }
+import from dashboard.DemoPage { DemoPage }
 import from dashboard.Landing { Landing }
 import from dashboard.Layout { Layout }
 import from dashboard.NewsPage { NewsPage }
@@ -43,6 +44,7 @@ def:pub App -> JsxElement {
             <Route path="/" element={<Landing/>}/>
             <Route path="/login" element={<AuthPage/>}/>
             <Route path="/signup" element={<AuthPage creating={True}/>}/>
+            <Route path="/demo" element={<DemoPage/>}/>
             <Route path="/news/*" element={<Moved/>}/>
             <Route path="/runs/*" element={<Moved/>}/>
             <Route path="/policy" element={<Moved/>}/>

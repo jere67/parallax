@@ -10,6 +10,7 @@ import from analysis.policy { EFFECT_LEADS, KNOBS, KNOB_GROUPS, MAX_CONDITIONS, 
 import from models.policy { Op, Policy, PolicyScope, PolicyVersion, RuleEffect }
 import from models.policy_views { EffectView, OpView, PolicyCatalog, PolicyDoc, PolicySaveReply, ReplayView, VersionView }
 import from policy.replay { replay_my_run }
+import from accounts.store { caller_is_demo }
 import from policy.store { current_of, my_scope, save_policy, versions_of }
 
 glob OP_LABELS: dict[Op, str] = {Op.LT: "is below", Op.LE: "is at most", Op.GT: "is above", Op.GE: "is at least", Op.IN: "is one of", Op.NOT_IN: "is none of"};
@@ -30,7 +31,8 @@ def policy_doc(scope: PolicyScope, versions: list[PolicyVersion]) -> PolicyDoc {
         saved_at=versions[-1].saved_at if versions else "",
         sentences=describe(policy),
         rule_sentences=[rule_sentence(r) for r in policy.rules],
-        history=[version_view(v) for v in reversed(versions[-MAX_HISTORY:])]
+        history=[version_view(v) for v in reversed(versions[-MAX_HISTORY:])],
+        read_only=caller_is_demo()
     );
 }
 

@@ -424,6 +424,21 @@ def AssetsPanel(settings: SettingsData, done: Callable[[SettingsData, str], None
     </Panel>
 }
 
+"""The demo account's settings: there is nothing to set, since everyone who browses shares it."""
+def DemoPanel(leave: Callable[[], None], sign_up: Callable[[], None]) -> JsxElement {
+    <Panel title="The demo account">
+        <div className="flex flex-col gap-4">
+            <p className="text-[13px] leading-5 text-muted">
+                You are browsing a made-up agent's history, so there are no keys to connect and nothing here can be changed. To run your own agent, create an account and connect your Alpaca and OpenRouter keys.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+                <button type="button" onClick={sign_up} className={TAP_BUTTON}>Create your own agent</button>
+                <button type="button" onClick={leave} className={TAP_QUIET}>Log out</button>
+            </div>
+        </div>
+    </Panel>
+}
+
 """The admin's agent runs on the server's own keys, so there is nothing to connect."""
 def ManagedPanel(settings: SettingsData) -> JsxElement {
     <Panel title="Your agent">
@@ -636,6 +651,11 @@ def:pub SettingsPage -> JsxElement {
         nav("/", {"replace": True});
     }
 
+    def sign_up {
+        jacLogout();
+        nav("/signup");
+    }
+
     def update(fresh: SettingsData, _note: str) {
         settings = fresh;
     }
@@ -645,6 +665,15 @@ def:pub SettingsPage -> JsxElement {
     }
     if settings is None {
         return <Loading label="Loading your settings"/>;
+    }
+    if settings.demo_account {
+        return <div className="rise mx-auto flex max-w-[860px] flex-col gap-6">
+            <header>
+                <h1 className="display text-[36px] leading-10 text-text">Settings</h1>
+                <p className="mt-1 text-[13px] leading-5 text-muted">The demo account has nothing to set.</p>
+            </header>
+            <DemoPanel leave={leave} sign_up={sign_up}/>
+        </div>;
     }
 
     <div className="rise mx-auto flex max-w-[860px] flex-col gap-6">

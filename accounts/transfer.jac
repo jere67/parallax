@@ -84,6 +84,8 @@ glob JOBS: list[str] = [
     "agent_run_slot_3",
     "agents_trading_job",
     "demo_job",
+    "demo_account_job",
+    "demo_history_job",
     "refresh_job",
     "news_refresh_job",
     "market_job"
