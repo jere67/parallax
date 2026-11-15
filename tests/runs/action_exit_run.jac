@@ -73,8 +73,8 @@ obj DayResult {
         drawdown: float,
         drift: list[str],
         bypasses: list[str],
-        record: dict[str, int],
-        account: dict[str, int];
+        record: dict[str, float],
+        account: dict[str, float];
 
     def clean -> bool {
         return not self.drift and not self.bypasses and self.record == self.account;

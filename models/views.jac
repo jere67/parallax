@@ -39,7 +39,7 @@ position opened since); a closed position's P&L is realized at `exit_price`."""
 obj PositionView {
     has ticker: str,
         sector: str,
-        qty: int,
+        qty: float,
         avg_entry_price: float,
         opened_at: str;
     has last_price: float | None = None,
@@ -53,13 +53,15 @@ obj PositionView {
         time_stop: str = "",
         closed_at: str = "",
         exit_price: float | None = None,
-        entry_qty: int = 0,
+        entry_qty: float = 0,
         thesis: str = "",
-        decision_day: str = "";
+        decision_day: str = "",
+        asset_class: str = "us_equity",
+        label: str = "";
 }
 
 obj FillView {
-    has qty: int,
+    has qty: float,
         price: float,
         filled_at: str;
 }
@@ -73,14 +75,14 @@ obj OrderView {
         ticker: str,
         purpose: str,
         side: str,
-        qty: int,
+        qty: float,
         order_type: str,
         time_in_force: str,
         status: str,
         submitted_at: str;
     has limit_price: float | None = None,
         stop_price: float | None = None,
-        filled_qty: int = 0,
+        filled_qty: float = 0,
         filled_avg_price: float | None = None,
         updated_at: str = "",
         reject_reason: str = "",
@@ -151,14 +153,14 @@ obj CoverageRow {
         ci_low: float | None = None,
         ci_high: float | None = None,
         gate_outcome: str = "",
-        requested_qty: int = 0,
-        approved_qty: int = 0,
+        requested_qty: float = 0,
+        approved_qty: float = 0,
         rejected_by: str = "",
         order_status: str = "",
         order_reject_reason: str = "",
         order_side: str = "",
-        order_qty: int = 0,
-        filled_qty: int = 0,
+        order_qty: float = 0,
+        filled_qty: float = 0,
         filled_avg_price: float | None = None;
 }
 
@@ -327,16 +329,16 @@ obj RuleView {
     has rule: str,
         passed: bool;
     has detail: str = "",
-        qty_before: int = 0,
-        qty_after: int = 0;
+        qty_before: float = 0,
+        qty_after: float = 0;
 }
 
 obj GateView {
     has outcome: str,
         side: str,
         purpose: str,
-        requested_qty: int,
-        approved_qty: int,
+        requested_qty: float,
+        approved_qty: float,
         checked_at: str;
     has price: float | None = None,
         stop_distance: float | None = None,

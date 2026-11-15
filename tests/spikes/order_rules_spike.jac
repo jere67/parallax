@@ -147,7 +147,7 @@ obj Spike {
         return OrderRequest(symbol=SYMBOL, side="buy", qty=qty, order_type="limit", time_in_force="day", client_order_id=self.cid(name), limit_price=round(self.price() * (1 + OFFSET), 2));
     }
 
-    def sell(qty: int, name: str) -> OrderRequest {
+    def sell(qty: float, name: str) -> OrderRequest {
         return OrderRequest(symbol=SYMBOL, side="sell", qty=qty, order_type="limit", time_in_force="day", client_order_id=self.cid(name), limit_price=round(self.price() * (1 - OFFSET), 2));
     }
 

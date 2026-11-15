@@ -372,7 +372,7 @@ traded through the stop), or sold (the rule sold it at a later 9:45 tick)."""
 obj Lot {
     has ticker: str,
         day: str,
-        qty: int,
+        qty: float,
         price_in: float,
         stop: float;
     has price_out: float | None = None,
@@ -438,7 +438,7 @@ def trade(picks: list[Pick], runs: dict[str, StoredRun], series: dict[str, list[
         }
         prices = execution_prices(series, day);
         run = runs[day];
-        held: dict[str, int] = {};
+        held: dict[str, float] = {};
         for lot in lots {
             if lot.price_out is None {
                 held[lot.ticker] = held.get(lot.ticker, 0) + lot.qty;
