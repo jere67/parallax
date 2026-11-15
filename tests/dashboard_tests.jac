@@ -8,6 +8,20 @@ import from run.switches { DEMO_ENV }
 
 glob APP: str = str(Path(__file__).resolve().parent / "fixtures" / "dashboard_app.jac");
 
+# The server's own Alpaca keys, which a developer's .env holds. Without them a test's server
+# cannot reach the team's real paper account and lay its live equity over the seeded marks
+# (dashboard/live.jac).
+glob SERVER_KEYS: list[str] = ["ALPACA_API_KEY", "ALPACA_SECRET_KEY"];
+
+"""Take the server's Alpaca keys out of the environment, returning them for `restore_keys`."""
+def hide_server_keys -> dict[str, str] {
+    return {name: os.environ.pop(name) for name in SERVER_KEYS if name in os.environ};
+}
+
+def restore_keys(saved: dict[str, str]) {
+    os.environ.update(saved);
+}
+
 def call(client: JacTestClient, name: str, body: dict[str, str | bool] | None = None) -> object {
     resp = client.post(f"/function/{name}", json=body or {});
     assert resp.status_code == 200, f"{name}: {resp.status_code} {resp.text[:300]}";
@@ -67,6 +81,7 @@ test "a reader's feed holds their own agent's notes and their own reports, and n
 }
 
 test "the admin reads the team agent's portfolio, runs, and decision trail" {
+    saved = hide_server_keys();
     client = JacTestClient.from_file(APP, base_path=tempfile.mkdtemp());
     try {
         client.register_user("team-admin", "writer-password-1");
@@ -82,6 +97,7 @@ test "the admin reads the team agent's portfolio, runs, and decision trail" {
         missing = call(client, "get_decision_trail", {"run_date": "2026-10-21", "ticker": "MSFT"});
     } finally {
         client.close();
+        restore_keys(saved);
     }
     assert empty["started"] is False and empty["positions"] == [];
     assert portfolio["started"] is True and portfolio["equity"] == 100500.0 and portfolio["mode"] == "auto";
