@@ -71,8 +71,10 @@ def trail_link(day: str, ticker: str) -> str {
     return "/app/runs/" + day + "/" + ticker_path(ticker) if day else "";
 }
 
-def TickerCell(ticker: str, day: str, sub: str = "") -> JsxElement {
-    to = trail_link(day, ticker);
+"""A position's ticker, linked to the decision that opened it: an option's is its stock's decision,
+named first in its label ("AAPL $200 call, Dec 18, 2026")."""
+def TickerCell(ticker: str, day: str, sub: str = "", label: str = "") -> JsxElement {
+    to = trail_link(day, label.split(" ")[0] if label else ticker);
     <div className="min-w-0">
         {if to {
             <Link to={to} className="font-semibold text-text hover:text-accent">{ticker}</Link>
@@ -267,7 +269,7 @@ the thesis and the rest."""
 def PositionCard(p: PositionData, opened: bool, toggle: Callable[[], None]) -> JsxElement {
     <li data-testid="position-card" className={CARD}>
         <div className="flex items-start justify-between gap-3">
-            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector}/>
+            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector} label={p.label}/>
             <div className="shrink-0 text-right">
                 <div className="num text-[13px]">{money(p.market_value, 0)}</div>
                 <div className={"num text-[12px] " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</div>
@@ -365,7 +367,7 @@ def PositionsTable(positions: list[PositionData]) -> JsxElement {
                                                     className={"transition-[rotate] duration-150 ease-out motion-reduce:transition-none " + ("rotate-90" if opened == p.ticker else "")}
                                                 />
                                             </button>
-                                            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector}/>
+                                            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector} label={p.label}/>
                                         </div>
                                     </td>
                                     <td className={TD_NUM}>{qty(p.qty)}</td>
@@ -483,7 +485,7 @@ def OrdersTable(orders: list[OrderData]) -> JsxElement {
 def ClosedCard(p: PositionData) -> JsxElement {
     <li data-testid="closed-card" className={CARD}>
         <div className="flex items-start justify-between gap-3">
-            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector}/>
+            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector} label={p.label}/>
             <div className="shrink-0 text-right">
                 <div className={"num text-[13px] " + tone(p.pnl)}>{signed_money(p.pnl)}</div>
                 <div className={"num text-[12px] " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</div>
@@ -529,7 +531,7 @@ def ClosedTable(closed: list[PositionData]) -> JsxElement {
                 <tbody>
                     {for p in closed {
                         <tr key={p.ticker + p.opened_at} className={ROW + " group"}>
-                            <td className={TD + FROZEN_CELL}><TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector}/></td>
+                            <td className={TD + FROZEN_CELL}><TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector} label={p.label}/></td>
                             <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.opened_at))}</td>
                             <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.closed_at))}</td>
                             <td className={TD_NUM}>{qty(p.entry_qty)}</td>
