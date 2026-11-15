@@ -184,8 +184,10 @@ def sources_of(evidence: list[Evidence]) -> list[NewsSource] {
 
 # --- The feed's lines ----------------------------------------------------------------------
 
+"""The address of one note under /app/news. A coin's pair ("BTC/USD") is written with a hyphen, as
+in every other page address (dashboard/ui/format.jac, `ticker_path`), so the id keeps its parts."""
 def note_id(day: str, ticker: str, desk: str, n: int, requested: bool) -> str {
-    path = f"{day}/{ticker or MARKET}/{desk}/{n}";
+    path = f"{day}/{ticker.replace('/', '-') or MARKET}/{desk}/{n}";
     return path + "/requested" if requested else path;
 }
 

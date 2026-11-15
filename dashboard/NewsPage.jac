@@ -9,7 +9,7 @@ import from "@jac/runtime" { Link, useLocation, useNavigate }
 import from "react" { useEffect, useRef }
 import from "lucide-react" { Check, ChevronDown, ChevronLeft, ExternalLink, Link2, Search, X }
 import from dashboard.ui.rpc { get_news_feed, get_news_story }
-import from dashboard.ui.format { count, day_long, day_short, price, pct, stamp_et, ticker_path, time_et }
+import from dashboard.ui.format { count, day_long, day_short, price, pct, stamp_et, ticker_from_path, ticker_path, time_et }
 import from dashboard.ui.parts {
     PILL_BASE,
     SEGMENTS,
@@ -59,7 +59,7 @@ def parse_ref(id: str) -> StoryRef | None {
     if len(parts) < 4 or not parts[3].isdigit() {
         return None;
     }
-    return StoryRef(day=parts[0], ticker=parts[1], desk=parts[2], n=int(parts[3]), requested=len(parts) > 4);
+    return StoryRef(day=parts[0], ticker=ticker_from_path(parts[1]), desk=parts[2], n=int(parts[3]), requested=len(parts) > 4);
 }
 
 def is_wide -> bool {
