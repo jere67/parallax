@@ -25,7 +25,7 @@ import from action.baselines { baselines_of }
 import from accounts.sharing { account_of, sharing_problem }
 import from action.broker { Broker, BrokerError }
 import from models.accounts { AgentAccount, AgentReply, AgentSettings, KeyStatus, KeysReply, RunState }
-import from models.assets { ASSET_LABELS, clean_classes }
+import from models.assets { ASSET_LABELS, CRYPTO, clean_classes }
 import from research.collector { utc_now }
 import from research.credentials { ALPACA_KEY, ALPACA_SECRET, FINNHUB_KEY, OPENROUTER_KEY, enter_credentials, leave_credentials }
 import from run.agents { is_running }
@@ -71,8 +71,8 @@ def own_run_refusal(account: AgentAccount | None, day: str, local: datetime) -> 
     if account is None or not has_required_keys(account) or not keys_open(account) {
         return "Connect your Alpaca and OpenRouter keys first.";
     }
-    if local.weekday() >= 5 {
-        return f"{day} is a weekend; the market is closed.";
+    if local.weekday() >= 5 and CRYPTO not in account_classes(account) {
+        return f"{day} is a weekend; the stock market is closed, and only an agent that trades crypto runs then.";
     }
     if is_running(account.owner_root) {
         return "Today's run is working now.";
@@ -90,7 +90,7 @@ def run_state(account: AgentAccount | None, admin: bool) -> RunState {
     found = run_for(portfolio, day) if portfolio is not None else None;
     status = found.status.value if found is not None else "";
     if admin {
-        refusal = manual_refusal(True, find_team_portfolio(), day, local);
+        refusal = manual_refusal(True, find_team_portfolio(), day, local, CRYPTO in team_classes());
         return RunState(day=day, status=status, can_start=not refusal, note=refusal);
     }
     if found is not None {
@@ -325,7 +325,7 @@ def:priv start_my_run -> AgentReply {
     local = datetime.now(NEW_YORK);
     day = local.date().isoformat();
     if caller_is_admin() {
-        refusal = manual_refusal(True, find_team_portfolio(), day, local);
+        refusal = manual_refusal(True, find_team_portfolio(), day, local, CRYPTO in team_classes());
         if not refusal {
             request_run(day, local);
         }

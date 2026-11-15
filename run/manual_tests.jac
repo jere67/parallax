@@ -22,7 +22,9 @@ test "anyone but the admin is refused, whatever the day" {
 }
 
 test "a weekend, the demo history, or a day that already has a run is refused" {
-    assert manual_refusal(True, team(), "2026-11-01", at("2026-11-01", "10:30")) == "2026-11-01 is a weekend; the market is closed.";
+    assert manual_refusal(True, team(), "2026-11-01", at("2026-11-01", "10:30")) == "2026-11-01 is a weekend; the stock market is closed, and only an agent that trades crypto runs then.";
+    # A team that trades crypto runs on a weekend, on coins alone.
+    assert manual_refusal(True, team(), "2026-11-01", at("2026-11-01", "10:30"), True) == "";
     demo = team();
     demo.demo = True;
     assert manual_refusal(True, demo, MONDAY, at(MONDAY, "10:30")) == "The team portfolio holds the demo history, which never runs.";

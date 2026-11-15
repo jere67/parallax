@@ -81,7 +81,7 @@ Up to three agents run at a time, the oldest account first.
 A run takes about half an hour.
 
 You can also press **Start today's run** in Settings.
-It starts within a minute or two, uses your own keys, and is refused on a weekend, while a run is working, or when the day already has a run.
+It starts within a minute or two, uses your own keys, and is refused while a run is working, when the day already has a run, or on a weekend unless your agent trades crypto.
 A run needs your Alpaca and OpenRouter keys.
 
 ## Turn on paper trading

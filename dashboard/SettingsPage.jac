@@ -284,7 +284,8 @@ def run_words(settings: SettingsData) -> str {
     if status {
         return settings.run.note or "Today's run has finished.";
     }
-    return settings.run.note or "Your agent runs by itself at 7:30 a.m. New York time on trading days. You can also start today's run now.";
+    days = "every day" if any(a.name == "crypto" and a.enabled for a in settings.assets) else "on trading days";
+    return settings.run.note or f"Your agent runs by itself at 7:30 a.m. New York time {days}. You can also start today's run now.";
 }
 
 def RunPanel(settings: SettingsData, done: Callable[[SettingsData, str], None]) -> JsxElement {

@@ -24,7 +24,9 @@ both run, and a day whose run failed is not run again.
 import logging;
 import from datetime { datetime, time, timedelta }
 import from jaclang.server.identity.app_tokens { token_create, token_revoke }
+import from accounts.assets { team_classes }
 import from accounts.store { caller_is_admin }
+import from models.assets { CRYPTO }
 import from models.graph { Portfolio }
 import from run.attempts { attempt_for }
 import from run.guard { NEW_YORK, find_team_portfolio, rerunnable }
@@ -45,13 +47,14 @@ obj ManualRun {
 }
 
 """Why a manual run for `day` cannot start, or "" when it can. `local` is New York time and
-`portfolio` the team portfolio, if it exists yet."""
-def manual_refusal(is_admin: bool, portfolio: Portfolio | None, day: str, local: datetime) -> str {
+`portfolio` the team portfolio, if it exists yet. A weekend run is for a team that trades crypto
+(`weekends`): it covers coins alone (run/guard.jac, `daily_run`)."""
+def manual_refusal(is_admin: bool, portfolio: Portfolio | None, day: str, local: datetime, weekends: bool = False) -> str {
     if not is_admin {
         return "Only the admin can start a run.";
     }
-    if local.weekday() >= 5 {
-        return f"{day} is a weekend; the market is closed.";
+    if local.weekday() >= 5 and not weekends {
+        return f"{day} is a weekend; the stock market is closed, and only an agent that trades crypto runs then.";
     }
     if portfolio is not None and portfolio.demo {
         return "The team portfolio holds the demo history, which never runs.";
@@ -91,7 +94,7 @@ minute, from `manual_run_job`."""
 def:priv start_morning_run -> ManualRun {
     local = datetime.now(NEW_YORK);
     day = local.date().isoformat();
-    refusal = manual_refusal(caller_is_admin(), find_team_portfolio(), day, local);
+    refusal = manual_refusal(caller_is_admin(), find_team_portfolio(), day, local, CRYPTO in team_classes());
     if refusal {
         return ManualRun(started=False, run_day=day, message=refusal);
     }
