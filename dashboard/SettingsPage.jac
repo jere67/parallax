@@ -1,5 +1,5 @@
 """Settings (TDD §9, accounts): connect the keys an agent runs on, start its run, choose paper
-trading, and change a password. Keys only ever travel from here to the server: the page shows what
+trading and the asset classes it trades, and change a password. Keys only ever travel from here to the server: the page shows what
 the server sends back, which is a hint and the time each was checked."""
 import from "@jac/runtime" { jacLogout, useNavigate }
 import from "react" { useEffect }
@@ -7,7 +7,7 @@ import from "lucide-react" { Check, ChevronDown, ExternalLink }
 import from dashboard.ui.brand { DOCS_URL }
 import from dashboard.ui.format { stamp_et }
 import from dashboard.ui.parts { ErrorBox, Loading, Panel, TAP_BUTTON, TAP_INPUT, TAP_QUIET }
-import from dashboard.ui.rpc { get_agent_settings, get_transfer_status, remove_agent_keys, save_agent_keys, send_transfer_part, set_paper_trading, start_my_run, start_transfer }
+import from dashboard.ui.rpc { get_agent_settings, get_transfer_status, remove_agent_keys, save_agent_keys, send_transfer_part, set_asset_classes, set_paper_trading, start_my_run, start_transfer }
 import from models.accounts { AgentReply, AgentSettings as SettingsData, KeyStatus as KeyData, KeysReply, TransferStatus }
 
 # Where each provider makes its keys. A page that needs an account sends a signed-out visitor to
@@ -365,6 +365,64 @@ def TradingPanel(settings: SettingsData, done: Callable[[SettingsData, str], Non
     </Panel>
 }
 
+"""The asset classes the agent researches and trades. A change takes effect from its next morning
+run; nothing it holds is sold because a class is turned off, and it can still sell what it holds."""
+def AssetsPanel(settings: SettingsData, done: Callable[[SettingsData, str], None]) -> JsxElement {
+    has busy: bool = False,
+        message: str = "";
+
+    async def toggle(name: str) {
+        chosen = [a.name for a in settings.assets if (a.enabled and a.name != name) or (not a.enabled and a.name == name)];
+        if not chosen {
+            message = "Choose at least one asset class.";
+            return;
+        }
+        busy = True;
+        reply: AgentReply | None = None;
+        try {
+            reply = await set_asset_classes(chosen);
+            if reply is not None {
+                message = reply.message;
+                done(reply.settings, "");
+            }
+        } except Exception {
+            message = "The server could not be reached. Try again in a moment.";
+        } finally {
+            busy = False;
+        }
+    }
+
+    on = [a for a in settings.assets if a.enabled];
+    <Panel title="Asset classes" aside={<span className="font-medium text-muted">{f"{len(on)} of {len(settings.assets)}"}</span>}>
+        <div className="flex flex-col gap-3">
+            <p className="text-[13px] leading-5 text-muted">{("The team's agent" if settings.managed else "Your agent") + " researches and trades only the kinds of assets turned on here, from its next morning run. Turning one off never sells what it holds."}</p>
+            <ul className="flex flex-col divide-y divide-line rounded-md border border-line">
+                {[
+                    <li key={a.name} className="flex items-start justify-between gap-4 px-3 py-3">
+                        <div className="min-w-0">
+                            <p className="text-[14px] font-medium leading-5 text-text">{a.label}</p>
+                            <p className="mt-0.5 text-[12px] leading-5 text-muted">{a.note}</p>
+                        </div>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={a.enabled}
+                            aria-label={a.label}
+                            disabled={busy or settings.demo}
+                            onClick={lambda { toggle(a.name); }}
+                            className={"relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors disabled:opacity-50 " + ("border-accent bg-accent" if a.enabled else "border-line-strong bg-panel-2")}
+                        >
+                            <span className={"inline-block h-5 w-5 rounded-full bg-white shadow transition-transform " + ("translate-x-5" if a.enabled else "translate-x-0.5")}/>
+                        </button>
+                    </li>
+                    for a in settings.assets
+                ]}
+            </ul>
+            {if message { <p className="text-[13px] leading-5 text-text" role="status">{message}</p> }}
+        </div>
+    </Panel>
+}
+
 """The admin's agent runs on the server's own keys, so there is nothing to connect."""
 def ManagedPanel(settings: SettingsData) -> JsxElement {
     <Panel title="Your agent">
@@ -599,6 +657,7 @@ def:pub SettingsPage -> JsxElement {
         {<ManagedPanel settings={settings}/> if settings.managed else <KeysPanel settings={settings} done={update}/>}
         <RunPanel settings={settings} done={update}/>
         {if not settings.managed { <TradingPanel settings={settings} done={update}/> }}
+        {if settings.assets { <AssetsPanel settings={settings} done={update}/> }}
         {if settings.managed and not settings.demo { <MovePanel moved={leave}/> }}
         <AccountPanel leave={leave}/>
     </div>
