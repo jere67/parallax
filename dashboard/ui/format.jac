@@ -50,11 +50,21 @@ def signed(x: float | None, digits: int = 2) -> str {
     return ("+" if x > 0 else "-") + grouped(x, digits);
 }
 
+"""Dollars to `digits` places, or more for a price under a dollar, which a coin can trade at:
+$0.15, $0.0123, $0.0000123."""
 def money(x: float | None, digits: int = 2) -> str {
     if x is None {
         return MISSING;
     }
-    return ("-" if x < 0 and not is_zero(x, digits) else "") + "$" + grouped(x, digits);
+    places = digits;
+    if digits == 2 and 0.0 < abs(x) < 1.0 {
+        cents = abs(x) * 100.0;
+        while cents < 10.0 and places < 8 {
+            cents *= 10.0;
+            places += 1;
+        }
+    }
+    return ("-" if x < 0 and not is_zero(x, places) else "") + "$" + grouped(x, places);
 }
 
 def signed_money(x: float | None, digits: int = 2) -> str {
@@ -76,12 +86,35 @@ def signed_pct(x: float | None, digits: int = 2) -> str {
     return MISSING if x is None else signed(x * 100.0, digits) + "%";
 }
 
-def qty(x: int | None) -> str {
-    return MISSING if x is None else num(float(x), 0);
+"""A quantity: whole shares as they are, and a coin's fraction to as many places as it has, up to
+eight: 3, 1,200, 0.0125."""
+def qty(x: float | None) -> str {
+    if x is None {
+        return MISSING;
+    }
+    if float(x) == float(int(x)) {
+        return num(float(x), 0);
+    }
+    text = num(float(x), 8);
+    while text.endswith("0") {
+        text = text[:-1];
+    }
+    return text;
+}
+
+"""A ticker as a page address holds it: a coin's slash ("BTC/USD") would split the path, so it
+travels as a dash ("BTC-USD"). No stock symbol holds a dash."""
+def ticker_path(ticker: str) -> str {
+    return ticker.replace("/", "-");
+}
+
+"""The ticker a page address names (`ticker_path`)."""
+def ticker_from_path(text: str) -> str {
+    return text.replace("-", "/");
 }
 
 """A count with its noun: "1 order", "3 orders", "1,200 shares"."""
-def count(n: int, noun: str, plural: str = "") -> str {
+def count(n: float, noun: str, plural: str = "") -> str {
     return qty(n) + " " + (noun if n == 1 else (plural or noun + "s"));
 }
 

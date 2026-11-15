@@ -78,8 +78,10 @@ def live_position(p: PositionView, held: BrokerPosition | None, equity: float, a
     price = held.current_price;
     found.last_price = price;
     found.priced_at = at;
-    found.market_value = price * p.qty;
-    found.pnl = (price - p.avg_entry_price) * p.qty;
+    # An option's price is per share, and one contract covers 100 of them.
+    size = 100.0 if p.asset_class == "us_option" else 1.0;
+    found.market_value = price * p.qty * size;
+    found.pnl = (price - p.avg_entry_price) * p.qty * size;
     found.pnl_pct = price / p.avg_entry_price - 1.0 if p.avg_entry_price > 0.0 else None;
     found.weight = found.market_value / equity if equity > 0.0 else None;
     if p.stop_price {

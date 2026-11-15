@@ -5,23 +5,7 @@ import from "@jac/runtime" { Link, useNavigate, useParams }
 import from "lucide-react" { ChevronLeft, ChevronRight }
 import from dashboard.ui.rpc { get_run, list_runs }
 import from dashboard.ui.IntervalBar { IntervalBar }
-import from dashboard.ui.format {
-    MISSING,
-    compact,
-    count,
-    day_long,
-    day_short,
-    gate_label,
-    money,
-    num,
-    order_label,
-    pct,
-    qty,
-    signed,
-    time_et,
-    time_range_et,
-    title
-}
+import from dashboard.ui.format { MISSING, compact, count, day_long, day_short, gate_label, money, num, order_label, pct, qty, signed, ticker_path, time_et, time_range_et, title }
 import from dashboard.ui.parts {
     CARD,
     CARD_LIST,
@@ -240,7 +224,7 @@ def in_group(row: CoverageData, group: str) -> bool {
 """One covered ticker on a phone: the whole card opens its decision trail."""
 def CoverageCard(row: CoverageData, day: str) -> JsxElement {
     <li data-testid="shortlist-card">
-        <Link to={"/app/runs/" + day + "/" + row.ticker} className={CARD + " active:bg-hover"}>
+        <Link to={"/app/runs/" + day + "/" + ticker_path(row.ticker)} className={CARD + " active:bg-hover"}>
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <div className="font-semibold">{row.ticker}</div>
@@ -313,10 +297,10 @@ def CoverageTable(run: RunData) -> JsxElement {
                                 <tr
                                     key={row.ticker}
                                     className={ROW + " group cursor-pointer"}
-                                    onClick={lambda { nav("/app/runs/" + run.run_date + "/" + row.ticker); }}
+                                    onClick={lambda { nav("/app/runs/" + run.run_date + "/" + ticker_path(row.ticker)); }}
                                 >
                                     <td className={TD + FROZEN_CELL}>
-                                        <Link to={"/app/runs/" + run.run_date + "/" + row.ticker} className="font-semibold hover:text-accent">{row.ticker}</Link>
+                                        <Link to={"/app/runs/" + run.run_date + "/" + ticker_path(row.ticker)} className="font-semibold hover:text-accent">{row.ticker}</Link>
                                         <div className="max-w-[160px] truncate text-[11px] text-faint">{row.sector}</div>
                                     </td>
                                     <td className={TD}><DecisionCell row={row}/></td>

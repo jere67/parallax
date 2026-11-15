@@ -8,24 +8,7 @@ import from "lucide-react" { ChevronRight }
 import from dashboard.ui.rpc { get_performance, get_portfolio }
 import from dashboard.ui.AgentSetup { AgentSetup }
 import from dashboard.ui.EquityChart { EquityChart }
-import from dashboard.ui.format {
-    MISSING,
-    count,
-    day_et,
-    day_long,
-    day_short,
-    money,
-    num,
-    order_label,
-    pct,
-    qty,
-    signed_money,
-    signed_pct,
-    stamp_et,
-    time_et,
-    title,
-    tone
-}
+import from dashboard.ui.format { MISSING, count, day_et, day_long, day_short, money, num, order_label, pct, qty, signed_money, signed_pct, stamp_et, ticker_path, time_et, title, tone }
 
 # How often an open page asks for the account's value again; the server reads Alpaca at most
 # once a minute per portfolio (dashboard/live.jac).
@@ -85,7 +68,7 @@ def series_of(perf: PerformanceData | None, key: str) -> SeriesData | None {
 
 """A decision trail's address, or "" when the decision's run is unknown."""
 def trail_link(day: str, ticker: str) -> str {
-    return "/app/runs/" + day + "/" + ticker if day else "";
+    return "/app/runs/" + day + "/" + ticker_path(ticker) if day else "";
 }
 
 def TickerCell(ticker: str, day: str, sub: str = "") -> JsxElement {
@@ -284,7 +267,7 @@ the thesis and the rest."""
 def PositionCard(p: PositionData, opened: bool, toggle: Callable[[], None]) -> JsxElement {
     <li data-testid="position-card" className={CARD}>
         <div className="flex items-start justify-between gap-3">
-            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/>
+            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector}/>
             <div className="shrink-0 text-right">
                 <div className="num text-[13px]">{money(p.market_value, 0)}</div>
                 <div className={"num text-[12px] " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</div>
@@ -382,7 +365,7 @@ def PositionsTable(positions: list[PositionData]) -> JsxElement {
                                                     className={"transition-[rotate] duration-150 ease-out motion-reduce:transition-none " + ("rotate-90" if opened == p.ticker else "")}
                                                 />
                                             </button>
-                                            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/>
+                                            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector}/>
                                         </div>
                                     </td>
                                     <td className={TD_NUM}>{qty(p.qty)}</td>
@@ -500,7 +483,7 @@ def OrdersTable(orders: list[OrderData]) -> JsxElement {
 def ClosedCard(p: PositionData) -> JsxElement {
     <li data-testid="closed-card" className={CARD}>
         <div className="flex items-start justify-between gap-3">
-            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/>
+            <TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector}/>
             <div className="shrink-0 text-right">
                 <div className={"num text-[13px] " + tone(p.pnl)}>{signed_money(p.pnl)}</div>
                 <div className={"num text-[12px] " + tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</div>
@@ -546,7 +529,7 @@ def ClosedTable(closed: list[PositionData]) -> JsxElement {
                 <tbody>
                     {for p in closed {
                         <tr key={p.ticker + p.opened_at} className={ROW + " group"}>
-                            <td className={TD + FROZEN_CELL}><TickerCell ticker={p.ticker} day={p.decision_day} sub={p.sector}/></td>
+                            <td className={TD + FROZEN_CELL}><TickerCell ticker={p.ticker} day={p.decision_day} sub={p.label or p.sector}/></td>
                             <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.opened_at))}</td>
                             <td className={TD_NUM + " text-muted"}>{day_short(day_et(p.closed_at))}</td>
                             <td className={TD_NUM}>{qty(p.entry_qty)}</td>

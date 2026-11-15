@@ -9,7 +9,7 @@ import from "@jac/runtime" { Link, useLocation, useNavigate }
 import from "react" { useEffect, useRef }
 import from "lucide-react" { Check, ChevronDown, ChevronLeft, ExternalLink, Link2, Search, X }
 import from dashboard.ui.rpc { get_news_feed, get_news_story }
-import from dashboard.ui.format { count, day_long, day_short, money, pct, stamp_et, time_et }
+import from dashboard.ui.format { count, day_long, day_short, money, pct, stamp_et, ticker_path, time_et }
 import from dashboard.ui.parts {
     PILL_BASE,
     SEGMENTS,
@@ -304,7 +304,7 @@ def Outcome(story: StoryData) -> JsxElement {
                 <span className="text-faint">not recorded</span>
             }}
         </span>
-        <Link to={"/app/runs/" + item.day + "/" + item.ticker} className="text-[13px] font-medium text-accent hover:underline">See the decision trail</Link>
+        <Link to={"/app/runs/" + item.day + "/" + ticker_path(item.ticker)} className="text-[13px] font-medium text-accent hover:underline">See the decision trail</Link>
     </div>
 }
 

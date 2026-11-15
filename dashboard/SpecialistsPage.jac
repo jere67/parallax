@@ -3,7 +3,7 @@ bands are the stored evaluation's, as on the Results page; a figure with too few
 it says so (dashboard/ui/evidence.jac)."""
 import from "@jac/runtime" { Link }
 import from dashboard.ui.rpc { get_specialists }
-import from dashboard.ui.format { count, day_short, pct, title }
+import from dashboard.ui.format { count, day_short, pct, ticker_path, title }
 import from dashboard.ui.parts { ActionBadge, Empty, ErrorBox, Loading, Panel }
 import from dashboard.ui.evidence { Thin, enough, votes_needed }
 import from models.views { CalibrationBinView as BinData, SpecialistSummaryView as SummaryData, SpecialistVoteView as VoteData }
@@ -34,7 +34,7 @@ def CalibrationRow(b: BinData) -> JsxElement {
 def VoteRow(v: VoteData) -> JsxElement {
     <li className="border-t border-line px-4 py-3 first:border-t-0">
         <div className="flex flex-wrap items-center gap-2 text-[12px]">
-            <Link to={"/app/runs/" + v.run_date + "/" + v.ticker} className="font-semibold text-accent hover:underline">{v.ticker + " · " + day_short(v.run_date)}</Link>
+            <Link to={"/app/runs/" + v.run_date + "/" + ticker_path(v.ticker)} className="font-semibold text-accent hover:underline">{v.ticker + " · " + day_short(v.run_date)}</Link>
             <ActionBadge action={v.stance}/>
             <span className="text-muted">{pct(v.confidence, 0) + " confidence · sample " + str(v.sample + 1)}</span>
             <span className="ml-auto text-muted">{("Hit" if v.hit else "Miss") if v.hit is not None else ("Awaiting score" if not v.scored_at else "No price to score")}</span>

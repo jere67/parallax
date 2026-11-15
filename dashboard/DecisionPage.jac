@@ -5,26 +5,7 @@ import from "@jac/runtime" { Link, useParams }
 import from "lucide-react" { Check, ChevronLeft, ChevronRight, CircleDashed, CircleSlash, ExternalLink, TriangleAlert, X }
 import from dashboard.ui.rpc { get_decision_trail }
 import from dashboard.ui.DotPlot { DotPlot, ScoreScale }
-import from dashboard.ui.format {
-    MISSING,
-    compact,
-    count,
-    day_long,
-    day_short,
-    gate_label,
-    money,
-    num,
-    order_label,
-    pct,
-    qty,
-    signed,
-    signed_money,
-    signed_pct,
-    source_time,
-    stamp_et,
-    title,
-    tone
-}
+import from dashboard.ui.format { MISSING, compact, count, day_long, day_short, gate_label, money, num, order_label, pct, qty, signed, signed_money, signed_pct, source_time, stamp_et, ticker_from_path, ticker_path, title, tone }
 import from dashboard.ui.parts {
     CARD,
     CARD_LIST,
@@ -71,7 +52,7 @@ glob CALLOUT: str = "rounded-md border border-warn/25 bg-warn/10 px-3 py-2 text-
 glob GRID: str = "grid-cols-[1fr_auto] sm:grid-cols-[180px_1fr_72px_16px]";
 
 def trail_to(day: str, ticker: str) -> str {
-    return "/app/runs/" + day + "/" + ticker;
+    return "/app/runs/" + day + "/" + ticker_path(ticker);
 }
 
 def StanceText(stance: str) -> JsxElement {
@@ -204,8 +185,8 @@ def TrailStrip(trail: TrailData) -> JsxElement {
     c = trail.consensus;
     d = trail.decision;
     g = trail.gate;
-    filled = 0;
-    asked = 0;
+    filled: float = 0;
+    asked: float = 0;
     stops = 0;
     for o in trail.orders {
         if o.purpose == "stop" {
@@ -290,7 +271,7 @@ def TickerFacts(trail: TrailData) -> JsxElement {
 def PositionFacts(p: PositionData) -> JsxElement {
     closed = bool(p.closed_at);
     <Panel title={"Position " + ("closed" if closed else "open")} pad={False}>
-        <Fact label="Shares">{qty(p.entry_qty if closed else p.qty)}</Fact>
+        <Fact label={"Contracts" if p.asset_class == "us_option" else "Quantity" if p.asset_class == "crypto" else "Shares"}>{qty(p.entry_qty if closed else p.qty)}</Fact>
         <Fact label="Avg cost">{money(p.avg_entry_price)}</Fact>
         <Fact label={"Exit" if closed else "Last"}>{money(p.exit_price if closed else p.last_price)}</Fact>
         <Fact label={"Realized" if closed else "Unrealized"}><span className={tone(p.pnl)}>{signed_money(p.pnl)}</span></Fact>
@@ -621,7 +602,7 @@ def Arbiter(trail: TrailData) -> JsxElement {
 
 # --- 5. Risk gate ------------------------------------------------------------------------------
 
-def RuleRow(rule: str, passed: bool, detail: str, before: int, after: int) -> JsxElement {
+def RuleRow(rule: str, passed: bool, detail: str, before: float, after: float) -> JsxElement {
     <tr className={ROW}>
         <td className={TD + " w-8 pr-0"}>
             {<Check size={14} className="text-up"/> if passed else <X size={14} className="text-down"/>}
@@ -804,7 +785,7 @@ def:pub DecisionPage -> JsxElement {
 
     params = useParams();
     day: str = params["day"] or "";
-    ticker: str = params["ticker"] or "";
+    ticker: str = ticker_from_path(params["ticker"] or "");
 
     async can with (day, ticker) entry {
         loaded = False;
