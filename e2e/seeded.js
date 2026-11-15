@@ -1,5 +1,6 @@
-// Waits until the server answers with a started demo portfolio. The demo history is written by
-// a job that runs once a minute, so a fresh server needs up to two minutes.
+// Waits until the server answers with a started demo portfolio, and the demo account opens. The
+// demo history and the demo account are each written by a job that runs once a minute, so a fresh
+// server needs up to two minutes.
 const LIMIT_MS = 240_000;
 
 async function post(baseURL, path, body, token) {
@@ -27,6 +28,12 @@ async function portfolio(baseURL, token) {
   return (await resp.json())?.data?.result ?? null;
 }
 
+// The demo account is made in two of its job's minutes: its record, then its user.
+async function demoOpens(baseURL) {
+  const resp = await post(baseURL, "/function/open_demo", {});
+  return resp.ok && Boolean((await resp.json())?.data?.result?.token);
+}
+
 export default async function seeded(config) {
   const baseURL = config.projects[0].use.baseURL;
   const deadline = Date.now() + LIMIT_MS;
@@ -36,13 +43,13 @@ export default async function seeded(config) {
     try {
       token ??= await signedUp(baseURL);
       const view = await portfolio(baseURL, token);
-      if (view?.started && view.orders?.length) {
+      if (view?.started && view.orders?.length && (await demoOpens(baseURL))) {
         // The first read of the runs walks the graph and holds up every other request, so it goes
         // now rather than during a test on a busy machine.
         await post(baseURL, "/function/list_runs", {}, token);
         return;
       }
-      last = view ? "portfolio not started" : "no portfolio";
+      last = !view ? "no portfolio" : view.started ? "demo account not open" : "portfolio not started";
     } catch (err) {
       last = String(err);
     }

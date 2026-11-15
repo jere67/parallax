@@ -558,6 +558,35 @@ test("account: sign up, connect keys, log out, and log back in to where you were
   await expect(page.getByRole("heading", { name: "Shortlist" })).toBeVisible();
 });
 
+test("demo: anyone can browse the demo account with no password, and it changes nothing", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: "Browse the demo" }).first().click();
+  await expect(page).toHaveURL(/\/app$/);
+  await expect(page.getByText(/^Demo (account|data)\.$/)).toBeVisible();
+  await expect(page.getByText("Equity", { exact: true }).first()).toBeVisible();
+
+  await page.goto("/app/settings");
+  const panel = page.locator("section", { has: page.getByRole("heading", { name: "The demo account" }) });
+  await expect(panel).toBeVisible();
+  await expect(page.getByLabel("Alpaca API key ID")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Change password" })).toHaveCount(0);
+  await fitsWidth(page);
+
+  // Logging in as demo with the password left empty opens it too.
+  await panel.getByRole("button", { name: "Log out" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto("/login");
+  await page.getByLabel("Email", { exact: true }).fill("demo");
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page).toHaveURL(/\/app$/);
+
+  // Its way out is an account of one's own.
+  await page.goto("/app/settings");
+  await panel.getByRole("button", { name: "Create your own agent" }).click();
+  await expect(page).toHaveURL(/\/signup$/);
+  await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
+});
+
 test("account: a crafted link cannot send someone elsewhere after logging in", async ({ page }) => {
   const account = await makeAccount(page, "next");
   await page.goto("/login?next=https://example.test/");
@@ -653,7 +682,7 @@ test("reports: request a cached insight, and keep a private history", async ({ p
   await request.click();
   await expect(page.getByRole("heading", { name: "Specialist votes", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Sources", exact: true })).toBeVisible();
-  await expect(page.getByText("Demo report — invented prices and research.")).toBeVisible();
+  await expect(page.getByText("Demo report: invented prices and research.")).toBeVisible();
   const votes = page.getByRole("button", { name: /Specialist votes/ });
   await expect(votes).toHaveAttribute("aria-expanded", "true");
   await votes.click();

@@ -1,6 +1,6 @@
 """The public front page. It shows how the product works with one worked example, never a user's
-data: nothing here calls the server. The example's company and votes are made up, and the page
-says so where they appear.
+data: nothing here calls the server. Its demo button opens the demo account (/demo), which needs
+no keys. The example's company and votes are made up, and the page says so where they appear.
 
 The memorable part is the vote in the hero: five specialists' votes settle on a scale, and the
 reader can drag the buy bar across the result, which is what a policy does."""
@@ -260,7 +260,11 @@ def:pub Landing -> JsxElement {
                 </p>
                 <div className="mt-8 flex flex-wrap gap-3">
                     <Link to={"/app" if signed_in else "/signup"} className={PRIMARY}>{"Open your agent" if signed_in else "Create your agent"}</Link>
-                    <a href="#morning" className={SECONDARY}>See how it works</a>
+                    {if signed_in {
+                        <a href="#morning" className={SECONDARY}>See how it works</a>
+                    } else {
+                        <Link to="/demo" className={SECONDARY}>Browse the demo</Link>
+                    }}
                 </div>
                 <div className="mt-12 sm:mt-16"><VotePanel/></div>
             </section>
@@ -272,7 +276,10 @@ def:pub Landing -> JsxElement {
                 <section className="border-t border-line bg-panel-2">
                     <div className={SECTION + " flex flex-col items-start gap-6 py-16 sm:flex-row sm:items-center sm:justify-between"}>
                         <h2 className={HEADING}>Start with research, and decide later</h2>
-                        <Link to="/signup" className={PRIMARY + " shrink-0"}>Create your agent</Link>
+                        <div className="flex shrink-0 flex-wrap gap-3">
+                            <Link to="/signup" className={PRIMARY}>Create your agent</Link>
+                            <Link to="/demo" className={SECONDARY}>Browse the demo</Link>
+                        </div>
                     </div>
                 </section>
             }}

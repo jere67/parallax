@@ -37,7 +37,7 @@ def ReportCard(item: ReportData) -> JsxElement {
             <StatusBadge status={item.status} label={title(item.status)}/>
         </header>
         <div className="space-y-5 p-4 sm:p-5">
-            {if item.demo { <p className="rounded-md border border-warn/25 bg-warn/10 px-3 py-2 text-[12px] text-warn">Demo report — invented prices and research.</p> }}
+            {if item.demo { <p className="rounded-md border border-warn/25 bg-warn/10 px-3 py-2 text-[12px] text-warn">Demo report: invented prices and research.</p> }}
             {if item.status == "pending" { <p className="text-[13px] text-muted">Queued. This page updates automatically.</p> }}
             {if item.status == "running" { <p className="text-[13px] text-muted">Research and specialist analysis are running.</p> }}
             {if item.error { <ErrorBox message={item.error}/> }}
