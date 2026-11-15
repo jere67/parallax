@@ -27,7 +27,7 @@ import from action.baselines { baselines_of }
 import from accounts.sharing { account_of, sharing_problem }
 import from action.broker { Broker, BrokerError }
 import from models.accounts { AgentAccount, AgentReply, AgentSettings, KeyStatus, KeysReply, RunState }
-import from models.assets { ASSET_LABELS, CRYPTO, clean_classes }
+import from models.assets { ASSET_CLASSES, ASSET_LABELS, CRYPTO, clean_classes }
 import from research.collector { utc_now }
 import from research.credentials { ALPACA_KEY, ALPACA_SECRET, FINNHUB_KEY, OPENROUTER_KEY, enter_credentials, leave_credentials }
 import from run.agents { is_running }
@@ -110,6 +110,7 @@ def run_state(account: AgentAccount | None, admin: bool) -> RunState {
 
 def settings_view -> AgentSettings {
     admin = caller_is_admin();
+    demo_account = caller_is_demo();
     account = my_account();
     portfolio = my_portfolio();
     rows = key_rows(account);
@@ -125,8 +126,9 @@ def settings_view -> AgentSettings {
         requests_note=account.requests_note if account is not None else "",
         trading_started=portfolio is not None and bool(baselines_of(portfolio)),
         alpaca_problem=sharing_problem(account_of(account), account.owner_root) if account is not None and not admin and ALPACA_KEY in account.sealed else "",
-        assets=asset_options(team_classes() if admin else account_classes(account)),
-        demo_account=caller_is_demo()
+        # The demo account's agent trades every class (dashboard/demo.jac).
+        assets=asset_options(list(ASSET_CLASSES) if demo_account else team_classes() if admin else account_classes(account)),
+        demo_account=demo_account
     );
 }
 

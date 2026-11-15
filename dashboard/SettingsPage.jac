@@ -367,8 +367,9 @@ def TradingPanel(settings: SettingsData, done: Callable[[SettingsData, str], Non
 }
 
 """The asset classes the agent researches and trades. A change takes effect from its next morning
-run; nothing it holds is sold because a class is turned off, and it can still sell what it holds."""
-def AssetsPanel(settings: SettingsData, done: Callable[[SettingsData, str], None]) -> JsxElement {
+run; nothing it holds is sold because a class is turned off, and it can still sell what it holds.
+`read_only` shows the classes without letting them change, for the shared demo account."""
+def AssetsPanel(settings: SettingsData, done: Callable[[SettingsData, str], None], read_only: bool = False) -> JsxElement {
     has busy: bool = False,
         message: str = "";
 
@@ -396,7 +397,7 @@ def AssetsPanel(settings: SettingsData, done: Callable[[SettingsData, str], None
     on = [a for a in settings.assets if a.enabled];
     <Panel title="Asset classes" aside={<span className="font-medium text-muted">{f"{len(on)} of {len(settings.assets)}"}</span>}>
         <div className="flex flex-col gap-3">
-            <p className="text-[13px] leading-5 text-muted">{("The team's agent" if settings.managed else "Your agent") + " researches and trades only the kinds of assets turned on here, from its next morning run. Turning one off never sells what it holds."}</p>
+            <p className="text-[13px] leading-5 text-muted">{"The demo agent trades every kind of asset an agent can: stocks and funds on weekdays, coins every day, and calls and puts on its panel's views. Your own agent trades only the kinds you turn on." if read_only else ("The team's agent" if settings.managed else "Your agent") + " researches and trades only the kinds of assets turned on here, from its next morning run. Turning one off never sells what it holds."}</p>
             <ul className="flex flex-col divide-y divide-line rounded-md border border-line">
                 {[
                     <li key={a.name} className="flex items-start justify-between gap-4 px-3 py-3">
@@ -409,9 +410,9 @@ def AssetsPanel(settings: SettingsData, done: Callable[[SettingsData, str], None
                             role="switch"
                             aria-checked={a.enabled}
                             aria-label={a.label}
-                            disabled={busy}
+                            disabled={busy or read_only}
                             onClick={lambda { toggle(a.name); }}
-                            className={"relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors disabled:opacity-50 " + ("border-accent bg-accent" if a.enabled else "border-line-strong bg-panel-2")}
+                            className={"relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors " + ("disabled:cursor-not-allowed " if read_only else "disabled:opacity-50 ") + ("border-accent bg-accent" if a.enabled else "border-line-strong bg-panel-2")}
                         >
                             <span className={"inline-block h-5 w-5 rounded-full bg-white shadow transition-transform " + ("translate-x-5" if a.enabled else "translate-x-0.5")}/>
                         </button>
@@ -670,9 +671,10 @@ def:pub SettingsPage -> JsxElement {
         return <div className="rise mx-auto flex max-w-[860px] flex-col gap-6">
             <header>
                 <h1 className="display text-[36px] leading-10 text-text">Settings</h1>
-                <p className="mt-1 text-[13px] leading-5 text-muted">The demo account has nothing to set.</p>
+                <p className="mt-1 text-[13px] leading-5 text-muted">Everyone who browses shares the demo account, so nothing here can be changed.</p>
             </header>
             <DemoPanel leave={leave} sign_up={sign_up}/>
+            {if settings.assets { <AssetsPanel settings={settings} done={update} read_only={True}/> }}
         </div>;
     }
 

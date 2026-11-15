@@ -14,6 +14,8 @@ import from tests.fakes.broker_server { FakeBroker }
 import from tests.runs.action_exit_run { deps_for }
 
 glob TODAY: date = date(2026, 10, 22);
+# A weekend day, when an agent that trades crypto still runs and trades coins.
+glob SATURDAY: date = date(2026, 10, 24);
 # Every point in a trading day where something could start a run or send an order: the morning
 # run, the forward-test start, the 9:45 orders, a fill, the stop check, and the evening review.
 glob TIMES: list[str] = ["07:30", "09:00", "09:45", "10:00", "12:00", "15:50", "16:30"];
@@ -22,12 +24,12 @@ def at(day: date, hhmm: str) -> datetime {
     return datetime.fromisoformat(f"{day.isoformat()}T{hhmm}:00").replace(tzinfo=NEW_YORK);
 }
 
-"""Every trading path, at every point of the day, on `portfolio`; returns the trading lines."""
-def trade_all_day(fake: FakeBroker, portfolio: any) -> list[str] {
+"""Every trading path, at every point of `day`, on `portfolio`; returns the trading lines."""
+def trade_all_day(fake: FakeBroker, portfolio: any, day: date = TODAY) -> list[str] {
     lines: list[str] = [];
     deps = deps_for(fake);
     for hhmm in TIMES {
-        now = at(TODAY, hhmm);
+        now = at(day, hhmm);
         lines.extend(team_trading_tick(portfolio, now, deps));
         lines.append(run_next_agent(now));
         tick_agents(now);
@@ -35,7 +37,7 @@ def trade_all_day(fake: FakeBroker, portfolio: any) -> list[str] {
     return [line for line in lines if line];
 }
 
-test "the demo history sends nothing to a broker at any point in the day" {
+test "the demo history sends nothing to a broker at any point in the day, weekends too" {
     portfolio = team(PortfolioMode.AUTO, 0.0);
     DemoSim(portfolio=portfolio, today=TODAY).run();
     seeded = len([o for o in [portfolio ->:Sent:->[?:Order]]]);
@@ -45,6 +47,9 @@ test "the demo history sends nothing to a broker at any point in the day" {
         outcome = daily_run(portfolio, TODAY.isoformat());
         assert outcome.status == RunStatus.SKIPPED and "demo history" in outcome.note;
         assert trade_all_day(fake, portfolio) == [];
+        # The history holds coins, which trade on weekends, and options.
+        assert daily_run(portfolio, SATURDAY.isoformat()).status == RunStatus.SKIPPED;
+        assert trade_all_day(fake, portfolio, SATURDAY) == [];
         assert fake.requests == [];
         assert len([o for o in [portfolio ->:Sent:->[?:Order]]]) == seeded;
     } finally {
