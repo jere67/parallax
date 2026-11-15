@@ -50,21 +50,35 @@ def signed(x: float | None, digits: int = 2) -> str {
     return ("+" if x > 0 else "-") + grouped(x, digits);
 }
 
-"""Dollars to `digits` places, or more for a price under a dollar, which a coin can trade at:
-$0.15, $0.0123, $0.0000123."""
 def money(x: float | None, digits: int = 2) -> str {
     if x is None {
         return MISSING;
     }
-    places = digits;
-    if digits == 2 and 0.0 < abs(x) < 1.0 {
-        cents = abs(x) * 100.0;
-        while cents < 10.0 and places < 8 {
-            cents *= 10.0;
+    return ("-" if x < 0 and not is_zero(x, digits) else "") + "$" + grouped(x, digits);
+}
+
+"""A price per share, coin, or contract: cents, or under a dollar, which a coin can trade at, four
+significant digits: $0.15, $0.1623, $0.0123, $0.00001234. An amount of money uses `money`, so a few
+tenths of a cent of profit still reads $0.00."""
+def price(x: float | None) -> str {
+    if x is None {
+        return MISSING;
+    }
+    places = 2;
+    if 0.0 < abs(x) < 1.0 {
+        scaled = abs(x);
+        places = 0;
+        while scaled < 1000.0 and places < 8 {
+            scaled *= 10.0;
             places += 1;
         }
     }
-    return ("-" if x < 0 and not is_zero(x, places) else "") + "$" + grouped(x, places);
+    text = grouped(x, places);
+    while places > 2 and text.endswith("0") {
+        text = text[:-1];
+        places -= 1;
+    }
+    return ("-" if x < 0 and not is_zero(x, places) else "") + "$" + text;
 }
 
 def signed_money(x: float | None, digits: int = 2) -> str {

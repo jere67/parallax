@@ -5,7 +5,7 @@ import from "@jac/runtime" { Link, useNavigate, useParams }
 import from "lucide-react" { ChevronLeft, ChevronRight }
 import from dashboard.ui.rpc { get_run, list_runs }
 import from dashboard.ui.IntervalBar { IntervalBar }
-import from dashboard.ui.format { MISSING, compact, count, day_long, day_short, gate_label, money, num, order_label, pct, qty, signed, ticker_path, time_et, time_range_et, title }
+import from dashboard.ui.format { MISSING, compact, count, day_long, day_short, gate_label, money, price, num, order_label, pct, qty, signed, ticker_path, time_et, time_range_et, title }
 import from dashboard.ui.parts {
     CARD,
     CARD_LIST,
@@ -207,7 +207,7 @@ def OrderCell(row: CoverageData) -> JsxElement {
             {" " + qty(row.filled_qty) + " of " + qty(row.order_qty)}
         </span>
         <span className="num text-[11px] text-faint">
-            {("@ " + money(row.filled_avg_price)) if row.filled_avg_price is not None else (order_label(row.order_status, row.order_reject_reason) or row.order_status.replace("_", " ")).lower()}
+            {("@ " + price(row.filled_avg_price)) if row.filled_avg_price is not None else (order_label(row.order_status, row.order_reject_reason) or row.order_status.replace("_", " ")).lower()}
         </span>
     </div>
 }
@@ -241,7 +241,7 @@ def CoverageCard(row: CoverageData, day: str) -> JsxElement {
                 <CardFigure label="Conviction">{num(row.conviction)}</CardFigure>
                 <CardFigure label="Risk gate"><GateCell row={row}/></CardFigure>
                 <CardFigure label="Order"><OrderCell row={row}/></CardFigure>
-                <CardFigure label="Close">{money(row.last_close)}</CardFigure>
+                <CardFigure label="Close">{price(row.last_close)}</CardFigure>
             </CardFigures>
             <div className="mt-2.5 text-[12px] text-muted"><CoveredCell row={row}/></div>
         </Link>
@@ -315,7 +315,7 @@ def CoverageTable(run: RunData) -> JsxElement {
                                     <td className={TD}><GateCell row={row}/></td>
                                     <td className={TD}><OrderCell row={row}/></td>
                                     <td className={TD}><CoveredCell row={row}/></td>
-                                    <td className={TD_NUM}>{money(row.last_close)}</td>
+                                    <td className={TD_NUM}>{price(row.last_close)}</td>
                                 </tr>
                             }}
                         </tbody>

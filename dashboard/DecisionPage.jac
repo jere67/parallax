@@ -5,7 +5,7 @@ import from "@jac/runtime" { Link, useParams }
 import from "lucide-react" { Check, ChevronLeft, ChevronRight, CircleDashed, CircleSlash, ExternalLink, TriangleAlert, X }
 import from dashboard.ui.rpc { get_decision_trail }
 import from dashboard.ui.DotPlot { DotPlot, ScoreScale }
-import from dashboard.ui.format { MISSING, compact, count, day_long, day_short, gate_label, money, num, order_label, pct, qty, signed, signed_money, signed_pct, source_time, stamp_et, ticker_from_path, ticker_path, title, tone }
+import from dashboard.ui.format { MISSING, compact, count, day_long, day_short, gate_label, money, price, num, order_label, pct, qty, signed, signed_money, signed_pct, source_time, stamp_et, ticker_from_path, ticker_path, title, tone }
 import from dashboard.ui.parts {
     CARD,
     CARD_LIST,
@@ -122,7 +122,7 @@ def Hero(trail: TrailData) -> JsxElement {
                         <span className="text-[13px] text-muted">{trail.sector}</span>
                     </div>
                     <div className="num flex flex-wrap items-baseline gap-x-2 text-[13px]">
-                        <span className="font-medium text-text">{money(trail.last_close)}</span>
+                        <span className="font-medium text-text">{price(trail.last_close)}</span>
                         <span className="text-[11px] text-faint">{"close · " + REASONS.get(trail.reason, title(trail.reason)).lower()}</span>
                     </div>
                 </div>
@@ -253,8 +253,8 @@ def TickerFacts(trail: TrailData) -> JsxElement {
         }
     }
     <Panel title="Ticker" aside={<span>{"As of " + day_short(trail.run_date)}</span>} pad={False}>
-        <Fact label="Last close">{money(trail.last_close)}</Fact>
-        <Fact label="ATR (14)">{money(trail.atr_14)}</Fact>
+        <Fact label="Last close">{price(trail.last_close)}</Fact>
+        <Fact label="ATR (14)">{price(trail.atr_14)}</Fact>
         <Fact label="20-day vol">{pct(trail.realized_vol_20, 1)}</Fact>
         <Fact label="20-day volume">{compact(trail.volume_20)}</Fact>
         <Fact label="Earnings">{earnings}</Fact>
@@ -272,8 +272,8 @@ def PositionFacts(p: PositionData) -> JsxElement {
     closed = bool(p.closed_at);
     <Panel title={"Position " + ("closed" if closed else "open")} pad={False}>
         <Fact label={"Contracts" if p.asset_class == "us_option" else "Quantity" if p.asset_class == "crypto" else "Shares"}>{qty(p.entry_qty if closed else p.qty)}</Fact>
-        <Fact label="Avg cost">{money(p.avg_entry_price)}</Fact>
-        <Fact label={"Exit" if closed else "Last"}>{money(p.exit_price if closed else p.last_price)}</Fact>
+        <Fact label="Avg cost">{price(p.avg_entry_price)}</Fact>
+        <Fact label={"Exit" if closed else "Last"}>{price(p.exit_price if closed else p.last_price)}</Fact>
         <Fact label={"Realized" if closed else "Unrealized"}><span className={tone(p.pnl)}>{signed_money(p.pnl)}</span></Fact>
         <Fact label="Return"><span className={tone(p.pnl_pct)}>{signed_pct(p.pnl_pct)}</span></Fact>
     </Panel>
@@ -636,8 +636,8 @@ def Gate(g: GateData | None, decision_id: str) -> JsxElement {
                     <div className="grid grid-cols-2 gap-px border-b border-line bg-line sm:grid-cols-4">
                         <GateFigure label="Order" value={g.side.upper() + " · " + title(g.purpose)}/>
                         <GateFigure label="Shares" value={qty(g.approved_qty) + " of " + qty(g.requested_qty)}/>
-                        <GateFigure label="Price" value={money(g.price)}/>
-                        <GateFigure label="Stop distance" value={money(g.stop_distance)}/>
+                        <GateFigure label="Price" value={price(g.price)}/>
+                        <GateFigure label="Stop distance" value={price(g.stop_distance)}/>
                     </div>
                     <div className="scroll-x">
                         <table className="w-full">
@@ -682,14 +682,14 @@ def OrderCard(o: OrderData) -> JsxElement {
             <StatusBadge status={o.status} label={order_label(o.status, o.reject_reason)}/>
         </div>
         <CardFigures>
-            <CardFigure label="Price">{money(o.limit_price if o.limit_price is not None else o.stop_price)}</CardFigure>
+            <CardFigure label="Price">{price(o.limit_price if o.limit_price is not None else o.stop_price)}</CardFigure>
             <CardFigure label="Filled">{qty(o.filled_qty) + " / " + qty(o.qty)}</CardFigure>
         </CardFigures>
         <p className="num mt-2 text-[11px] text-faint">{"Submitted " + stamp_et(o.submitted_at)}</p>
         {if len(o.fills) > 0 {
             <div className="num mt-2 text-[12px] text-muted">
                 {for (i, f) in enumerate(o.fills) {
-                    <div key={str(i)}>{qty(f.qty) + " @ " + money(f.price) + ", " + stamp_et(f.filled_at)}</div>
+                    <div key={str(i)}>{qty(f.qty) + " @ " + price(f.price) + ", " + stamp_et(f.filled_at)}</div>
                 }}
             </div>
         }}
@@ -734,14 +734,14 @@ def OrdersTable(orders: list[OrderData]) -> JsxElement {
                                     {o.client_order_id}
                                 </div>
                             </td>
-                            <td className={TD_NUM}>{money(o.limit_price if o.limit_price is not None else o.stop_price)}</td>
+                            <td className={TD_NUM}>{price(o.limit_price if o.limit_price is not None else o.stop_price)}</td>
                             <td className={TD_NUM}>{qty(o.filled_qty) + " / " + qty(o.qty)}</td>
                             <td className={TD + " num text-[12px] text-muted"}>
                                 {if len(o.fills) == 0 {
                                     <span className="text-faint">-</span>
                                 }}
                                 {for (i, f) in enumerate(o.fills) {
-                                    <div key={str(i)}>{qty(f.qty) + " @ " + money(f.price) + ", " + stamp_et(f.filled_at)}</div>
+                                    <div key={str(i)}>{qty(f.qty) + " @ " + price(f.price) + ", " + stamp_et(f.filled_at)}</div>
                                 }}
                             </td>
                             <td className={TD} title={o.reject_reason}><StatusBadge status={o.status} label={order_label(o.status, o.reject_reason)}/></td>
