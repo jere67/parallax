@@ -8,7 +8,7 @@ related:
 
 The dashboard reads everything it shows through a small HTTP API, and every data endpoint needs an account.
 Every endpoint is a Jac function exposed by the server: you send a `POST` with a JSON body of its parameters and read the result from the response's `data.result`.
-Only `health` and `healthz` are public.
+Only `health`, `healthz`, and `open_demo` are public.
 Every other endpoint is private: it needs a bearer token and answers `401` to an anonymous caller, and it reads or changes only the caller's own agent.
 [`start_morning_run`](/api/start-morning-run) also needs the admin's token.
 
@@ -94,6 +94,7 @@ These docs leave them out of the examples; ignore them.
 | --- | --- | --- |
 | [`health`](/api/health) | `POST /function/health` | none |
 | [`healthz`](/api/healthz) | `GET /healthz` | none |
+| [`open_demo`](/api/accounts#open-demo) | `POST /function/open_demo` | none |
 | [`get_portfolio`](/api/get-portfolio) | `POST /function/get_portfolio` | token |
 | [`get_performance`](/api/get-performance) | `POST /function/get_performance` | token |
 | [`list_runs`](/api/list-runs) | `POST /function/list_runs` | token |
@@ -128,6 +129,6 @@ See [Dashboard internals](/system/dashboard#read-cache).
 
 ## Adding an endpoint
 
-An endpoint is a `def:priv` (signed-in) function, or a `def:pub` (public) one for the health check only, imported by name in `main.jac`.
+An endpoint is a `def:priv` (signed-in) function, or a `def:pub` (public) one for the health check and the demo sign-in only, imported by name in `main.jac`.
 A function that is not imported answers 404 or 405, and `tests/endpoints_tests.jac` fails for any marked function the server does not serve.
 Return a typed object from `models/views.jac`, so the API stays a contract.

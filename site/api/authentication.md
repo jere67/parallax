@@ -11,7 +11,7 @@ Every data endpoint answers `401` to an anonymous caller, and an account can see
 
 ## Public endpoints
 
-Only [`health`](/api/health), [`healthz`](/api/healthz), the landing page, and static assets answer anyone, with no token.
+Only [`health`](/api/health), [`healthz`](/api/healthz), [`open_demo`](/api/accounts#open-demo), the landing page, and static assets answer anyone, with no token.
 
 ## Private endpoints
 
