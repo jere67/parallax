@@ -14,7 +14,7 @@ Why not run it from the request, or through the scheduler's dynamic jobs:
 - A request runs on the caller's own root, which can read the team portfolio but not attach a
   run to it. Static jobs run on the super root, which owns everything the 7:30 job writes.
 - Dynamic jobs (`@schedule(trigger=ScheduleTrigger.DYNAMIC)`) stop firing after the dev
-  server's hot reload, which a run's own writes to storage/ set off: in Jac 0.37.12 the
+  server's hot reload, which a run's writes to source files would set off: in Jac 0.37.12 the
   reload replaces the job scheduler with one that is never started. Static jobs keep firing.
   The scheduler's `/jobs` API would also let any signed-in user schedule them.
 

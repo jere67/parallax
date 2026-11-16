@@ -4,7 +4,7 @@ The graph loads one node per query, so six thousand rows there would take second
 would mix a rebuildable market cache with the team's record. Plain JSON files suit this better.
 Each domain is one file, replaced atomically when it changes, so a crash leaves the last good
 version; a company's detailed record is its own file, read when its page opens. `.jac/` is also the
-one folder the dev server's hot reload does not watch, unlike `storage/`.
+one folder the dev server's hot reload does not watch, which is why the raw cache lives there too.
 """
 import json;
 import logging;

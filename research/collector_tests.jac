@@ -10,22 +10,7 @@ import from datetime { timedelta }
 import from pathlib { Path }
 import from jaclang.data.storage.storage { Storage }
 import from models.research { Stamped }
-import from research.collector {
-    BudgetExceeded,
-    CacheEntry,
-    RECORD_DIR_ENV,
-    RawCache,
-    RunBudget,
-    SourceClient,
-    SourceError,
-    TokenBucket,
-    UnexpectedResponse,
-    bucket_for,
-    parse_utc,
-    run_budget,
-    split_fresh,
-    utc_now
-}
+import from research.collector { bucket_for, BudgetExceeded, CacheEntry, parse_utc, raw_cache_dir, RawCache, RECORD_DIR_ENV, run_budget, RunBudget, SourceClient, SourceError, split_fresh, TokenBucket, UnexpectedResponse, utc_now }
 import from research.sources { Dataset, SOURCES, Source }
 import from tests.fakes.source_server { FakeSource }
 
@@ -368,5 +353,19 @@ test "binary decoding records original bytes and replays through the same decode
     } finally {
         replay.stop();
         os.environ[URL_ENV] = FAKE_URL;
+    }
+}
+
+test "the raw cache lives under .jac/, which Jac leaves out of the app's sources" {
+    saved = os.environ.pop("RAW_CACHE_DIR", None);
+    try {
+        assert raw_cache_dir() == ".jac/storage";
+        os.environ["RAW_CACHE_DIR"] = "/tmp/elsewhere";
+        assert raw_cache_dir() == "/tmp/elsewhere";
+    } finally {
+        os.environ.pop("RAW_CACHE_DIR", None);
+        if saved is not None {
+            os.environ["RAW_CACHE_DIR"] = saved;
+        }
     }
 }

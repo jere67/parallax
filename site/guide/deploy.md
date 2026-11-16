@@ -19,7 +19,7 @@ This page takes a deploy from nothing to a checked, public URL.
 | The graph: accounts, runs, votes, decisions, orders, evaluations | A Postgres of the app's own on a persistent volume (`database_mode = "provision"`) | Yes |
 | Server keys and passwords | JacHammer project environment variables, passed to the pod as a Kubernetes Secret | Yes |
 | Each user's own keys | The graph, sealed under `PARALLAX_KEYS_SECRET` | Yes |
-| The raw provider cache (`storage/`) and the market pages' files (`.jac/market/`) | The pod's disk | No. Both rebuild: the next provider calls refill the cache, and the market refresh jobs refill the market pages. |
+| The raw provider cache (`.jac/storage/`) and the market pages' files (`.jac/market/`) | The pod's disk | No. Both rebuild: the next provider calls refill the cache, and the market refresh jobs refill the market pages. |
 
 ::: warning Confirm on the first deploy
 JacHammer's documentation does not describe its database.
