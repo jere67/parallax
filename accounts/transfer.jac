@@ -34,7 +34,7 @@ import from jaclang.data.store { ConnInfo, PgStore, TxnIsolation }
 import accounts.sharing as sharing;
 import accounts.store as accounts_store;
 import dashboard.api as dashboard_api;
-import from accounts.store { caller_is_admin }
+import from accounts.store { DEMO_PORTFOLIO, caller_is_admin }
 import from dashboard.cache { VIEWS }
 import from models.accounts { TransferStatus }
 import from models.graph { Portfolio }
@@ -195,11 +195,20 @@ def rows_of(doc: dict[str, object], table: str, width: int) -> list[list[object]
     return found;
 }
 
-"""The rows of `doc` as this server writes them, with its module names under `prefix`."""
+"""A stored portfolio's name, or "" when its props do not hold one."""
+def portfolio_name(stored: object) -> str {
+    archetype = stored.get("archetype") if isinstance(stored, dict) else None;
+    return str(archetype.get("name", "")) if isinstance(archetype, dict) else "";
+}
+
+"""The rows of `doc` as this server writes them, with its module names under `prefix`. Its run
+count leaves out the demo account's invented history, as `run_count` does."""
 def prepare(doc: dict[str, object], prefix: str) -> Moved {
     anchors: list[dict[str, object]] = [];
     unknown: set[str] = set();
-    runs = 0;
+    runs: set[str] = set();
+    demo_portfolios: set[str] = set();
+    ran: list[tuple[str, str]] = [];
     roots: set[str] = set();
     for row in rows_of(doc, "anchors", len(ANCHOR_FIELDS)) {
         anchor = dict(zip(ANCHOR_FIELDS, row));
@@ -214,7 +223,13 @@ def prepare(doc: dict[str, object], prefix: str) -> Moved {
         }
         anchor["props"] = rename_modules(anchor["props"], prefix, unknown);
         if anchor["arch_type"] == "Run" {
-            runs += 1;
+            runs.add(str(anchor["id"]));
+        }
+        if anchor["arch_type"] == "Portfolio" and portfolio_name(anchor["props"]) == DEMO_PORTFOLIO {
+            demo_portfolios.add(str(anchor["id"]));
+        }
+        if anchor["arch_type"] == "Ran" {
+            ran.append((str(anchor["src"]), str(anchor["dst"])));
         }
         if anchor["arch_type"] == "Root" {
             roots.add(str(anchor["id"]));
@@ -237,7 +252,7 @@ def prepare(doc: dict[str, object], prefix: str) -> Moved {
         users=users,
         lookups=[{"value_normalized": str(r[0]), "user_id": str(r[1])} for r in rows_of(doc, "identity_lookups", 2)],
         sso=[{"provider": str(r[0]), "external_id": str(r[1]), "user_id": str(r[2])} for r in rows_of(doc, "sso_lookups", 3)],
-        runs=runs,
+        runs=len(runs - {run for (portfolio, run) in ran if portfolio in demo_portfolios}),
         exported_at=str(doc.get("exported_at", ""))
     );
 }
@@ -405,6 +420,7 @@ def forget_cached {
     }
     VIEWS.clear();
     accounts_store._ROLES.clear();
+    accounts_store.forget_demo_root();
     sharing._SEEN.clear();
     dashboard_api._SPECIALISTS_BUILT_FROM.clear();
 }
@@ -437,9 +453,24 @@ def is_stale(found: dict[str, object]) -> bool {
     return found.get("state") == "running" and time.time() - heard > STALE_S;
 }
 
-"""The number of runs on this server. A server that has run keeps its own records."""
+"""The number of runs on this server. A server that has run keeps its own records. The demo
+account's invented history (accounts/demo.jac) is left out: every server seeds it at boot, and a move
+replaces it, after which the server seeds it again."""
 def run_count(store: PgStore) -> int {
-    return int(store.rows("SELECT count(*) FROM anchors WHERE arch_type = 'Run'", {})[0][0]);
+    return int(store.rows(
+        """
+        SELECT count(*) FROM anchors run
+        WHERE run.arch_type = 'Run'
+          AND NOT EXISTS (
+            SELECT 1 FROM anchors ran
+            JOIN anchors portfolio ON portfolio.id = ran.src
+            WHERE ran.arch_type = 'Ran' AND ran.dst = run.id
+              AND portfolio.arch_type = 'Portfolio'
+              AND portfolio.props->'archetype'->>'name' = :demo
+          )
+        """,
+        {"demo": DEMO_PORTFOLIO}
+    )[0][0]);
 }
 
 """Do the move: hold the jobs, let one that just fired finish, write, and let them go."""

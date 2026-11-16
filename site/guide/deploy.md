@@ -144,6 +144,7 @@ To keep one record instead, bring the laptop's records to the host before its fi
 A new server starts empty.
 It can take another server's whole record instead: every run, vote, decision, order, mark, evaluation, and agent, and the accounts that sign in to them.
 Do it before the new server's first morning run, since a server that has run keeps its own records and refuses a move.
+The demo account's invented history, which every server writes at boot, does not count as a run: the move replaces it, and the server writes it again within a couple of minutes.
 
 1. Stop the old server for good, so the two do not trade the same Alpaca account.
 2. In a clone of this repository, export the old server's database:
