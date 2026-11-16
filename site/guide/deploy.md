@@ -27,6 +27,26 @@ The settings above follow `jac scale deploy`, which provisions a Postgres on a p
 Step 6 below checks that the volume exists and that data survives a redeploy.
 :::
 
+## How a host starts the app
+
+A host runs a prebuilt release, `release/parallax.jab`, not the source.
+JacHammer starts an app by compiling it, and gives up when nothing answers on port 8000 within about five minutes.
+Its machines compile about five times slower than a laptop, so compiling the whole app, about 90 seconds on a laptop, no longer fits.
+So `jac.toml`'s `[hosted]` table points the host's start script at `launch.jac`, which compiles in a moment and hands the process to the release.
+The release is sealed, so it serves within seconds, with no compiling at all.
+Everything else (`jac run`, `jac build`, the tests, CI) reads `[project]` and runs the source as before.
+
+Rebuild the release whenever you change the app and want hosts to run the change, then commit it with the code it was built from:
+
+```sh
+scripts/build-release.sh
+git add release && git commit -m "chore(release): rebuild the hosted release"
+```
+
+The script builds from the committed `HEAD` in a fresh export, since `jac build` would also pack ignored files such as `.env`.
+It takes about ten minutes on a laptop, and `release/SOURCE` records the commit it was built from.
+A sealed build sends the models no `sem` descriptions, so what a model must know belongs in docstrings and enums.
+
 ## Before you start
 
 **A plan.** A permanent deploy needs the Builder plan ($15 a month), which allows one.
