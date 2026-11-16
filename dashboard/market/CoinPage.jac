@@ -2,7 +2,7 @@
 agent last decided about it, and the research notes its desks wrote on it. A coin has no filings or
 analysts, so those sections a stock's page has are left out."""
 import from "@jac/runtime" { Link, useParams }
-import from "lucide-react" { ChevronRight, Star }
+import from "lucide-react" { ChevronRight, FileText, Star }
 import from react { useEffect }
 import from dashboard.market.PriceChart { PriceChart }
 import from dashboard.market.columns { show_coin }
@@ -61,6 +61,11 @@ def CoinHeader(coin: CoinData, starred: bool, star: Callable[[], None]) -> JsxEl
             </div>
             <p className="num mt-1 text-[12px] text-muted">{("Latest trade " + stamp_et(at) if "T" in at else "Last close") + " · change since midnight UTC"}</p>
         </div>
+        <div className="flex flex-col gap-2 lg:items-end">
+        <Link to={"/app/reports?ticker=" + encodeURIComponent(coin.symbol)} className="press inline-flex h-8 items-center gap-1.5 self-start rounded-md border border-line bg-panel px-3 text-[12px] font-medium text-muted hover:bg-hover hover:text-text lg:self-end">
+            <FileText size={13} strokeWidth={1.75} aria-hidden="true"/>
+            Request a report
+        </Link>
         {if coin.committee.run_day or coin.committee.held {
             <div className="flex flex-col gap-1.5 rounded-md border border-line bg-panel px-4 py-3 lg:min-w-64">
                 <Overline>The committee</Overline>
@@ -77,6 +82,7 @@ def CoinHeader(coin: CoinData, starred: bool, star: Callable[[], None]) -> JsxEl
                 </div>
             </div>
         }}
+        </div>
     </header>
 }
 

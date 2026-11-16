@@ -21,7 +21,7 @@ import from models.users { ReportStatus }
 import from research.alpaca { MarketDay, market_calendar }
 import from research.collector { RunBudget, parse_utc, run_budget, utc_now }
 import from research.credentials { ALPACA_KEY, Credentials, enter_credentials, leave_credentials }
-import from research.crypto { is_crypto }
+import from research.crypto { crypto_assets, is_crypto }
 import from research.wikipedia { constituents }
 import from run.guard { NEW_YORK, RunLimits, RunSession, record_run, stored_requests, team_portfolio }
 import from run.research { collect_pass }
@@ -63,7 +63,7 @@ def analyze_report(ticker: str, day: str, allowance: int, policy: Policy = Polic
         # Deterministic phase ordering reuses the same safe research/panel methods.
         s.actions.append("Report Orchestrator unavailable; completing in fixed order.");
     }
-    s.dispatch_research([ticker], ["market", "fundamentals", "news"]);
+    s.dispatch_research([ticker], ["market", "news"] if is_crypto(ticker) else ["market", "fundamentals", "news"]);
     s.convene_panel([ticker]);
     if ticker not in s.analyses {
         raise RuntimeError("The analysis could not finish. Please try on the next trading day.");
@@ -141,6 +141,16 @@ def reuse_daily(team: Portfolio, day: str) {
     }
 }
 
+"""The pairs a reader may ask a report on: every one Alpaca trades against the dollar, or none when
+its list cannot be read."""
+def report_coins(budget: RunBudget) -> list[str] {
+    try {
+        return sorted(symbol for (symbol, asset) in crypto_assets(budget).items() if asset.tradable);
+    } except Exception {
+        return [];
+    }
+}
+
 """Refresh only metadata here; constituents and calendar are cached by SourceClient."""
 def refresh_catalog(team: Portfolio) -> ReportCatalog {
     c = catalog();
@@ -148,12 +158,11 @@ def refresh_catalog(team: Portfolio) -> ReportCatalog {
     now = utc_now();
     c.generation_enabled = False;
     if team.demo {
-        # Reports are on stocks, and a weekend run covers coins alone, so the catalog's day is the
-        # newest run that covered a stock.
-        stocks = [cov.ticker for r in [team ->:Ran:->[?:Run]] for cov in [r ->:Covers:->[?:Coverage]] if not is_crypto(cov.ticker)];
+        # A weekend run covers coins alone, so the catalog's day is the newest run that covered a
+        # stock, and its reports are what that day's run covered: stocks and coins.
         days = [r.run_date for r in [team ->:Ran:->[?:Run]] if any(not is_crypto(cov.ticker) for cov in [r ->:Covers:->[?:Coverage]])];
         c.trading_date = max(days) if days else "";
-        c.symbols = sorted(set(stocks));
+        c.symbols = sorted(set(cov.ticker for r in [team ->:Ran:->[?:Run]] if r.run_date == c.trading_date for cov in [r ->:Covers:->[?:Coverage]]));
         c.demo = True;
         c.refreshed_at = now.isoformat();
         return c;
@@ -164,7 +173,7 @@ def refresh_catalog(team: Portfolio) -> ReportCatalog {
         today = now.astimezone(NEW_YORK).date();
         sessions = read_sessions((today - timedelta(days=10)).isoformat(), today.isoformat(), budget);
         if not sessions { return c; }
-        c.symbols = sorted(m.symbol for m in members);
+        c.symbols = sorted(m.symbol for m in members) + report_coins(budget);
         c.trading_date = max(d.day for d in sessions);
         c.refreshed_at = now.isoformat();
         provider_left = provider_requests_left();
