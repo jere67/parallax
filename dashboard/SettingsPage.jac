@@ -760,7 +760,7 @@ def:pub SettingsPage -> JsxElement {
         {if not settings.managed { <TradingPanel settings={settings} done={update}/> }}
         {if settings.assets { <AssetsPanel settings={settings} done={update}/> }}
         {if settings.managed and not settings.demo { <MovePanel moved={leave}/> }}
-        {if settings.managed and not settings.demo { <DownloadPanel/> }}
+        {if settings.managed { <DownloadPanel/> }}
         <AccountPanel leave={leave}/>
     </div>
 }

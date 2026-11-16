@@ -10,7 +10,7 @@ import from run.manual { manual_run_job, start_morning_run }
 import from run.agents { agent_run_slot_1, agent_run_slot_2, agent_run_slot_3, agents_trading_job }
 import from accounts.api { get_agent_settings, remove_agent_keys, save_agent_keys, set_asset_classes, set_paper_trading, start_my_run }
 import from accounts.demo { demo_account_job, demo_history_job, open_demo }
-import from accounts.transfer { get_transfer_status, send_transfer_part, start_transfer }
+import from accounts.transfer { get_export_part, get_transfer_status, send_transfer_part, start_export, start_transfer }
 import from dashboard.demo { demo_job }
 import from dashboard.api { get_decision_trail, get_evaluation, get_performance, get_portfolio, get_run, get_specialists, list_runs, refresh_job }
 import from dashboard.news { get_news_feed, get_news_story, news_refresh_job }
