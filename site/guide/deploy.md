@@ -142,18 +142,22 @@ To keep one record instead, bring the laptop's records to the host before its fi
 ## Bring your records along
 
 A new server starts empty.
+This is also how a hosted server keeps its records when a redeploy lands on a new one: a JacHammer preview whose redeploy fails with "This project's Jac version changed" can only be deployed again as a new sandbox, at a new address, with an empty database.
+So download the records before every redeploy.
 It can take another server's whole record instead: every run, vote, decision, order, mark, evaluation, and agent, and the accounts that sign in to them.
 Do it before the new server's first morning run, since a server that has run keeps its own records and refuses a move.
 The demo account's invented history, which every server writes at boot, does not count as a run: the move replaces it, and the server writes it again within a couple of minutes.
 
 1. Stop the old server for good, so the two do not trade the same Alpaca account.
-2. In a clone of this repository, export the old server's database:
+2. Export the old server's records.
+   A hosted server: sign in to it as an admin, open Settings, and choose **Download records**.
+   A server on a laptop: in a clone of this repository, export its folder's database.
 
    ```sh
    scripts/export-data.sh ~/path/to/old-server-folder
    ```
 
-   It reads the folder's database in one snapshot, changes nothing, and writes `parallax-data-<date>.json.gz`.
+   Both read the database in one snapshot, change nothing, and give you `parallax-data-<date>.json.gz`, the same file.
    The file holds password hashes and sealed keys: keep it private, and delete it once the move is done.
 3. Sign in to the new server as an admin, open Settings, choose the file under "Bring records from another server", and confirm.
    The move takes a minute or two.

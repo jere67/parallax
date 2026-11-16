@@ -12,14 +12,18 @@ import jaclang.runtime.runtime as jac_runtime;
 import from jaclang.data.store { PgStore }
 import from accounts.store { DEMO_PORTFOLIO }
 import from accounts.transfer {
+    EXPORT_SQL,
     JOBS,
     LEASE_OWNER,
     SUPER_ROOT,
     TransferError,
     carry_out,
     decode,
+    export_bytes,
+    export_part,
     forget_cached,
     hold_jobs,
+    keep_export,
     keep_part,
     part_problem,
     PART_CHARS,
@@ -85,7 +89,7 @@ def refusal(work: Callable[[], object]) -> str {
 
 def own_store -> PgStore {
     current: any = Jac.get_context().mem.store;
-    return PgStore(conninfo=current.conninfo);
+    return PgStore(conninfo=current.conninfo, ensure_cb=current.ensure_cb);
 }
 
 test "an app module moves under this server's prefix, and the runtime's stays" {
@@ -275,6 +279,36 @@ test "an upload arrives in parts, is joined in order once, and refuses a missing
         assert "larger than the server takes" in part_problem("upload-one", 0, "x" * (PART_CHARS + 1));
         assert "no usable name" in part_problem("../x", 0, "x");
         assert "larger than a move" in part_problem("upload-one", 10 ** 6, "x");
+    } finally {
+        store.close();
+    }
+}
+
+test "the server's own export is the query scripts/export-data.sh runs, word for word" {
+    assert EXPORT_SQL.strip() == (PROJECT_ROOT / "scripts" / "export-data.sql").read_text().strip();
+}
+
+test "a server's download is a move file another server takes whole" {
+    store = own_store();
+    try {
+        prefix = module_prefix();
+        carry_out(store.conninfo, prepare(decode(upload(export_doc())), prefix), "2026-11-15T20:00:00+00:00", settle_s=0.0, wait_s=5.0);
+        assert read_state(store)["state"] == "done";
+        data = export_bytes(store);
+        assert data[:2] == b"\x1f\x8b";
+        doc = decode(base64.b64encode(data).decode());
+        moved = prepare(doc, prefix);
+        assert moved.runs == 1 and len(moved.users) == 2, (moved.runs, len(moved.users));
+        assert [a["id"] for a in moved.anchors] == [SUPER_ROOT, PORTFOLIO_ID, RUN_ID, RAN_ID];
+        assert sorted(l["value_normalized"] for l in moved.lookups) == ["admin", "user@example.com"];
+
+        # It goes to the page in parts small enough for one response each, kept by name.
+        (copy, parts) = keep_export(store, b"x" * (PART_CHARS * 2));
+        assert parts == 3;
+        joined = "".join(str(export_part(store, copy, i)) for i in range(parts));
+        assert base64.b64decode(joined) == b"x" * (PART_CHARS * 2);
+        assert export_part(store, copy, parts) is None;
+        assert export_part(store, "../nope", 0) is None;
     } finally {
         store.close();
     }
