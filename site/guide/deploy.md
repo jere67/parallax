@@ -69,7 +69,7 @@ A new deploy starts with an empty graph, and its team portfolio stays out of aut
 To move the team's trading to the host instead, stop the laptop server for good and give the host the team's Alpaca keys.
 When the host's forward test starts, it takes over the account: it cancels the laptop's open orders and puts the stocks the account holds on its own record with their stops (see [The forward test](/guide/forward-test#what-happens-at-the-start)).
 The laptop's history stays on the laptop, and the host's evaluation starts from its own start date.
-To keep one record instead, bring the laptop's records to the host before its first morning (see [Bring your records along](#bring-your-records-along)).
+To keep one record instead, bring the laptop's records to the host, best before its first morning (see [Bring your records along](#bring-your-records-along)).
 
 ## Deploy
 
@@ -165,7 +165,9 @@ A new server starts empty.
 This is also how a hosted server keeps its records when a redeploy lands on a new one: a JacHammer preview whose redeploy fails with "This project's Jac version changed" can only be deployed again as a new sandbox, at a new address, with an empty database.
 So download the records before every redeploy.
 It can take another server's whole record instead: every run, vote, decision, order, mark, evaluation, and agent, and the accounts that sign in to them.
-Do it before the new server's first morning run, since a server that has run keeps its own records and refuses a move.
+Do it before the new server's first morning run if you can.
+A server that has run takes a move only when you confirm that its own runs are replaced, and they are not kept, so download its records first if you want a copy.
+No move starts while the team's run is working.
 The demo account's invented history, which every server writes at boot, does not count as a run: the move replaces it, and the server writes it again within a couple of minutes.
 
 1. Stop the old server for good, so the two do not trade the same Alpaca account.

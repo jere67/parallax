@@ -1,15 +1,17 @@
 """Moving a server's records: an export is read whole or refused, its class modules are renamed to
 this server's, and the move replaces the graph and the accounts in one go while the scheduled jobs
-are held off, only on a server that has not run."""
+are held off, and replaces only as many of this server's own runs as the admin confirmed."""
 import base64;
 import gzip;
 import json;
 import re;
+import from datetime { datetime, timezone }
 import from pathlib { Path }
 import from uuid { UUID }
 import from jaclang { JacRuntime as Jac }
 import jaclang.runtime.runtime as jac_runtime;
 import from jaclang.data.store { PgStore }
+import run.attempts as attempts;
 import from accounts.store { DEMO_PORTFOLIO }
 import from accounts.transfer {
     EXPORT_SQL,
@@ -182,11 +184,12 @@ test "a move replaces the graph and the accounts, once, and lets the jobs go" {
         assert store.rows("SELECT count(*) FROM identity_lookups", {})[0][0] == 2;
         assert store.rows("SELECT count(*) FROM kv_state WHERE key LIKE 'lease:%' AND value = :o", {"o": LEASE_OWNER})[0][0] == 0;
         status = status_of(store, True);
-        assert status.runs == 1 and not status.ready and status.state == "done";
+        assert status.runs == 1 and status.ready and status.state == "done";
 
+        # A move nobody confirmed would replace this server's run leaves everything as it is.
         carry_out(store.conninfo, moved, "2026-11-14T17:05:00+00:00", settle_s=0.0, wait_s=5.0);
         again = read_state(store);
-        assert again["state"] == "failed" and "runs of its own" in again["message"], again;
+        assert again["state"] == "failed" and "1 runs of its own" in again["message"], again;
         assert store.rows("SELECT count(*) FROM anchors", {})[0][0] == 4;
     } finally {
         store.close();
@@ -216,9 +219,9 @@ test "the demo account's history neither blocks a move nor counts as moved" {
         carry_out(store.conninfo, moved, "2026-11-15T21:00:00+00:00", settle_s=0.0, wait_s=5.0);
         assert read_state(store)["state"] == "done", read_state(store);
         assert "Moved 1 runs, 7 records" in read_state(store)["message"], read_state(store);
-        # The team's run is this server's own, so it keeps its records.
+        # The team's run is this server's own, which a move would replace.
         status = status_of(store, True);
-        assert status.runs == 1 and not status.ready, status;
+        assert status.runs == 1 and status.ready, status;
 
         # A server whose only runs are the demo account's, as every server is after its first boot.
         store.rows("DELETE FROM anchors WHERE id IN (CAST(:run AS uuid), CAST(:ran AS uuid))", {"run": RUN_ID, "ran": RAN_ID});
@@ -230,6 +233,38 @@ test "the demo account's history neither blocks a move nor counts as moved" {
         assert ids == [SUPER_ROOT, PORTFOLIO_ID, RUN_ID, RAN_ID], ids;
     } finally {
         store.close();
+    }
+}
+
+test "a move the admin confirmed replaces this server's own runs, and forgets the runs it noted" {
+    store = own_store();
+    try {
+        store.rows("CREATE TABLE IF NOT EXISTS identity_users (user_id text PRIMARY KEY, doc jsonb NOT NULL)", {});
+        store.rows("CREATE TABLE IF NOT EXISTS identity_lookups (value_normalized text PRIMARY KEY, user_id text NOT NULL)", {});
+        prefix = module_prefix();
+        carry_out(store.conninfo, prepare(decode(upload(export_doc())), prefix), "2026-11-16T16:00:00+00:00", settle_s=0.0, wait_s=5.0);
+        assert status_of(store, True).runs == 1;
+        # The run this process worked on today, in the graph the move replaces.
+        attempts.begin("2026-11-16", datetime(2026, 11, 16, 14, 4, tzinfo=timezone.utc));
+        attempts.finish("2026-11-16", datetime(2026, 11, 16, 14, 40, tzinfo=timezone.utc), "fallback", "");
+        carry_out(store.conninfo, prepare(decode(upload(export_doc())), prefix), "2026-11-16T16:05:00+00:00", settle_s=0.0, wait_s=5.0, replacing=1);
+        assert read_state(store)["state"] == "done", read_state(store);
+        assert status_of(store, True).runs == 1;
+        assert attempts.attempt_for("2026-11-16") is None;
+    } finally {
+        attempts.forget_all();
+        store.close();
+    }
+}
+
+test "a move waits while the team's run is working" {
+    attempts.begin("2026-11-16", datetime(2026, 11, 16, 14, 4, tzinfo=timezone.utc));
+    try {
+        assert attempts.any_working();
+        attempts.finish("2026-11-16", datetime(2026, 11, 16, 14, 40, tzinfo=timezone.utc), "done", "");
+        assert not attempts.any_working();
+    } finally {
+        attempts.forget_all();
     }
 }
 
