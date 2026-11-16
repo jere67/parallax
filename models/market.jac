@@ -175,3 +175,63 @@ obj CoinView {
         as_of: str = "",
         stats_day: str = "";
 }
+
+"""One side of a strike in an option chain: the contract and its latest quote, trade, day's volume,
+open interest, implied volatility, and delta, and how many contracts the reader's agent holds."""
+obj OptionSideView {
+    has symbol: str;
+    has bid: float | None = None,
+        ask: float | None = None,
+        last: float | None = None,
+        volume: float | None = None,
+        open_interest: float | None = None,
+        iv: float | None = None,
+        delta: float | None = None,
+        held: float = 0.0;
+}
+
+obj OptionStrikeView {
+    has strike: float;
+    has call: OptionSideView | None = None,
+        put: OptionSideView | None = None;
+}
+
+"""A stock's option chain for one expiry (market/api.jac `get_option_chain`). `expiries` are every
+listed expiry within the chain's window, `price` the stock's price the strikes are around, and
+`busy` asks the page to try again shortly."""
+obj OptionChainView {
+    has symbol: str;
+    has found: bool = False,
+        price: float | None = None,
+        expiries: list[str] = [],
+        expiry: str = "",
+        strikes: list[OptionStrikeView] = [],
+        demo: bool = False,
+        busy: bool = False,
+        message: str = "";
+}
+
+"""One contract the reader's agent holds, held, or ordered, for the screener's Options view."""
+obj OptionHoldingView {
+    has contract: str,
+        label: str,
+        underlying: str,
+        kind: str,
+        strike: float,
+        expiry: str,
+        status: str;
+    has days_left: int | None = None,
+        qty: float = 0.0,
+        entry_price: float | None = None,
+        last: float | None = None,
+        value: float | None = None,
+        pnl: float | None = None,
+        pnl_pct: float | None = None,
+        decision_day: str = "",
+        at: str = "";
+}
+
+obj OptionBookView {
+    has rows: list[OptionHoldingView] = [],
+        demo: bool = False;
+}

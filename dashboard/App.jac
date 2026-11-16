@@ -18,6 +18,7 @@ import from dashboard.SettingsPage { SettingsPage }
 import from dashboard.SpecialistsPage { SpecialistsPage }
 import from dashboard.market.CoinPage { CoinPage }
 import from dashboard.market.CoinScreenerPage { CoinScreenerPage }
+import from dashboard.market.OptionsBookPage { OptionsBookPage }
 import from dashboard.market.ScreenerPage { ScreenerPage }
 import from dashboard.market.StockPage { StockPage }
 import from dashboard.ui.pwa { register_worker }
@@ -59,6 +60,7 @@ def:pub App -> JsxElement {
                     <Route index={True} element={<PortfolioPage/>}/>
                     <Route path="screener" element={<ScreenerPage/>}/>
                     <Route path="screener/crypto" element={<CoinScreenerPage/>}/>
+                    <Route path="screener/options" element={<OptionsBookPage/>}/>
                     <Route path="coins/:symbol" element={<CoinPage/>}/>
                     <Route path="stocks/:symbol" element={<StockPage/>}/>
                     <Route path="stocks/:symbol/:tab" element={<StockPage/>}/>

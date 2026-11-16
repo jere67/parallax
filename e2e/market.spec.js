@@ -248,3 +248,38 @@ test("crypto: an unknown pair says so and leads back", async ({ page }) => {
   await page.getByRole("link", { name: "Back to the crypto screener" }).click();
   await expect(page).toHaveURL(/\/app\/screener\/crypto$/);
 });
+
+// --- Options ---------------------------------------------------------------------------------
+
+test("options: a stock's chain shows calls and puts by strike, with the price between, by expiry", async ({ page }) => {
+  await page.goto("/app/stocks/AAPL");
+  await page.getByRole("tab", { name: "Options" }).click();
+  await expect(page).toHaveURL(/\/app\/stocks\/AAPL\/options$/);
+  const chain = page.getByRole("table", { name: /^Option chain for AAPL/ });
+  await expect(chain).toBeVisible();
+  await expect(chain.getByRole("columnheader", { name: "Calls" })).toBeVisible();
+  await expect(chain.getByRole("columnheader", { name: "Puts" })).toBeVisible();
+  await expect(chain.getByText(/^Stock \$/)).toBeVisible();
+  const expiry = page.getByLabel("Expiry");
+  const options = await expiry.locator("option").allInnerTexts();
+  expect(options.length).toBe(4);
+  const first = await chain.getAttribute("aria-label");
+  await expiry.selectOption({ index: 2 });
+  await expect(chain).not.toHaveAttribute("aria-label", first);
+});
+
+test("options: the screener's Options view lists the agent's contracts and links to their chains", async ({ page }) => {
+  await page.goto("/app/screener");
+  await page.getByRole("navigation", { name: "Asset class" }).getByRole("link", { name: "Options" }).click();
+  await expect(page).toHaveURL(/\/app\/screener\/options$/);
+  const book = page.getByRole("region", { name: "Your agent's contracts" });
+  await expect(book).toBeVisible();
+  const first = book.locator("tbody tr").first();
+  await expect(first).toContainText(/ (call|put), /);
+  await fitsWidth(page);
+  const link = first.getByRole("link").first();
+  const href = await link.getAttribute("href");
+  expect(href).toMatch(/^\/app\/stocks\/[A-Z.]+\/options$/);
+  await link.click();
+  await expect(page.getByRole("table", { name: /^Option chain for / })).toBeVisible();
+});

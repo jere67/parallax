@@ -5,7 +5,7 @@ by reloading the page, which would cancel a log-in already under way."""
 import from "@jac/runtime" { jacIsLoggedIn }
 import from dashboard.ui.retry { call_function }
 import from models.accounts { AgentReply, AgentSettings, DemoSignIn, ExportPart, ExportReady, KeysReply, TransferStatus }
-import from models.market { CoinView, HistoryView, ScreenerView, StockAboutView, StockView }
+import from models.market { CoinView, HistoryView, OptionBookView, OptionChainView, ScreenerView, StockAboutView, StockView }
 import from models.evaluation { Evaluation }
 import from models.views { NewsFeed, NewsStory, PerformanceView, PortfolioView, RunSummary, RunView, SpecialistSummaryView, TrailView }
 
@@ -131,6 +131,14 @@ async def:pub screen_coins(
     limit: int = 100
 ) -> ScreenerView | None {
     return await call("market/api.jac", "screen_coins", {"filters": filters, "search": search, "symbols": symbols, "sort": sort, "descending": descending, "columns": columns, "offset": offset, "limit": limit});
+}
+
+async def:pub get_option_chain(symbol: str, expiry: str = "") -> OptionChainView | None {
+    return await call("market/api.jac", "get_option_chain", {"symbol": symbol, "expiry": expiry});
+}
+
+async def:pub list_option_contracts -> OptionBookView | None {
+    return await call("market/api.jac", "list_option_contracts");
 }
 
 async def:pub get_coin(symbol: str) -> CoinView | None {

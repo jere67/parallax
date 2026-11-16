@@ -10,6 +10,7 @@ import re;
 import threading;
 import from datetime { date, datetime, time as day_time, timezone }
 import from dashboard.api { get_portfolio, my_latest_coin_run, my_latest_stock_run }
+import from market.chain { ChainQuote, chain_quotes, chain_rows, demo_chain, expiries_of, listed_contracts }
 import from market.coins { coin_row, coin_rows }
 import from market.companies { CompanyRecord }
 import from market.demo { demo_history, demo_intraday, demo_state }
@@ -23,6 +24,11 @@ import from market.state { MarketState, STATE }
 import from models.market {
     BarView,
     CoinView,
+    OptionBookView,
+    OptionChainView,
+    OptionHoldingView,
+    OptionSideView,
+    OptionStrikeView,
     CommitteeView,
     CoverageView,
     FilingView,
@@ -41,6 +47,7 @@ import from models.market {
 }
 import from research.alpaca { Bar, MARKET_TZ }
 import from research.collector { MissingKey, SourceError }
+import from research.options { describe_option, parse_occ }
 
 glob LOG: logging.Logger = logging.getLogger("trading_agent.market");
 glob SYMBOL: re.Pattern[str] = re.compile(r"[A-Z][A-Z0-9.]{0,9}");
@@ -489,4 +496,129 @@ def:priv get_coin(symbol: str) -> CoinView {
         as_of=state.meta.get("coin_prices_at", "") or state.meta.get("quotes_at", ""),
         stats_day=state.meta.get("coin_stats_day", "")
     );
+}
+
+# --- Options -------------------------------------------------------------------------------
+
+def side_view(q: ChainQuote | None, held: dict[str, float]) -> OptionSideView | None {
+    if q is None {
+        return None;
+    }
+    return OptionSideView(symbol=q.symbol, bid=q.bid, ask=q.ask, last=q.last, volume=q.volume, open_interest=q.open_interest, iv=q.iv, delta=q.delta, held=held.get(q.symbol, 0.0));
+}
+
+"""The contracts the reader's agent holds now, by OCC symbol."""
+def held_contracts -> dict[str, float] {
+    try {
+        return {p.ticker: p.qty for p in get_portfolio().positions if parse_occ(p.ticker) is not None};
+    } except Exception as e {
+        LOG.warning("market: no option holdings: %r", e);
+    }
+    return {};
+}
+
+"""A stock's option chain for `expiry`, or its soonest listed expiry when `expiry` is not one, with
+the reader's agent's contracts marked. A stock the screener does not cover is `found=False`."""
+def:priv get_option_chain(symbol: str, expiry: str = "") -> OptionChainView {
+    wanted = as_text(symbol).strip().upper();
+    state = market_state();
+    quote = state.quotes.get(wanted);
+    if wanted not in state.listings or not SYMBOL.fullmatch(wanted) {
+        return OptionChainView(symbol=wanted[:12]);
+    }
+    if quote is None or not quote.price {
+        return OptionChainView(symbol=wanted, found=True, demo=state.demo, message="There is no price for this stock yet, so its chain cannot be centered.");
+    }
+    today = today_et();
+    try {
+        if state.demo {
+            (contracts, quotes) = demo_chain(wanted, quote.price, today);
+        } else {
+            contracts = listed_contracts(wanted, quote.price, today);
+            quotes = {};
+        }
+        expiries = expiries_of(contracts);
+        if not expiries {
+            return OptionChainView(symbol=wanted, found=True, price=quote.price, demo=state.demo, message="No listed options expire in the next four months.");
+        }
+        chosen = as_text(expiry) if as_text(expiry) in expiries else expiries[0];
+        if not state.demo {
+            quotes = chain_quotes([c.symbol for c in contracts if c.expiry == chosen]);
+        }
+    } except Busy {
+        return OptionChainView(symbol=wanted, found=True, price=quote.price, demo=state.demo, busy=True);
+    } except (MissingKey, SourceError) as e {
+        LOG.warning("market: no option chain for %s: %s", wanted, e);
+        return OptionChainView(symbol=wanted, found=True, price=quote.price, demo=state.demo, message="The option chain could not be read just now.");
+    }
+    held = held_contracts();
+    rows = chain_rows(contracts, chosen, quotes);
+    return OptionChainView(
+        symbol=wanted,
+        found=True,
+        price=quote.price,
+        expiries=expiries,
+        expiry=chosen,
+        strikes=[OptionStrikeView(strike=r.strike, call=side_view(r.call, held), put=side_view(r.put, held)) for r in rows],
+        demo=state.demo
+    );
+}
+
+"""Every option contract the reader's agent holds, has held, or has ordered, newest first: open
+positions, then closed ones, then orders for contracts it never held."""
+def:priv list_option_contracts -> OptionBookView {
+    view = get_portfolio();
+    today = today_et();
+    rows: list[OptionHoldingView] = [];
+    seen: set[str] = set();
+    def holding(contract: str, status: str) -> OptionHoldingView | None {
+        parts = parse_occ(contract);
+        if parts is None {
+            return None;
+        }
+        return OptionHoldingView(
+            contract=contract,
+            label=describe_option(contract),
+            underlying=parts.underlying,
+            kind=parts.kind,
+            strike=parts.strike,
+            expiry=parts.expiry,
+            status=status,
+            days_left=(date.fromisoformat(parts.expiry) - today).days
+        );
+    }
+    for (positions, status) in [(view.positions, "Open"), (view.closed, "Closed")] {
+        for p in positions {
+            found = holding(p.ticker, status);
+            if found is None {
+                continue;
+            }
+            found.qty = p.qty if status == "Open" else p.entry_qty;
+            found.entry_price = p.avg_entry_price;
+            found.last = p.last_price if status == "Open" else p.exit_price;
+            found.value = p.market_value if status == "Open" else None;
+            found.pnl = p.pnl;
+            found.pnl_pct = p.pnl_pct;
+            found.decision_day = p.decision_day;
+            found.at = p.opened_at if status == "Open" else p.closed_at;
+            rows.append(found);
+            seen.add(p.ticker);
+        }
+    }
+    for o in view.orders {
+        if o.ticker in seen {
+            continue;
+        }
+        found = holding(o.ticker, "Ordered");
+        if found is None {
+            continue;
+        }
+        found.qty = o.qty;
+        found.entry_price = o.filled_avg_price or o.limit_price;
+        found.decision_day = o.run_day;
+        found.at = o.submitted_at;
+        rows.append(found);
+        seen.add(o.ticker);
+    }
+    return OptionBookView(rows=rows, demo=view.demo);
 }

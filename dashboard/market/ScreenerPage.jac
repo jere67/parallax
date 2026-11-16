@@ -201,10 +201,10 @@ def:pub FieldPicker(title: str, fields: list[Field], chosen: list[str], pick: Ca
     </section>
 }
 
-"""The switch between the screeners: stocks, and every coin Alpaca trades."""
+"""The switch between the screeners: stocks, every coin Alpaca trades, and the agent's options."""
 def:pub AssetSwitch(current: str) -> JsxElement {
     <nav className="flex h-8 items-center gap-0.5 rounded-md border border-line bg-panel-2 p-0.5" aria-label="Asset class">
-        {for (path, name) in [("/app/screener", "Stocks"), ("/app/screener/crypto", "Crypto")] {
+        {for (path, name) in [("/app/screener", "Stocks"), ("/app/screener/crypto", "Crypto"), ("/app/screener/options", "Options")] {
             <Link
                 key={name}
                 to={path}
