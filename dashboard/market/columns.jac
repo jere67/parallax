@@ -1,7 +1,7 @@
 """What the screener can show and filter: every field's label, how to write its value, and which
 tab and filter it belongs to. Plain data and functions with no browser API, so `jac test` reads the
 same table as the pages. The field names are market/rows.jac's."""
-import from dashboard.ui.format { MISSING, compact, day_short, grouped, money, num, pct, signed_pct, tone }
+import from dashboard.ui.format { MISSING, compact, day_short, grouped, money, num, pct, price, signed_pct, tone }
 
 """One field. `format` picks the writer in `show`; `filter` is how it is narrowed: "range" for typed
 bounds, "choice" for words, "days" for a date as days from today, or "" for not at all. A range's
@@ -227,11 +227,16 @@ def days_from(x: float | None) -> str {
 """The value of field `key` in `row`, written the way the field says."""
 def show(key: str, value: any) -> str {
     field = FIELD_BY_KEY.get(key);
-    format = field.format if field else "text";
+    return write_value(field.format if field else "text", value);
+}
+
+"""A value written in `format`: one of the Field formats."""
+def write_value(format: str, value: any) -> str {
     if value is None or value == "" {
         return MISSING;
     }
     if format == "money" { return money(value); }
+    if format == "price" { return price(value); }
     if format == "big_money" { return big_money(value); }
     if format == "signed_money" { return ("+" if value > 0 else "") + money(value); }
     if format == "pct" { return pct(value); }
@@ -248,7 +253,10 @@ def show(key: str, value: any) -> str {
 """The text color for a value: a change is green or red, and a rating follows its word."""
 def tone_of(key: str, value: any) -> str {
     field = FIELD_BY_KEY.get(key);
-    format = field.format if field else "text";
+    return tone_for(field.format if field else "text", value);
+}
+
+def tone_for(format: str, value: any) -> str {
     if value is None or value == "" {
         return "text-faint";
     }
@@ -271,4 +279,69 @@ def size_class(cap: float | None) -> str {
     if cap >= 2e9 { return "Mid cap"; }
     if cap >= 3e8 { return "Small cap"; }
     return "Micro cap";
+}
+
+# --- Coins -----------------------------------------------------------------------------------
+# The crypto screener's fields (market/coins.jac's rows). They share the stock fields' keys where
+# they mean the same thing, so a filter's bounds read the same; the words differ where a coin's
+# periods do: crypto trades every day, so a week is seven days and volatility is over 30.
+
+glob COIN_FIELDS: list[Field] = [
+    Field(key="symbol", label="Pair", format="text", filter="", group="Identity"),
+    Field(key="name", label="Coin", format="text", filter="", group="Identity"),
+    Field(key="price", label="Price", format="price", unit="$", group="Quote", hint="The latest trade", presets=[Preset(label="Under $1", high=1.0), Preset(label="$1 to $100", low=1.0, high=100.0), Preset(label="Above $100", low=100.0)]),
+    Field(key="change_pct", label="Chg %", format="signed_pct", unit="%", scale=0.01, group="Quote", hint="Since the last daily close, at midnight UTC", presets=PERF_PRESETS),
+    Field(key="change", label="Chg", format="signed_money", unit="$", group="Quote", hint="Since the last daily close, at midnight UTC"),
+    Field(key="volume", label="Vol", format="compact", unit="", group="Quote", hint="Coins traded on the last full UTC day"),
+    Field(key="dollar_volume", label="Avg vol 30D $", format="big_money", unit="$M", scale=1e6, group="Quote", hint="Mean daily dollar volume over 30 days", presets=[Preset(label="Above $1M", low=1.0), Preset(label="Above $10M", low=10.0), Preset(label="Above $100M", low=100.0)]),
+    Field(key="perf_1w", label="Perf 1W", format="signed_pct", unit="%", scale=0.01, group="Performance", presets=PERF_PRESETS),
+    Field(key="perf_1m", label="Perf 1M", format="signed_pct", unit="%", scale=0.01, group="Performance", presets=PERF_PRESETS),
+    Field(key="perf_3m", label="Perf 3M", format="signed_pct", unit="%", scale=0.01, group="Performance", presets=PERF_PRESETS),
+    Field(key="perf_6m", label="Perf 6M", format="signed_pct", unit="%", scale=0.01, group="Performance", presets=PERF_PRESETS),
+    Field(key="perf_1y", label="Perf 1Y", format="signed_pct", unit="%", scale=0.01, group="Performance", presets=PERF_PRESETS),
+    Field(key="volatility", label="Volatility", format="pct", unit="%", scale=0.01, group="Performance", hint="30-day realized volatility, annualized over 365 days", presets=[Preset(label="Under 50%", high=50.0), Preset(label="50% to 100%", low=50.0, high=100.0), Preset(label="Above 100%", low=100.0)]),
+    Field(key="high_52w", label="52W high", format="price", unit="$", group="Performance"),
+    Field(key="low_52w", label="52W low", format="price", unit="$", group="Performance"),
+    Field(key="from_high_pct", label="From 52W high", format="signed_pct", unit="%", scale=0.01, group="Performance", presets=[Preset(label="Within 5%", low=-5.0), Preset(label="Within 20%", low=-20.0), Preset(label="Down over 50%", high=-50.0)]),
+    Field(key="from_low_pct", label="From 52W low", format="signed_pct", unit="%", scale=0.01, group="Performance"),
+    Field(key="rsi_14", label="RSI 14", format="number", group="Technicals", presets=[Preset(label="Oversold, under 30", high=30.0), Preset(label="30 to 70", low=30.0, high=70.0), Preset(label="Overbought, over 70", low=70.0)]),
+    Field(key="sma_20_pct", label="vs. SMA 20", format="signed_pct", unit="%", scale=0.01, group="Technicals", hint="Price against its 20-day average"),
+    Field(key="sma_50_pct", label="vs. SMA 50", format="signed_pct", unit="%", scale=0.01, group="Technicals", hint="Price against its 50-day average"),
+    Field(key="sma_200_pct", label="vs. SMA 200", format="signed_pct", unit="%", scale=0.01, group="Technicals", hint="Price against its 200-day average"),
+    Field(key="beta", label="Beta vs. BTC", format="number", group="Technicals", hint="Slope of daily returns on Bitcoin's over the last year", presets=[Preset(label="Under 0.5", high=0.5), Preset(label="0.5 to 1", low=0.5, high=1.0), Preset(label="Above 1", low=1.0)])
+];
+
+glob COIN_FIELD_BY_KEY: dict[str, Field] = {f.key: f for f in COIN_FIELDS};
+
+glob COIN_DEFAULT_FILTERS: list[str] = ["price", "change_pct", "dollar_volume", "perf_1m", "perf_1y", "volatility", "rsi_14"];
+
+glob COIN_COLUMN_SETS: list[ColumnSet] = [
+    ColumnSet(name="Overview", columns=["price", "change_pct", "perf_1w", "perf_1m", "perf_1y", "volume", "dollar_volume", "volatility"], sort="dollar_volume"),
+    ColumnSet(name="Performance", columns=["price", "change_pct", "perf_1w", "perf_1m", "perf_3m", "perf_6m", "perf_1y", "from_high_pct", "from_low_pct"], sort="perf_1y"),
+    ColumnSet(name="Technicals", columns=["price", "rsi_14", "sma_20_pct", "sma_50_pct", "sma_200_pct", "volatility", "beta"], sort="dollar_volume")
+];
+
+def coin_column_set(name: str) -> ColumnSet {
+    for set_ in COIN_COLUMN_SETS {
+        if set_.name == name {
+            return set_;
+        }
+    }
+    return COIN_COLUMN_SETS[0];
+}
+
+"""A coin field's value, written its way."""
+def show_coin(key: str, value: any) -> str {
+    field = COIN_FIELD_BY_KEY.get(key);
+    return write_value(field.format if field else "text", value);
+}
+
+def coin_tone(key: str, value: any) -> str {
+    field = COIN_FIELD_BY_KEY.get(key);
+    return tone_for(field.format if field else "text", value);
+}
+
+"""A pair as a page address writes it: BTC/USD is /app/coins/BTC-USD."""
+def coin_path(symbol: str) -> str {
+    return "/app/coins/" + symbol.replace("/", "-");
 }

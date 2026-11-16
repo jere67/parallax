@@ -161,3 +161,17 @@ obj StockAboutView {
         description_url: str = "",
         busy: bool = False;
 }
+
+"""One coin's page (market/api.jac `get_coin`), or `found=False` for a pair the screener does not
+cover. `values` is its full screener row; `daily` its kept daily bars, a UTC day each."""
+obj CoinView {
+    has found: bool,
+        symbol: str;
+    has name: str = "",
+        values: dict[str, float | str | None] = {},
+        daily: list[BarView] = [],
+        committee: CommitteeView = CommitteeView(),
+        demo: bool = False,
+        as_of: str = "",
+        stats_day: str = "";
+}

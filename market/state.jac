@@ -12,6 +12,7 @@ import os;
 import threading;
 import from pathlib { Path }
 import from market.analysts { AnalystRecord, RatingPoint, Surprise }
+import from market.coins { CoinListing, CoinPrice, CoinStats }
 import from market.companies { CompanyProfile, CompanyRecord, FilingLink, Period }
 import from market.listings { Listing }
 import from market.prices { PriceStats, Quote }
@@ -48,10 +49,14 @@ obj MarketState {
         companies: dict[str, CompanySummary] = {},
         analysts: dict[str, AnalystRecord] = {},
         earnings: dict[str, EarningsDates] = {},
+        coins: dict[str, CoinListing] = {},
+        coin_prices: dict[str, CoinPrice] = {},
+        coin_stats: dict[str, CoinStats] = {},
         meta: dict[str, str] = {},
         version: int = 0,
         demo: bool = False,
         details: dict[str, CompanyRecord] = {},
+        coin_details: dict[str, list[list[float | str]]] = {},
         loaded: bool = False;
 
     def directory -> Path {
@@ -74,6 +79,9 @@ obj MarketState {
         self.companies = {k: CompanySummary(**v) for (k, v) in self._read("companies").items()};
         self.analysts = {k: analyst_from(v) for (k, v) in self._read("analysts").items()};
         self.earnings = {k: EarningsDates(**v) for (k, v) in self._read("earnings").items()};
+        self.coins = {k: CoinListing(**v) for (k, v) in self._read("coins").items()};
+        self.coin_prices = {k: CoinPrice(**v) for (k, v) in self._read("coin_prices").items()};
+        self.coin_stats = {k: CoinStats(**v) for (k, v) in self._read("coin_stats").items()};
         self.meta = self._read("meta");
         self.changed();
     }
@@ -116,6 +124,29 @@ obj MarketState {
             return company_from(json.loads(path.read_text()));
         } except (OSError, ValueError, TypeError) {
             return None;
+        }
+    }
+
+    """A coin's kept daily bars, [day, open, high, low, close, volume] oldest first, from memory in a
+    demo or from its own file."""
+    def coin_bars(symbol: str) -> list[list[float | str]] {
+        if self.demo {
+            return self.coin_details.get(symbol, []);
+        }
+        path = self.directory() / "coin" / f"{symbol.replace('/', '-')}.json";
+        try {
+            found = json.loads(path.read_text());
+            return found if isinstance(found, list) else [];
+        } except (OSError, ValueError) {
+            return [];
+        }
+    }
+
+    def save_coin_bars(symbol: str, bars: list[list[float | str]]) {
+        if self.demo {
+            self.coin_details[symbol] = bars;
+        } else {
+            self._write(self.directory() / "coin" / f"{symbol.replace('/', '-')}.json", bars);
         }
     }
 

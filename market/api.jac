@@ -9,7 +9,8 @@ import logging;
 import re;
 import threading;
 import from datetime { date, datetime, time as day_time, timezone }
-import from dashboard.api { get_portfolio, my_latest_stock_run }
+import from dashboard.api { get_portfolio, my_latest_coin_run, my_latest_stock_run }
+import from market.coins { coin_row, coin_rows }
 import from market.companies { CompanyRecord }
 import from market.demo { demo_history, demo_intraday, demo_state }
 import from run.switches { demo_mode }
@@ -21,6 +22,7 @@ import from market.sectors { SECTORS }
 import from market.state { MarketState, STATE }
 import from models.market {
     BarView,
+    CoinView,
     CommitteeView,
     CoverageView,
     FilingView,
@@ -42,6 +44,8 @@ import from research.collector { MissingKey, SourceError }
 
 glob LOG: logging.Logger = logging.getLogger("trading_agent.market");
 glob SYMBOL: re.Pattern[str] = re.compile(r"[A-Z][A-Z0-9.]{0,9}");
+glob COIN: re.Pattern[str] = re.compile(r"[A-Z0-9]{1,15}/USD");
+glob COIN_ALWAYS_SHOWN: list[str] = ["symbol", "name", "kind"];
 glob PAGE_ROWS: int = 100;
 glob ALWAYS_SHOWN: list[str] = ["symbol", "name", "kind", "sp500"];
 glob EDGAR: str = "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=";
@@ -209,8 +213,8 @@ def period_views(periods: list) -> list[PeriodView] {
     return [PeriodView(end=p.end, label=p.label, values=p.values) for p in periods];
 }
 
-"""What the reader's own agent last did about a stock, from its views, which are cached already. A
-reader of a stock page must not pay for a walk of the graph."""
+"""What the reader's own agent last did about a stock or, for a pair, a coin, from its views, which
+are cached already. A reader of a stock page must not pay for a walk of the graph."""
 def committee_of(symbol: str) -> CommitteeView {
     found = CommitteeView();
     try {
@@ -220,13 +224,13 @@ def committee_of(symbol: str) -> CommitteeView {
                 found.held_qty = position.qty;
             }
         }
-        run = my_latest_stock_run();
+        run = my_latest_coin_run() if "/" in symbol else my_latest_stock_run();
         if run is not None {
             for row in run.rows {
                 if row.ticker == symbol {
                     found.run_day = run.run_date;
                     found.action = row.action;
-                    found.trail = f"/app/runs/{run.run_date}/{symbol}";
+                    found.trail = f"/app/runs/{run.run_date}/{symbol.replace('/', '-')}";
                 }
             }
         }
@@ -237,10 +241,11 @@ def committee_of(symbol: str) -> CommitteeView {
 }
 
 """The reader's agent's latest run day and the action it decided on each of `symbols` that run
-covered, from the cached run view, as `committee_of` reads it."""
-def decisions_on(symbols: set[str]) -> tuple[str, dict[str, str]] {
+covered, from the cached run view, as `committee_of` reads it: its latest run that covered coins
+when `coins`, and stocks otherwise."""
+def decisions_on(symbols: set[str], coins: bool = False) -> tuple[str, dict[str, str]] {
     try {
-        run = my_latest_stock_run();
+        run = my_latest_coin_run() if coins else my_latest_stock_run();
         if run is None {
             return ("", {});
         }
@@ -404,4 +409,84 @@ def:priv get_stock_about(symbol: str) -> StockAboutView {
         LOG.warning("market: no description for %s: %r", wanted, e);
     }
     return view;
+}
+
+# --- Coins ---------------------------------------------------------------------------------
+
+"""A pair as the pages write it, "BTC/USD" or "BTC-USD" (a page address cannot hold a slash), or ""
+for anything else."""
+def coin_symbol(text: str) -> str {
+    pair = str(text).strip().upper().replace("-", "/");
+    return pair if COIN.fullmatch(pair) else "";
+}
+
+"""One page of the crypto screener: every pair Alpaca trades against the dollar, filtered and
+sorted as `screen_stocks` does, from what the refresh passes keep in memory."""
+def:priv screen_coins(
+    filters: list[dict[str, any]] = [],
+    search: str = "",
+    symbols: list[str] = [],
+    sort: str = "dollar_volume",
+    descending: bool = True,
+    columns: list[str] = [],
+    offset: int = 0,
+    limit: int = PAGE_ROWS
+) -> ScreenerView {
+    state = market_state();
+    rows = coin_rows(state.coins, state.coin_prices, state.coin_stats);
+    fields: set[str] = set(rows[0]) if rows else set();
+    wanted = read_filters(as_list(filters), fields);
+    named = as_text(sort);
+    order = named if named in fields else "dollar_volume";
+    only = [coin_symbol(str(s)) for s in as_list(symbols) if coin_symbol(str(s))];
+    (page, total) = run_query(rows, wanted, as_text(search), only, order, as_flag(descending, True), as_count(offset, 0), as_count(limit, PAGE_ROWS));
+    keep = [c for c in as_list(columns) if isinstance(c, str) and c in fields];
+    if keep {
+        shown = list(dict.fromkeys(COIN_ALWAYS_SHOWN + keep));
+        page = [{f: r.get(f) for f in shown} for r in page];
+    }
+    (decided_day, decisions) = decisions_on({str(r.get("symbol")) for r in page}, coins=True);
+    return ScreenerView(
+        rows=page,
+        decisions=decisions,
+        decided_day=decided_day,
+        total=total,
+        ready=bool(rows),
+        demo=state.demo,
+        as_of=state.meta.get("coin_prices_at", "") or state.meta.get("quotes_at", ""),
+        quote_day=state.meta.get("coin_stats_day", ""),
+        sectors=[],
+        exchanges=[],
+        coverage=CoverageView(
+            stocks=len(rows),
+            priced=sum(1 for r in rows if r.get("price") is not None),
+            with_stats=sum(1 for r in rows if r.get("rsi_14") is not None)
+        )
+    );
+}
+
+"""A coin's page: its row, its kept daily bars, and what the reader's agent last did about it, or
+`found=False` for a pair the screener does not cover."""
+def:priv get_coin(symbol: str) -> CoinView {
+    pair = coin_symbol(symbol);
+    state = market_state();
+    listing = state.coins.get(pair) if pair else None;
+    if listing is None {
+        return CoinView(found=False, symbol=pair or str(symbol));
+    }
+    daily = [
+        BarView(time=str(b[0]), open=float(b[1]), high=float(b[2]), low=float(b[3]), close=float(b[4]), volume=float(b[5]))
+        for b in state.coin_bars(pair) if len(b) == 6
+    ];
+    return CoinView(
+        found=True,
+        symbol=pair,
+        name=listing.name,
+        values=coin_row(listing, state.coin_prices.get(pair), state.coin_stats.get(pair)),
+        daily=daily,
+        committee=committee_of(pair),
+        demo=state.demo,
+        as_of=state.meta.get("coin_prices_at", "") or state.meta.get("quotes_at", ""),
+        stats_day=state.meta.get("coin_stats_day", "")
+    );
 }

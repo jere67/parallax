@@ -5,7 +5,7 @@ by reloading the page, which would cancel a log-in already under way."""
 import from "@jac/runtime" { jacIsLoggedIn }
 import from dashboard.ui.retry { call_function }
 import from models.accounts { AgentReply, AgentSettings, DemoSignIn, ExportPart, ExportReady, KeysReply, TransferStatus }
-import from models.market { HistoryView, ScreenerView, StockAboutView, StockView }
+import from models.market { CoinView, HistoryView, ScreenerView, StockAboutView, StockView }
 import from models.evaluation { Evaluation }
 import from models.views { NewsFeed, NewsStory, PerformanceView, PortfolioView, RunSummary, RunView, SpecialistSummaryView, TrailView }
 
@@ -118,6 +118,23 @@ async def:pub screen_stocks(
     limit: int = 100
 ) -> ScreenerView | None {
     return await call("market/api.jac", "screen_stocks", {"filters": filters, "search": search, "symbols": symbols, "sort": sort, "descending": descending, "columns": columns, "offset": offset, "limit": limit});
+}
+
+async def:pub screen_coins(
+    filters: list[dict[str, any]] = [],
+    search: str = "",
+    symbols: list[str] = [],
+    sort: str = "dollar_volume",
+    descending: bool = True,
+    columns: list[str] = [],
+    offset: int = 0,
+    limit: int = 100
+) -> ScreenerView | None {
+    return await call("market/api.jac", "screen_coins", {"filters": filters, "search": search, "symbols": symbols, "sort": sort, "descending": descending, "columns": columns, "offset": offset, "limit": limit});
+}
+
+async def:pub get_coin(symbol: str) -> CoinView | None {
+    return await call("market/api.jac", "get_coin", {"symbol": symbol});
 }
 
 async def:pub get_stock(symbol: str) -> StockView | None {

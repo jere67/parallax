@@ -3,7 +3,7 @@ and forward buttons undo and redo a change. Plain functions, so `jac test` cover
 
     ?tab=Performance&sort=perf_1y&asc=1&q=bank&watch=1&add=beta,roe&cols=price,pe&f=pe:5:20;sector~Energy|Utilities
 """
-import from dashboard.market.columns { COLUMN_SETS, ColumnSet, DEFAULT_FILTERS, FIELD_BY_KEY }
+import from dashboard.market.columns { COLUMN_SETS, ColumnSet, DEFAULT_FILTERS, FIELD_BY_KEY, Field }
 
 """A filter's bounds in the field's own units, or the words it may be."""
 obj Bound {
@@ -170,12 +170,13 @@ def write_screen(screen: Screen) -> dict[str, str] {
     return pairs;
 }
 
-"""A filter as the endpoint reads it, in the row's units: what a reader typed times the field's scale."""
-def request_filter(key: str, bound: Bound) -> dict[str, float | str | list[str]] {
+"""A filter as the endpoint reads it, in the row's units: what a reader typed times the field's
+scale, from `fields` (the crypto screener passes its own)."""
+def request_filter(key: str, bound: Bound, fields: dict[str, Field] = FIELD_BY_KEY) -> dict[str, float | str | list[str]] {
     if len(bound.one_of) > 0 {
         return {"field": key, "one_of": bound.one_of};
     }
-    field = FIELD_BY_KEY.get(key);
+    field = fields.get(key);
     scale = field.scale if field else 1.0;
     found: dict[str, float | str | list[str]] = {"field": key};
     if bound.low is not None {
