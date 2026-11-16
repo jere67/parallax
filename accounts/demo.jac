@@ -21,7 +21,8 @@ import threading;
 import from datetime { date, datetime }
 import from jaclang.server.identity.user_manager { UserManager }
 import from accounts.store { DEMO_PORTFOLIO, DEMO_USERNAME, demo_login, demo_portfolio, forget_demo_root }
-import from dashboard.demo { DemoSim, STARTING_CASH }
+import from dashboard.cache { VIEWS }
+import from dashboard.demo { DEMO_VERSION, DemoSim, STARTING_CASH }
 import from models.accounts { DemoLogin, DemoSignIn }
 import from models.graph { Portfolio, PortfolioMode }
 import from research.collector { parse_utc, utc_now }
@@ -101,16 +102,51 @@ def demo_history_job {
     }
 }
 
-"""Write the demo environment's history ending the last weekday before `today` into the demo
-account's portfolio, unless it has one. Returns what it did, or "" when it did nothing."""
+"""Write the demo environment's history ending yesterday into the demo account's portfolio,
+unless it holds the current version of it (`DEMO_VERSION`). An older version is deleted first.
+Returns what it did, or "" when it did nothing."""
 def seed_demo_account(today: date) -> str {
-    if demo_portfolio() is not None {
-        return "";
+    portfolio = demo_portfolio();
+    removed = 0;
+    if portfolio is not None {
+        if portfolio.demo_version == DEMO_VERSION {
+            return "";
+        }
+        if not portfolio.demo {
+            return "demo account: the portfolio named demo holds no demo history, so it is left alone";
+        }
+        removed = clear_history(portfolio);
+    } else {
+        portfolio = public(root.shared ++> Portfolio(name=DEMO_PORTFOLIO, mode=PortfolioMode.AUTO, starting_cash=STARTING_CASH, opened_at=""));
     }
-    portfolio = public(root.shared ++> Portfolio(name=DEMO_PORTFOLIO, mode=PortfolioMode.AUTO, starting_cash=STARTING_CASH, opened_at=""));
     sim = DemoSim(portfolio=portfolio, today=today);
     sim.run();
-    return f"demo account: wrote {len(sim.days)} sessions, {sim.decisions} decisions, {sim.orders} orders";
+    VIEWS.clear();
+    replaced = f" in place of {removed} records of version {DEMO_VERSION - 1 if removed else 0}" if removed else "";
+    return f"demo account: wrote {len(sim.run_days)} runs ({len(sim.days)} sessions), {sim.decisions} decisions, {sim.orders} orders{replaced}";
+}
+
+"""Delete everything `portfolio`'s history holds: each node reachable from it, without passing
+another portfolio. The portfolio itself stays, so whatever points to it still does. Returns how
+many nodes went."""
+def clear_history(portfolio: Portfolio) -> int {
+    seen: set[str] = set();
+    doomed = [];
+    todo = [n for n in [portfolio -->]];
+    while todo {
+        n = todo.pop();
+        key = str(jid(n));
+        if key in seen or isinstance(n, Portfolio) {
+            continue;
+        }
+        seen.add(key);
+        doomed.append(n);
+        todo.extend([m for m in [n -->]]);
+    }
+    for n in doomed {
+        del n;
+    }
+    return len(doomed);
 }
 
 """A sign-in token for the demo account, which needs no password. Anyone may ask: the account

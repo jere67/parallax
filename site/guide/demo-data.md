@@ -22,17 +22,24 @@ The inputs are invented; the machinery is not.
 Made up:
 
 - A 14-stock universe and SPY, with prices from a seeded random walk (SPY starts at 575).
+- Five coins (BTC, ETH, SOL, XRP, and DOGE against the dollar), with a bar every calendar day from a walk of their own that follows Bitcoin.
+- Option contracts: weekly Friday expiries with strikes on each stock's usual step, quoted at their Black-Scholes value on the stock's realized volatility plus 15%, with a spread of 7% of the mid.
 - The research reports and the specialists' votes, from templates.
-- Fills: orders fill at each session's open, stops fire on its low, and the portfolio is marked at its close.
+- Fills: orders fill at each session's open, stops fire on its low, option orders fill at their limit, and the portfolio is marked at its close.
 
 The project's own code:
 
 - The [stochastic consensus](/system/consensus) and the decision rule turn the votes into draft actions.
-- [Position sizing](/system/sizing) and the [risk gate](/system/risk-gate) turn decisions into orders.
+- [Position sizing](/system/sizing) and the [risk gate](/system/risk-gate) turn decisions into orders, coins included: fractional quantities, at most 5% of equity in one coin and 20% in all, GTC entries, and GTC stop-limits 1% under each stop.
+- The options rules choose each call and put, refuse what breaks a limit (spread, premium budget, two new contracts a day), and sell each contract by its exit rules.
 - The two [baselines](/system/insights-baselines) are simulated by the same code as in the forward test.
 - [Vote scoring](/system/scoring) scores every vote against SPY.
 
 So the numbers on a demo dashboard behave like real ones: positions respect the caps, stops sit at twice the ATR, and the baselines move with SPY.
+
+The demo agent trades every asset class an agent can, so every page has something of each to show.
+On weekdays its runs cover the stock screen, the stocks it holds, and the five coins, and it buys calls and puts on the panel's views.
+On weekend days its runs cover the coins alone and trade them at 9:45, and nothing is marked, reconciled, or scored, as on a live weekend.
 
 The screener and stock pages show an invented market of about 70 well-known names.
 Their prices, figures, ratings, and dates are all made up, are never written to disk, and cost no source calls.
@@ -48,14 +55,15 @@ When it is set, the job:
    If the team portfolio already has demo history, or any run, mark, or baseline, it writes nothing.
 
 2. **Simulates the history.**
-   A seeded random generator (seed 449, so every server gets the same history) plays 30 warm-up sessions and then 23 recorded sessions, ending on the weekday before today.
+   Seeded random generators (seed 449 for the stocks and 293 for the coins, so every server gets the same history) play 30 warm-up sessions and then 23 recorded sessions, ending on the weekday before today.
+   A coin-only run fills each weekend day from the first session through yesterday.
    The portfolio starts with $100,000, a shortlist of 6, and 3 samples per specialist.
 
 3. **Includes one bad day.**
    Session 9 is a FALLBACK run, so the dashboard's fallback styling has something to show.
 
 4. **Marks the portfolio as a demo.**
-   It sets `demo` on the team portfolio, switches it to auto mode, and creates both baselines.
+   It sets `demo` on the team portfolio, switches it to auto mode, creates both baselines, and turns on every asset class for the team.
    Votes are scored at the end.
 
 </Steps>
@@ -74,6 +82,7 @@ It shows the same simulated history, written into a portfolio of its own named `
 On a server in demo mode it shows the team's demo history instead, since that is already made up.
 
 It can look at every page but change nothing: its keys, paper trading, runs, asset classes, policy saves, the policy assistant, and reports are all refused.
+Its Settings page shows all three asset classes turned on, with the switches locked.
 On the Policy page it can still try a draft and see what it would have done.
 Everyone who browses shares the one account, so nothing it did would stay its own.
 
@@ -83,6 +92,8 @@ Two scheduled jobs set it up, a minute at a time:
   The `open_demo` endpoint hands out a sign-in token for that user instead of a password.
   If someone signed up as `demo` before the record was written, that account is left alone and the demo sign-in stays off; the server log says so.
 - `demo_history_job` simulates the history once, outside demo mode, ending on the weekday before the day it runs.
+  The portfolio records which version of the history it holds (`DEMO_VERSION` in `dashboard/demo.jac`).
+  When a release changes the history, the job deletes the older one (every node reachable from the `demo` portfolio, stopping at any other portfolio) and writes the new one within a minute or two of the server starting.
 
 ::: danger Never on a deployed server
 Never set `TRADING_AGENT_DEMO` on a deployed server.

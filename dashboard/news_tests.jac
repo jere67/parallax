@@ -1,12 +1,13 @@
 """The news feed's headlines, source lists, filters, and ordering, over graphs built here."""
 import from action.fixtures { Call, finished_run, team }
 import from dashboard.news {
-    NewsEntry,
-    NewsFilter,
     first_sentence,
     headline_and_body,
     in_feed_order,
     news_index,
+    NewsEntry,
+    NewsFilter,
+    note_id,
     select,
     sources_of,
     story_view
@@ -140,6 +141,11 @@ def covered_run(portfolio: Portfolio, day: str, status: RunStatus = RunStatus.NO
     cov +>:Researched():+> ResearchRecord(ticker="AAPL", domain=Domain.NEWS, as_of=f"{day}T13:00:00+00:00", model="mock", body=note("Apple raised its guidance for the year: sales rose 12%.", Stance.BUY, [Evidence(claim="Sales rose 12%.", source_url="https://www.sec.gov/a.htm", published=day)]));
     cov +>:Researched():+> ResearchRecord(ticker="AAPL", domain=Domain.NEWS, as_of=f"{day}T13:00:00+00:00", model="mock", body=note("It does. Sales outran the sector."), followup_question="Does the raise beat the sector?");
     return (run, cov);
+}
+
+test "a coin's note keeps its address in parts, with the pair written as in a page address" {
+    assert note_id("2026-11-14", "BTC/USD", "news", 0, False) == "2026-11-14/BTC-USD/news/0";
+    assert note_id("2026-11-14", "", "macro", 0, False) == "2026-11-14/market/macro/0";
 }
 
 test "the index holds a run's macro brief and each note, with stable addresses" {

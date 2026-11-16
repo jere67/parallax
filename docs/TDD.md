@@ -984,6 +984,7 @@ Like the rest of the app they need an account, and a stock's page shows what the
   The endpoints answer from an in-process cache of built views (`dashboard/cache.jac`) that a static job rebuilds every minute, so pages load in milliseconds and show state at most two minutes old.
 - **Demo history for development.** A local server started with `TRADING_AGENT_DEMO=1` fills an empty team portfolio with a few weeks of made-up sessions (`dashboard/demo.jac`): random-walk prices and template research and votes, with every later number computed by the real consensus, sizing, risk gate, baselines, and scoring.
   The portfolio is flagged `demo`, every page says so, and the scheduled jobs never run, trade, reconcile, or score it.
+  It trades every asset class: five coins with a bar every calendar day and coin-only runs on weekends, and long calls and puts chosen and sold by the options rules, quoted at their Black-Scholes value.
   The variable is never set on a deployed server.
 - **No raw data redistribution.** Pages show derived analysis, short quotes of our own agents' text, and links to original sources.
   The market pages are the exception for prices: they show Alpaca's quotes and bars as they come, which needs checking against Alpaca's terms before any public launch.

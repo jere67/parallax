@@ -89,7 +89,8 @@ enum OrderPurpose: str {
 }
 
 """The team portfolio, a user's agent's (accounts/store.jac), or a test's. `demo` marks one filled
-by the local demo history (dashboard/demo.jac), so the dashboard can say its numbers are made up.
+by the local demo history (dashboard/demo.jac), so the dashboard can say its numbers are made up,
+and `demo_version` which version of that history it holds, so a server can replace an older one.
 `order_tag` starts every client order ID the portfolio sends, so no two portfolios' orders can be
 taken for each other; the team's is empty, so its IDs read as they always have."""
 node Portfolio {
@@ -99,6 +100,7 @@ node Portfolio {
         opened_at: str;
     has peak_equity: float = 0.0,
         demo: bool = False,
+        demo_version: int = 0,
         order_tag: str = "";
 }
 

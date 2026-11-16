@@ -159,8 +159,11 @@ test "a stock page shows the agent's last decision on it, with a link into the a
         client.register_user("team-admin", "writer-password-1");
         assert client.post("/function/set_admin", json={"on": True}).ok;
         assert client.post("/function/seed_team_graph", json={}).ok;
+        # A later weekend run covered a coin alone; the stock page still reads the last stock run.
+        assert client.post("/function/seed_weekend_run", json={}).ok;
         held = call(client, "get_stock", {"symbol": "AAPL"});
         other = call(client, "get_stock", {"symbol": "MSFT"});
+        screened = call(client, "screen_stocks", {"search": "AAPL"});
     } finally {
         client.close();
         if before is None {
@@ -172,4 +175,5 @@ test "a stock page shows the agent's last decision on it, with a link into the a
     assert held["found"] and held["committee"]["action"] == "BUY" and held["committee"]["run_day"] == "2026-10-21";
     assert held["committee"]["trail"] == "/app/runs/2026-10-21/AAPL";
     assert other["found"] and other["committee"]["action"] == "" and other["committee"]["trail"] == "";
+    assert screened["decided_day"] == "2026-10-21" and screened["decisions"] == {"AAPL": "BUY"}, screened;
 }

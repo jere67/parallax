@@ -106,14 +106,15 @@ test("run: the latest run's shortlist leads to a decision's full trail", async (
   await expect(page.getByRole("heading", { name: "Shortlist" })).toBeVisible();
   await fitsWidth(page);
 
-  // A phone shows the shortlist as cards, and a wider screen as a table.
+  // A phone shows the shortlist as cards, and a wider screen as a table. On a weekend the latest
+  // run covers coins alone, whose pair is written with a hyphen in the address.
   const ticker = page.viewportSize().width < 768
     ? page.getByTestId("shortlist-card").first().getByRole("link")
-    : page.locator('a[href^="/app/runs/"][href*="/"]').filter({ hasText: /^[A-Z.]+$/ }).first();
+    : page.locator('a[href^="/app/runs/"][href*="/"]').filter({ hasText: TICKER }).first();
   const name = (await ticker.getAttribute("href")).split("/").pop();
   await ticker.click();
   await expect(page).toHaveURL(new RegExp(`/app/runs/\\d{4}-\\d{2}-\\d{2}/${name}$`));
-  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: tickerOf(name) })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Decision trail" })).toBeVisible();
   for (const section of ["research", "panel", "consensus", "arbiter", "gate", "orders"]) {
     await expect(page.locator(`#${section}`)).toBeAttached();
@@ -126,6 +127,12 @@ test("run: the latest run's shortlist leads to a decision's full trail", async (
   await fitsWidth(page);
 });
 
+// A ticker as the run tables show it: a stock ("BRK.B") or a coin's pair ("BTC/USD"). A coin's pair
+// is written with a hyphen in a page address ("BTC-USD").
+const TICKER = /^[A-Z.]+(\/[A-Z]+)?$/;
+const isCoin = (ticker) => ticker.includes("/");
+const tickerOf = (path) => path.replace("-", "/");
+
 // A signed-in account's endpoint calls, for finding the demo decisions a test needs.
 function api(request, account) {
   return async (name, data = {}) => {
@@ -135,11 +142,20 @@ function api(request, account) {
   };
 }
 
-// The latest run's decision trails, each with its ticker.
+// The newest run that covered stocks, since a weekend run covers coins alone.
+async function latestStockRun(call) {
+  for (const summary of await call("list_runs")) {
+    const run = await call("get_run", { run_date: summary.run_date });
+    if (run.rows.some((row) => !isCoin(row.ticker))) return run;
+  }
+  throw new Error("the demo has no run that covered stocks");
+}
+
+// The decision trails of the newest run that covered stocks, one per stock.
 async function latestTrails(call) {
-  const run = await call("get_run", { run_date: "" });
+  const run = await latestStockRun(call);
   const trails = [];
-  for (const row of run.rows) {
+  for (const row of run.rows.filter((r) => !isCoin(r.ticker))) {
     trails.push(await call("get_decision_trail", { run_date: run.run_date, ticker: row.ticker }));
   }
   return trails;
@@ -570,6 +586,14 @@ test("demo: anyone can browse the demo account with no password, and it changes 
   await expect(panel).toBeVisible();
   await expect(page.getByLabel("Alpaca API key ID")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Change password" })).toHaveCount(0);
+  // Its agent trades every asset class, and no one browsing can turn one off.
+  const assets = page.locator("section", { has: page.getByRole("heading", { name: "Asset classes" }) });
+  await expect(assets.getByText("3 of 3", { exact: true })).toBeVisible();
+  for (const name of ["Stocks and ETFs", "Crypto", "Options"]) {
+    const toggle = assets.getByRole("switch", { name, exact: true });
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await expect(toggle).toBeDisabled();
+  }
   await fitsWidth(page);
 
   // Logging in as demo with the password left empty opens it too.
@@ -667,10 +691,11 @@ test.describe(() => {
 });
 
 // Uses the demo server's existing reports; no model or broker calls.
-test("reports: request a cached insight, and keep a private history", async ({ page }) => {
+test("reports: request a cached insight, and keep a private history", async ({ page, request: http }) => {
   test.setTimeout(180_000);
   const account = await logIn(page, "reports");
-  await page.goto("/app/runs");
+  const run = await latestStockRun(api(http, account));
+  await page.goto(`/app/runs/${run.run_date}`);
   const latestTicker = page.locator('a[href^="/app/runs/"][href*="/"]').filter({ hasText: /^[A-Z.]+$/ }).first();
   const symbol = (await latestTicker.textContent()).trim();
   await openMore(page);
@@ -968,7 +993,7 @@ test("mobile: tables are cards on a phone, and each card opens what it should", 
   const filter = page.getByRole("button", { name: /^Buys/ });
   expect((await filter.boundingBox()).height).toBeGreaterThanOrEqual(36);
   await card.getByRole("link").click();
-  await expect(page).toHaveURL(/\/app\/runs\/\d{4}-\d{2}-\d{2}\/[A-Z.]+$/);
+  await expect(page).toHaveURL(/\/app\/runs\/\d{4}-\d{2}-\d{2}\/[A-Z.]+(-[A-Z]+)?$/);
   await expect(page.getByRole("navigation", { name: "Decision trail" })).toBeVisible();
   await fitsWidth(page);
   await noSidewaysPanels(page);

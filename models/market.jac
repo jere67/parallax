@@ -14,8 +14,8 @@ obj CoverageView {
 }
 
 """One page of the screener. `decisions` holds the action the reader's agent took on each of the
-page's stocks it covered in its latest run, the one on `decided_day`, so a row can link to that
-decision's trail."""
+page's stocks it covered in its latest run that covered stocks (a weekend run covers coins alone),
+the one on `decided_day`, so a row can link to that decision's trail."""
 obj ScreenerView {
     has rows: list[dict[str, float | str | None]] = [],
         decisions: dict[str, str] = {},

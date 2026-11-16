@@ -21,6 +21,7 @@ import from models.users { ReportStatus }
 import from research.alpaca { MarketDay, market_calendar }
 import from research.collector { RunBudget, parse_utc, run_budget, utc_now }
 import from research.credentials { ALPACA_KEY, Credentials, enter_credentials, leave_credentials }
+import from research.crypto { is_crypto }
 import from research.wikipedia { constituents }
 import from run.guard { NEW_YORK, RunLimits, RunSession, record_run, stored_requests, team_portfolio }
 import from run.research { collect_pass }
@@ -147,9 +148,12 @@ def refresh_catalog(team: Portfolio) -> ReportCatalog {
     now = utc_now();
     c.generation_enabled = False;
     if team.demo {
-        days = [r.run_date for r in [team ->:Ran:->[?:Run]]];
+        # Reports are on stocks, and a weekend run covers coins alone, so the catalog's day is the
+        # newest run that covered a stock.
+        stocks = [cov.ticker for r in [team ->:Ran:->[?:Run]] for cov in [r ->:Covers:->[?:Coverage]] if not is_crypto(cov.ticker)];
+        days = [r.run_date for r in [team ->:Ran:->[?:Run]] if any(not is_crypto(cov.ticker) for cov in [r ->:Covers:->[?:Coverage]])];
         c.trading_date = max(days) if days else "";
-        c.symbols = sorted(set(cov.ticker for r in [team ->:Ran:->[?:Run]] for cov in [r ->:Covers:->[?:Coverage]]));
+        c.symbols = sorted(set(stocks));
         c.demo = True;
         c.refreshed_at = now.isoformat();
         return c;

@@ -92,6 +92,9 @@ glob TRADING_DAYS: int = 252;
 glob RECENT_ORDERS: int = 60;
 glob RECENT_CLOSED: int = 40;
 glob MAX_RUNS: int = 250;
+# How many of the newest runs the stock pages look through for one that covered stocks: a long
+# weekend's coin-only runs and then some.
+glob STOCK_RUN_LOOKBACK: int = 7;
 glob SPECIALIST_RUNS: int = 60;
 glob RECENT_SPECIALIST_VOTES: int = 8;
 glob SPECIALIST_ROLES: list[Specialist] = [Specialist.FUNDAMENTALS, Specialist.TECHNICAL, Specialist.NEWS, Specialist.MACRO, Specialist.FLOW];
@@ -167,14 +170,21 @@ def:priv get_run(run_date: str = "") -> RunView | None {
     return VIEWS.get(view_key(team, "run", run_date), run_view, team, run_date);
 }
 
-"""The caller's newest run from the read cache, for other modules' endpoints (market/api.jac)
-that link to its decisions without walking the graph themselves."""
-def my_latest_run -> RunView | None {
+"""The caller's newest run that covered stocks, from the read cache, for the stock pages' endpoints
+(market/api.jac) that link to its decisions without walking the graph themselves."""
+def my_latest_stock_run -> RunView | None {
     team = my_portfolio();
     if team is None {
         return None;
     }
-    return VIEWS.get(view_key(team, "run", ""), run_view, team, "");
+    # A weekend run covers coins alone, so the stock pages read the newest run that covered stocks.
+    for summary in VIEWS.get(view_key(team, "runs"), run_summaries, team)[:STOCK_RUN_LOOKBACK] {
+        run = VIEWS.get(view_key(team, "run", summary.run_date), run_view, team, summary.run_date);
+        if run is not None and any("/" not in row.ticker for row in run.rows) {
+            return run;
+        }
+    }
+    return None;
 }
 
 """One ticker's trail in the run for `run_date`, or None when the run did not cover it."""
