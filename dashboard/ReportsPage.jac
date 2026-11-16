@@ -1,5 +1,5 @@
 """Signed-in, insight-only reports: submit, poll, and read the stored card."""
-import from "@jac/runtime" { __jacCallFunction, jacIsLoggedIn }
+import from "@jac/runtime" { __jacCallFunction, jacIsLoggedIn, useLocation }
 import from "react" { useEffect }
 import from "lucide-react" { ChevronDown, ExternalLink }
 import from models.reports { ReportsView as ReportsData, ReportView as ReportData, ReportReply as Reply }
@@ -105,6 +105,14 @@ def ReportCard(item: ReportData) -> JsxElement {
 def:pub ReportsPage -> JsxElement {
     has data: ReportsData | None = None, ticker: str = "", error: str = "", message: str = "", busy: bool = False;
 
+    # A stock's or coin's page links here with ?ticker=, so the form starts on it.
+    place = useLocation();
+    useEffect(lambda {
+        params: any = new(URLSearchParams, place.search);  # jac:ignore[E1053]
+        asked = str(params.get("ticker") or "");
+        if asked { ticker = asked.upper(); }
+    }, [place.search]);
+
     useEffect(lambda {
         active = True;
         loading = False;
@@ -150,8 +158,8 @@ def:pub ReportsPage -> JsxElement {
                     {if data.message { <p className="text-[12px] text-warn">{data.message}</p> }}
                     <form onSubmit={submit} className="flex flex-col gap-3 sm:flex-row sm:items-end">
                         <div className="w-full max-w-xs space-y-1.5">
-                            <label htmlFor="report-ticker" className="text-[12px] font-medium text-muted">S&P 500 stock</label>
-                            <input id="report-ticker" list="report-symbols" required={True} value={ticker} onChange={lambda (e: ChangeEvent) { ticker = e.target.value.upper(); }} placeholder="AAPL" className={INPUT}/>
+                            <label htmlFor="report-ticker" className="text-[12px] font-medium text-muted">S&P 500 stock or coin</label>
+                            <input id="report-ticker" list="report-symbols" required={True} value={ticker} onChange={lambda (e: ChangeEvent) { ticker = e.target.value.upper(); }} placeholder="AAPL or BTC/USD" className={INPUT}/>
                             <datalist id="report-symbols">{for symbol in data.symbols { <option key={symbol} value={symbol}/> }}</datalist>
                         </div>
                         <button type="submit" disabled={busy or len(data.symbols) == 0} className={BUTTON}>{"Requesting…" if busy else "Request report"}</button>
@@ -162,7 +170,7 @@ def:pub ReportsPage -> JsxElement {
             </Panel>
             <section className="space-y-3">
                 <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="display text-[26px]">Your reports</h2><span className="text-[12px] text-faint">{count(len(data.reports), "report")}</span></div>
-                {if len(data.reports) == 0 { <Empty title="No reports yet">Request a stock above to see its analysis here.</Empty> }}
+                {if len(data.reports) == 0 { <Empty title="No reports yet">Request a stock or a coin above to see its analysis here.</Empty> }}
                 {for item in data.reports { <ReportCard key={item.id} item={item}/> }}
             </section>
         }}

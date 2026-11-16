@@ -14,6 +14,8 @@ rule, TDD §3 rule 5) and so that the scheduler's other jobs never wait on them.
   Most days most companies have not, so this is about one request per company.
 - Analysts: three Finnhub calls per stock every few days, at a third of the allowance, since the
   free plan's calls per minute are shared with the morning run.
+- Coins: Alpaca's dollar pairs once a day, their latest trades every five minutes (crypto never
+  closes), and a year of daily bars once each UTC day has ended (market/coins.jac).
 
 Sweeps of SEC and Finnhub pause around the morning run, which needs those sources more. The raw
 cache is skipped: it would keep gigabytes of bodies that are reduced to kilobytes here.
@@ -23,13 +25,15 @@ import threading;
 import time;
 import from datetime { date, datetime, time as day_time, timedelta, timezone }
 import from market.analysts { AnalystRecord, analyst_record }
+import from market.coins { KEPT_BARS, coin_stats, kept_bar, listing_of, price_of }
 import from market.companies { company_facts, company_record, submissions, wants_facts }
 import from run.switches { demo_mode }
 import from market.listings { build_listings, listed_tickers }
 import from market.prices { Quote, positive_bars, price_stats, snapshots }
 import from market.state { CompanySummary, EarningsDates, MarketState, STATE, summary_of }
-import from research.alpaca { BarSeries, MARKET_TZ, alpaca_data_client, assets, bars_final, daily_bars, market_calendar }
+import from research.alpaca { BarSeries, MARKET_TZ, alpaca_data_client, alpaca_trading_client, assets, bars_final, daily_bars, market_calendar }
 import from research.collector { BudgetExceeded, CacheEntry, MissingKey, RawCache, RunBudget, SourceClient, SourceError, run_budget }
+import from research.crypto { CRYPTO_BENCHMARK, crypto_assets, crypto_bars, crypto_latest_trades, last_final_day }
 import from research.finnhub { earnings_calendar, finnhub_client }
 import from research.sec { sec_data_client }
 import from research.wikipedia { constituents }
@@ -39,6 +43,7 @@ glob STOCK_DAYS: float = 1.0;
 glob QUOTE_OPEN_SECONDS: float = 300.0;
 glob QUOTE_CLOSED_SECONDS: float = 6 * 3600.0;
 glob EARNINGS_SECONDS: float = 12 * 3600.0;
+glob COIN_PRICE_SECONDS: float = 300.0;
 glob ANALYST_DAYS: int = 3;
 glob PASS_SECONDS: float = 50.0;
 glob ANALYST_STOCKS_PER_PASS: int = 6;
@@ -291,6 +296,53 @@ def sweep_companies(state: MarketState, now: datetime, deadline: float, budget: 
     }
 }
 
+def refresh_coins(state: MarketState, now: datetime, budget: RunBudget) {
+    if state.coins and seconds_since(state.meta.get("coins_at", ""), now) < STOCK_DAYS * 86400.0 {
+        return;
+    }
+    listed = crypto_assets(budget, sweep_client(alpaca_trading_client()));
+    state.coins = {symbol: listing_of(asset) for (symbol, asset) in sorted(listed.items())};
+    state.meta["coins_at"] = now.isoformat();
+    state.save("coins");
+    state.save("meta");
+    LOG.info("market: %d coins listed", len(state.coins));
+}
+
+def refresh_coin_prices(state: MarketState, now: datetime, budget: RunBudget) {
+    if not state.coins or seconds_since(state.meta.get("coin_prices_at", ""), now) < COIN_PRICE_SECONDS {
+        return;
+    }
+    (trades, _) = crypto_latest_trades(list(state.coins), budget, sweep_client(alpaca_data_client()));
+    state.coin_prices = {**state.coin_prices, **{t.symbol: price_of(t) for t in trades}};
+    state.meta["coin_prices_at"] = now.isoformat();
+    state.save("coin_prices");
+    state.save("meta");
+}
+
+"""A year of daily bars for every coin, once each UTC day has ended: a few requests for all of them."""
+def refresh_coin_stats(state: MarketState, now: datetime, budget: RunBudget) {
+    target = last_final_day(now);
+    if not state.coins or state.meta.get("coin_stats_day") == target {
+        return;
+    }
+    start = (date.fromisoformat(target) - timedelta(days=KEPT_BARS)).isoformat();
+    (found, _) = crypto_bars(list(state.coins), start, target, budget, sweep_client(alpaca_data_client()));
+    by_symbol = {series.symbol: series for series in found};
+    benchmark = by_symbol.get(CRYPTO_BENCHMARK);
+    stats = dict(state.coin_stats);
+    for series in found {
+        if not series.bars {
+            continue;
+        }
+        stats[series.symbol] = coin_stats(series, benchmark);
+        state.save_coin_bars(series.symbol, [kept_bar(b) for b in series.bars[-KEPT_BARS:]]);
+    }
+    state.coin_stats = stats;
+    state.meta["coin_stats_day"] = target;
+    state.save("coin_stats");
+    state.save("meta");
+}
+
 """One pass over everything but analysts. A source that fails leaves its domain as it was."""
 def main_pass(state: MarketState, now: datetime, deadline: float) {
     state.load();
@@ -299,6 +351,9 @@ def main_pass(state: MarketState, now: datetime, deadline: float) {
         ("stocks", lambda { refresh_stocks(state, now, budget); }),
         ("quotes", lambda { refresh_quotes(state, now, budget); }),
         ("earnings", lambda { refresh_earnings(state, now, budget); }),
+        ("coins", lambda { refresh_coins(state, now, budget); }),
+        ("coin prices", lambda { refresh_coin_prices(state, now, budget); }),
+        ("coin stats", lambda { refresh_coin_stats(state, now, budget); }),
         ("stats", lambda { refresh_stats(state, now, deadline, budget); }),
         ("companies", lambda { sweep_companies(state, now, deadline, budget); })
     ];

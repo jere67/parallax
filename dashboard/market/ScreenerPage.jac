@@ -25,13 +25,13 @@ import from models.market { CoverageView as CoverageData, ScreenerView as Screen
 
 glob PAGE_ROWS: int = 100;
 glob SEARCH_WAIT_MS: int = 250;
-glob PILL: str = "press inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-medium";
-glob PILL_OFF: str = "border-line bg-panel text-muted hover:bg-hover hover:text-text";
-glob PILL_ON: str = "border-accent/40 bg-accent/15 text-accent";
-glob ICON_BUTTON: str = "press inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line bg-panel px-2 text-[12px] font-medium text-muted hover:bg-hover hover:text-text";
+glob:pub PILL: str = "press inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-medium";
+glob:pub PILL_OFF: str = "border-line bg-panel text-muted hover:bg-hover hover:text-text";
+glob:pub PILL_ON: str = "border-accent/40 bg-accent/15 text-accent";
+glob:pub ICON_BUTTON: str = "press inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line bg-panel px-2 text-[12px] font-medium text-muted hover:bg-hover hover:text-text";
 glob FIELD_INPUT: str = "num h-8 w-full min-w-0 rounded-md border border-line bg-bg px-2 text-[16px] text-text placeholder:text-faint sm:text-[13px]";
 
-def query_pairs(search: str) -> dict[str, str] {
+def:pub query_pairs(search: str) -> dict[str, str] {
     pairs: dict[str, str] = {};
     params: any = new(URLSearchParams, search);  # jac:ignore[E1053]
     params.forEach(lambda (value: str, key: str) { pairs[key] = value; });  # jac:ignore[E1030]
@@ -58,7 +58,7 @@ def copy_screen(screen: Screen) -> Screen {
 }
 
 """A filter's words on its pill: the preset's name, or its bounds."""
-def bound_text(field: Field, bound: Bound) -> str {
+def:pub bound_text(field: Field, bound: Bound) -> str {
     if len(bound.one_of) > 0 {
         return bound.one_of[0] if len(bound.one_of) == 1 else bound.one_of[0] + " +" + str(len(bound.one_of) - 1);
     }
@@ -84,7 +84,7 @@ def label_of(key: str) -> str {
 
 """The inline card under the pills for one filter: its presets, its typed bounds, or its words. It
 sits in the page's flow instead of floating, so nothing can clip it on a phone."""
-def FilterCard(field: Field, bound: Bound | None, choices: list[str], apply: Callable[[Bound | None], None], close: Callable[[], None]) -> JsxElement {
+def:pub FilterCard(field: Field, bound: Bound | None, choices: list[str], apply: Callable[[Bound | None], None], close: Callable[[], None]) -> JsxElement {
     has low_text: str = str(bound.low) if bound is not None and bound.low is not None else "",
         high_text: str = str(bound.high) if bound is not None and bound.high is not None else "";
 
@@ -158,7 +158,7 @@ def FilterCard(field: Field, bound: Bound | None, choices: list[str], apply: Cal
 }
 
 """The list of every field, grouped, for adding a filter or choosing columns. `chosen` are ticked."""
-def FieldPicker(title: str, fields: list[Field], chosen: list[str], pick: Callable[[str], None], close: Callable[[], None], footer: any = None) -> JsxElement {
+def:pub FieldPicker(title: str, fields: list[Field], chosen: list[str], pick: Callable[[str], None], close: Callable[[], None], footer: any = None) -> JsxElement {
     has text: str = "";
 
     wanted = text.strip().lower();
@@ -199,6 +199,20 @@ def FieldPicker(title: str, fields: list[Field], chosen: list[str], pick: Callab
             }}
         </div>
     </section>
+}
+
+"""The switch between the screeners: stocks, every coin Alpaca trades, and the agent's options."""
+def:pub AssetSwitch(current: str) -> JsxElement {
+    <nav className="flex h-8 items-center gap-0.5 rounded-md border border-line bg-panel-2 p-0.5" aria-label="Asset class">
+        {for (path, name) in [("/app/screener", "Stocks"), ("/app/screener/crypto", "Crypto"), ("/app/screener/options", "Options")] {
+            <Link
+                key={name}
+                to={path}
+                aria-current={"page" if name == current else None}
+                className={"press grid h-full place-items-center rounded-[3px] px-3 text-[12px] font-medium " + ("bg-panel text-text shadow-sm" if name == current else "text-muted hover:text-text")}
+            >{name}</Link>
+        }}
+    </nav>
 }
 
 """A sortable column head; the arrow shows the current direction."""
@@ -506,7 +520,10 @@ def:pub ScreenerPage -> JsxElement {
     <div className="flex flex-col gap-3">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-                <h1 className="display text-[30px] leading-9 text-text">Screener</h1>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <h1 className="display text-[30px] leading-9 text-text">Screener</h1>
+                    <AssetSwitch current="Stocks"/>
+                </div>
                 <p className="mt-0.5 text-[13px] text-muted">Every U.S.-listed stock, narrowed however you like.</p>
             </div>
             <SavedScreens current={current} go={lambda (query: str) { nav("/app/screener" + ("?" + query if query else "")); }}/>

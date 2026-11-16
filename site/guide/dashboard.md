@@ -1,6 +1,6 @@
 ---
 title: Reading the dashboard
-description: What the Portfolio, Results, Specialists, News, Runs, Decision trail, Screener, and stock pages show, and how to follow one decision from research to order.
+description: What the Portfolio, Results, Specialists, News, Runs, Decision trail, Screener, stock, and coin pages show, and how to follow one decision from research to order.
 related:
   - { text: Dashboard internals, link: /system/dashboard }
   - { text: get_decision_trail, link: /api/get-decision-trail }
@@ -12,7 +12,7 @@ A visitor who is not signed in is sent to `/login?next=<path>` and comes back to
 The landing page at `/` is the only public page.
 
 The pages below show the portfolio, the research, runs, and decision trails, and every ticker on them links to the decision trail that explains it.
-The Screener and stock pages cover the whole market, whether or not your agent has looked at a stock.
+The Screener, stock, and coin pages cover the whole market, whether or not your agent has looked at a stock or coin.
 The Policy and Reports pages have their own guides, and Settings is described in [Your agent](/guide/your-agent).
 The admin account sees the team agent's portfolio instead of its own.
 On a server in demo mode, every account sees the same demo history.
@@ -26,9 +26,12 @@ On a server in demo mode, every account sees the same demo history.
 | `/app/runs` | Runs, showing the newest run |
 | `/app/runs/:day` | Runs, showing the run on a trading date |
 | `/app/runs/:day/:ticker` | Decision trail for one ticker on one day |
-| `/app/screener` | Screener |
+| `/app/screener` | Screener, every U.S.-listed stock |
+| `/app/screener/crypto` | Screener, every coin Alpaca trades against the dollar |
+| `/app/screener/options` | Screener, the option contracts your agent holds, held, or ordered |
 | `/app/stocks/:symbol` | A stock's page |
 | `/app/stocks/:symbol/:tab` | One section of a stock's page |
+| `/app/coins/:pair` | A coin's page, with its pair written `BTC-USD` |
 | `/app/policy` | [Your policy](/guide/policies) |
 | `/app/reports` | On-demand reports |
 | `/app/specialists` | Specialists, each role's recent votes, hit rate, and calibration |
@@ -116,7 +119,7 @@ It lists every note from your agent's morning runs and the reports you asked for
 | Column | Shows |
 | --- | --- |
 | Time | When the note was written, in New York time |
-| Ticker | The stock, or **Market** for the macro desk's brief |
+| Ticker | The stock or coin, or **Market** for the macro desk's brief |
 | Headline | The note's first clause, or the Orchestrator's question for a follow-up |
 | View | The desk's stance and confidence |
 | Desk | Market, fundamentals, news, or macro, and how many sources it read |
@@ -126,7 +129,8 @@ The note's first sentence or clause becomes the headline, and the story continue
 
 ### Filtering
 
-The bar above the feed filters by desk, ticker, view, and date, and searches the words of each note and its sources.
+The bar above the feed filters by desk, asset class (stocks, crypto, or the market's own notes), ticker, view, and date, and searches the words of each note and its sources.
+Each asset class shows how many notes it holds under the other filters.
 **Holdings** keeps only the tickers your agent holds now.
 Filters live in the page's address, so a filtered feed can be bookmarked or shared.
 
@@ -217,6 +221,7 @@ Arrows step to the previous or next ticker of the same run.
 ## Screener
 
 The screener lists every U.S.-listed stock, biggest first.
+The switch beside its title moves to **Crypto** and **Options**, described below.
 
 - **Filters.** Each pill opens a card with presets, typed bounds, or a list of words, and **Filter** adds any other field. Filters all have to hold, and a stock missing a figure does not match it.
 - **Tabs.** Each tab is a set of columns: Overview, Performance, Technicals, Extended hours, Forecasts, Valuation, Dividends, Profitability, Income statement, Balance sheet, Cash flow, and Per share. The column button changes them.
@@ -226,6 +231,20 @@ The screener lists every U.S.-listed stock, biggest first.
 
 Prices are delayed about 15 minutes during a session.
 The note under the table says how much of the market each sweep has reached so far, since a new server takes hours to read every company.
+
+### Crypto
+
+The crypto screener lists every coin Alpaca trades against the dollar, most traded first, with the same filters, tabs (Overview, Performance, and Technicals), sorting, watchlist, and address as the stock screener.
+Crypto trades every day, so its periods are calendar days: a week is seven days, a year 365, and volatility is over 30 days.
+A coin's price is its latest trade on Alpaca, read every five minutes, and its change counts from the last daily close, at midnight UTC.
+Its daily figures come from a year of daily bars, read once each UTC day has ended.
+Beta is measured against Bitcoin, as a stock's is against SPY.
+A badge beside a coin is your agent's decision on it in its newest run that covered coins.
+
+### Options
+
+The Options view lists every call and put your agent holds now, has held, or has ordered, with its terms, days to expiry, entry and last prices, and profit.
+A contract links to its stock's option chain, and its decision day to the decision trail on that stock.
 
 ## Stock page
 
@@ -238,11 +257,20 @@ Its header shows the price, the day's change, the market's phase, any extended-h
 | Financials | Revenue and profit by year or quarter, revenue down to profit, debt and cash, and returns and ratios |
 | Technicals | The rating, each indicator's value and vote, and performance over six periods |
 | Forecasts | The analyst consensus now and by month, and earnings against the consensus |
+| Options | The option chain for one expiry: each strike's call and put, with bid, ask, last, volume, open interest, implied volatility, and delta, the strikes in the money shaded, and the contracts your agent holds marked |
 | Seasonals | Returns by month and year since 2016 |
 | News | Recent headlines, linking to their sources |
 | Filings | Recent SEC filings, linking to EDGAR |
 
 Each button under the chart is a range, with that range's change on it.
 **Add** on a peer draws it on the chart, up to three, which turns the chart into percent change from the range's start so stocks at different prices share one axis.
+
+The option chain lists contracts expiring within four months with strikes within 30% of the price, and quotes come from Alpaca's free indicative feed, which can lag the market.
+
+## Coin page
+
+A coin's page opens from any pair in the crypto screener.
+It shows the latest price and the change since midnight UTC, a chart of daily closes, key figures (returns, the 52-week range, volatility, dollar volume, RSI, the moving averages, and beta against Bitcoin), your agent's last decision on the coin, and the research notes its desks wrote on it.
+**Request a report** opens the Reports page with the coin filled in.
 
 The market pages are not advice, and your agent's decisions rest on its own research, not on these ratings.

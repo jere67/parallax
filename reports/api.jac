@@ -102,10 +102,12 @@ def:priv request_report(ticker: str) -> ReportReply {
     if refusal {
         return ReportReply(accepted=False, message=refusal);
     }
-    symbol = ticker.strip().upper().replace(".", "-");
+    raw = ticker.strip().upper();
+    # A coin's pair keeps its slash; a share class's dot is written as Alpaca writes it.
+    symbol = raw if "/" in raw else raw.replace(".", "-");
     c = catalog();
     if c is None or symbol not in c.symbols {
-        return ReportReply(accepted=False, message="Choose a stock from the current S&P 500 list.");
+        return ReportReply(accepted=False, message="Choose a stock from the current S&P 500 list, or a coin Alpaca trades, such as BTC/USD.");
     }
     for r in [root -->[?:ReportRequest]] {
         if r.ticker == symbol and r.trading_date == c.trading_date {

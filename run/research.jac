@@ -240,6 +240,11 @@ def collect_pass(run_day: str, open_positions: list[str], config: PassConfig = P
     gaps: list[str] = [];
 
     clock = time.monotonic();
+    if is_crypto(requested_ticker) {
+        # A report on one coin: no stock screen, and the coin covered as asked for.
+        phases["screen"] = time.monotonic() - clock;
+        return collect_shortlist(run_day, Shortlist(picks=[], scores=[], excluded={}), [], config, PassStart(now=now, budget=budget, gaps=gaps, phases=phases, held_coins=[requested_ticker], requested_coin=requested_ticker));
+    }
     held_stocks = [t for t in open_positions if not is_crypto(t)];
     reviewing = config.held_stocks and bool(held_stocks);
     members = index_members(run_day, budget, gaps) if config.stocks or requested_ticker or reviewing else [];
@@ -265,13 +270,15 @@ def collect_pass(run_day: str, open_positions: list[str], config: PassConfig = P
 }
 
 """Where a pass stands when its shortlist is set: the clock freshness is judged at, the run's
-source budget, and the gaps and phase timings so far."""
+source budget, and the gaps and phase timings so far. `requested_coin` is a coin a reader asked a
+report on, covered as on-demand research."""
 obj PassStart {
     has now: datetime,
         budget: RunBudget;
     has gaps: list[str] = [],
         phases: dict[str, float] = {},
-        held_coins: list[str] = [];
+        held_coins: list[str] = [],
+        requested_coin: str = "";
 }
 
 """Collect every ticker on `shortlist` and the macro inputs for a run on `run_day`, adding to
@@ -310,7 +317,7 @@ def collect_shortlist(run_day: str, shortlist: Shortlist, members: list[Constitu
         collected = [f.result() for f in pending];
     }
     if config.crypto or start.held_coins {
-        coins = collect_coins(ctx, start.held_coins, gaps);
+        coins = collect_coins(ctx, start.held_coins, gaps, start.requested_coin);
         shortlist = Shortlist(picks=shortlist.picks + [c.pick for c in coins], scores=shortlist.scores, excluded=shortlist.excluded, version=shortlist.version);
         collected.extend(coins);
     }
@@ -451,9 +458,9 @@ def collect_ticker(pick: Pick, release: EarningsDate | None, cik: str, ctx: Pass
 
 """The coins a pass covers and their inputs: the `crypto_size` pairs with the most dollar volume over
 twenty days, then every held pair (`held`), each with its daily bars measured against SPY and
-BTC/USD and its Alpaca news. A coin has no company filings, so it has no fundamentals. A failed
+BTC/USD and its Alpaca news. `requested` is a held pair a reader asked a report on. A coin has no company filings, so it has no fundamentals. A failed
 read of the pair list or the bars is a gap, and the pass goes on without coins."""
-def collect_coins(ctx: PassContext, held: list[str], gaps: list[str]) -> list[TickerInputs] {
+def collect_coins(ctx: PassContext, held: list[str], gaps: list[str], requested: str = "") -> list[TickerInputs] {
     budget = ctx.budget;
     try {
         listed = crypto_assets(budget);
@@ -479,8 +486,8 @@ def collect_coins(ctx: PassContext, held: list[str], gaps: list[str]) -> list[Ti
         pick = Pick(
             symbol=symbol,
             sector=CRYPTO_SECTOR,
-            reason=PickReason.SCORE if ranked else PickReason.OPEN_POSITION,
-            note=f"Among the {ctx.config.crypto_size} most traded coins by 20-day dollar volume" if ranked else "open position"
+            reason=PickReason.SCORE if ranked else (PickReason.WILDCARD if symbol == requested else PickReason.OPEN_POSITION),
+            note=f"Among the {ctx.config.crypto_size} most traded coins by 20-day dollar volume" if ranked else ("On-demand research" if symbol == requested else "open position")
         );
         tries = Attempts();
         benchmark = symbol != CRYPTO_BENCHMARK;

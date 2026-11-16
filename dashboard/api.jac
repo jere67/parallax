@@ -173,14 +173,26 @@ def:priv get_run(run_date: str = "") -> RunView | None {
 """The caller's newest run that covered stocks, from the read cache, for the stock pages' endpoints
 (market/api.jac) that link to its decisions without walking the graph themselves."""
 def my_latest_stock_run -> RunView | None {
+    # A weekend run covers coins alone, so the stock pages read the newest run that covered stocks.
+    return my_latest_run_covering(False);
+}
+
+"""The caller's newest run that covered coins, for the coin pages, as `my_latest_stock_run` is for
+the stock pages."""
+def my_latest_coin_run -> RunView | None {
+    return my_latest_run_covering(True);
+}
+
+"""The caller's newest run with a coin row (`coins`) or a stock row (not `coins`), among the last
+STOCK_RUN_LOOKBACK runs."""
+def my_latest_run_covering(coins: bool) -> RunView | None {
     team = my_portfolio();
     if team is None {
         return None;
     }
-    # A weekend run covers coins alone, so the stock pages read the newest run that covered stocks.
     for summary in VIEWS.get(view_key(team, "runs"), run_summaries, team)[:STOCK_RUN_LOOKBACK] {
         run = VIEWS.get(view_key(team, "run", summary.run_date), run_view, team, summary.run_date);
-        if run is not None and any("/" not in row.ticker for row in run.rows) {
+        if run is not None and any(("/" in row.ticker) == coins for row in run.rows) {
             return run;
         }
     }

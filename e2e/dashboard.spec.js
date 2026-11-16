@@ -342,6 +342,23 @@ test("news: the feed filters by address, and a story opens beside it or over it"
   await expect(rows.first()).toBeVisible();
 });
 
+test("news: the asset filter splits stocks, coins, and the market's own notes", async ({ page }) => {
+  await logIn(page, "news");
+  await page.goto("/app/news");
+  const rows = page.locator("a.news-row");
+  await expect(rows.first()).toBeVisible();
+  await page.getByLabel("Asset class").selectOption("crypto");
+  await expect(page).toHaveURL(/asset=crypto/);
+  await expect(rows.first().locator(".news-ticker")).toHaveText(/^[A-Z]+\/USD$/);
+  const instruments = await page.getByLabel("Instrument").locator("option").allInnerTexts();
+  expect(instruments.slice(1).every((t) => t.endsWith("/USD")), instruments.join(",")).toBeTruthy();
+  await page.getByLabel("Asset class").selectOption("market");
+  await expect(rows.first().locator(".news-ticker")).toHaveText("Market");
+  await page.getByLabel("Asset class").selectOption("stocks");
+  await expect(rows.first().locator(".news-ticker")).not.toHaveText(/\/|Market/);
+  await fitsWidth(page);
+});
+
 test("news: a shared link keeps its filter through logging in", async ({ page }) => {
   const account = await makeAccount(page, "news-link");
   await page.goto("/news?ticker=NVDA");

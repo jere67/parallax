@@ -5,6 +5,7 @@ filled with something made up."""
 import from "@jac/runtime" { Link, useNavigate, useParams }
 import from "lucide-react" { ChevronRight, ExternalLink, Star }
 import from react { useEffect }
+import from dashboard.market.OptionChain { OptionChain }
 import from dashboard.market.PriceChart { CompareLine, MAX_COMPARE, PriceChart }
 import from dashboard.market.charts { BarSeriesSpec, Gauge, PeriodBars, ProfitSteps, RatingBars, SeasonTable, SurpriseBars }
 import from dashboard.market.columns { big_money, show, size_class, tone_of }
@@ -22,7 +23,7 @@ import from models.market {
     StockView as StockData
 }
 
-glob TABS: list[tuple[str, str]] = [("", "Overview"), ("financials", "Financials"), ("technicals", "Technicals"), ("forecasts", "Forecasts"), ("seasonals", "Seasonals"), ("news", "News"), ("filings", "Filings")];
+glob TABS: list[tuple[str, str]] = [("", "Overview"), ("financials", "Financials"), ("technicals", "Technicals"), ("forecasts", "Forecasts"), ("options", "Options"), ("seasonals", "Seasonals"), ("news", "News"), ("filings", "Filings")];
 glob BUSY_RETRY_MS: int = 8000;
 glob REVENUE_SERIES: list[BarSeriesSpec] = [
     BarSeriesSpec(key="revenue", label="Revenue", color="var(--compare-2)"),
@@ -684,6 +685,8 @@ def:pub StockPage -> JsxElement {
             <TechnicalsTab stock={stock}/>
         } elif tab == "forecasts" {
             <ForecastsTab stock={stock}/>
+        } elif tab == "options" {
+            <OptionChain symbol={symbol}/>
         } elif tab == "seasonals" {
             <Panel title="Returns by month" aside="From daily closes since 2016">
                 {if history is None {

@@ -8,6 +8,7 @@ banner says so. It is never written to disk, and it never mixes with live data.
 import random;
 import from datetime { date, datetime, timedelta, timezone }
 import from market.analysts { AnalystRecord, RatingPoint, Surprise }
+import from market.coins { CoinListing, CoinPrice, KEPT_BARS, coin_stats, kept_bar }
 import from market.companies { CompanyProfile, CompanyRecord, FilingLink, Period }
 import from market.listings { Listing }
 import from market.prices { Quote, price_stats }
@@ -19,6 +20,31 @@ import from research.alpaca { Bar, BarSeries }
 glob HISTORY_START: date = date(2016, 1, 4);
 glob STATS_SESSIONS: int = 320;
 glob BENCHMARK: str = "SPY";
+glob COIN_BENCHMARK: str = "BTC/USD";
+
+"""One invented coin: its pair, its name, and its price now. The first five are the demo history's
+(dashboard/demo.jac), at its prices."""
+obj DemoCoin {
+    has symbol: str,
+        name: str,
+        price: float,
+        volume: float;
+}
+
+glob DEMO_COINS: list[DemoCoin] = [
+    DemoCoin(symbol="BTC/USD", name="Bitcoin", price=96500.0, volume=900.0),
+    DemoCoin(symbol="ETH/USD", name="Ethereum", price=3350.0, volume=9000.0),
+    DemoCoin(symbol="SOL/USD", name="Solana", price=188.0, volume=60000.0),
+    DemoCoin(symbol="XRP/USD", name="XRP", price=2.28, volume=4000000.0),
+    DemoCoin(symbol="DOGE/USD", name="Dogecoin", price=0.3712, volume=20000000.0),
+    DemoCoin(symbol="LTC/USD", name="Litecoin", price=104.0, volume=30000.0),
+    DemoCoin(symbol="AVAX/USD", name="Avalanche", price=38.5, volume=70000.0),
+    DemoCoin(symbol="LINK/USD", name="Chainlink", price=22.4, volume=90000.0),
+    DemoCoin(symbol="DOT/USD", name="Polkadot", price=7.1, volume=200000.0),
+    DemoCoin(symbol="UNI/USD", name="Uniswap", price=13.2, volume=80000.0),
+    DemoCoin(symbol="AAVE/USD", name="Aave", price=310.0, volume=4000.0),
+    DemoCoin(symbol="BCH/USD", name="Bitcoin Cash", price=455.0, volume=3000.0)
+];
 
 """One invented stock: its class, its price, and its size in billions of dollars."""
 obj DemoStock {
@@ -317,6 +343,45 @@ def demo_company(stock: DemoStock, cik: str, today: date) -> CompanyRecord {
     );
 }
 
+"""A random walk over every calendar day through `days`, ending at `price`, seeded by the pair.
+Each coin moves partly with BTC/USD's invented walk."""
+def demo_coin_bars(coin: DemoCoin, days: list[str]) -> list[Bar] {
+    rng = random.Random(f"coin-bars:{coin.symbol}");
+    closes = [coin.price];
+    beta = 1.0 if coin.symbol == COIN_BENCHMARK else rng.uniform(0.7, 1.5);
+    for day in reversed(days[1:]) {
+        market = random.Random(f"coin-market:{day}").gauss(0.0004, 0.025);
+        alone = 0.0 if coin.symbol == COIN_BENCHMARK else rng.gauss(0.0, 0.03);
+        closes.append(max(coin.price * 0.05, closes[-1] / (1.0 + beta * market + alone)));
+    }
+    closes.reverse();
+    bars: list[Bar] = [];
+    for (i, day) in enumerate(days) {
+        close = closes[i];
+        before = closes[i - 1] if i > 0 else close;
+        spread = close * rng.uniform(0.005, 0.03);
+        bars.append(Bar(day=day, open=before, high=max(before, close) + spread, low=max(close * 0.01, min(before, close) - spread), close=close, volume=coin.volume * rng.uniform(0.5, 1.8), trades=0, vwap=close));
+    }
+    return bars;
+}
+
+"""The invented coins on `state`: their listings, a price a little off yesterday's close, and a
+year of bars and what they say."""
+def demo_coins(state: MarketState, today: date) {
+    days = [(today - timedelta(days=n)).isoformat() for n in range(KEPT_BARS, 0, -1)];
+    series = {c.symbol: BarSeries(symbol=c.symbol, bars=demo_coin_bars(c, days), stamp=demo_stamp(days[-1])) for c in DEMO_COINS};
+    benchmark = series[COIN_BENCHMARK];
+    for coin in DEMO_COINS {
+        found = series[coin.symbol];
+        rng = random.Random(f"coin-quote:{coin.symbol}");
+        state.coins[coin.symbol] = CoinListing(symbol=coin.symbol, name=coin.name);
+        state.coin_stats[coin.symbol] = coin_stats(found, benchmark);
+        state.coin_prices[coin.symbol] = CoinPrice(price=found.bars[-1].close * rng.uniform(0.97, 1.03), at=f"{today.isoformat()}T15:00:00+00:00");
+        state.save_coin_bars(coin.symbol, [kept_bar(b) for b in found.bars]);
+    }
+    state.meta["coin_stats_day"] = days[-1];
+}
+
 """The whole invented market as of `today`."""
 def demo_state(today: date) -> MarketState {
     state = MarketState(demo=True, loaded=True);
@@ -390,6 +455,7 @@ def demo_state(today: date) -> MarketState {
             next_hour=rng.choice(["bmo", "amc"])
         );
     }
+    demo_coins(state, today);
     state.meta["quotes_at"] = datetime.combine(today, datetime.min.time(), timezone.utc).isoformat();
     state.meta["stats_day"] = last;
     state.meta["sessions"] = ",".join(days[-10:]);

@@ -414,7 +414,8 @@ obj NewsFeed {
         desks: dict[str, int] = {},
         tickers: list[str] = [],
         days: list[str] = [],
-        held: int = 0;
+        held: int = 0,
+        assets: dict[str, int] = {};
 }
 
 """One source a note cites, with every claim the note took from it. `link` says the address is a
