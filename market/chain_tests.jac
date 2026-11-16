@@ -20,7 +20,8 @@ test "a chain's rows pair each strike's call and put for one expiry, with open i
     rows = chain_rows(listed, "2026-12-18", {call: ChainQuote(symbol=call, bid=4.1, ask=4.3)});
     assert [r.strike for r in rows] == [190.0, 200.0];
     assert rows[0].put is None and rows[0].call is not None and rows[0].call.bid is None;
-    assert rows[1].call.bid == 4.1 and rows[1].call.open_interest == 50.0 and rows[1].put is not None;
+    found = rows[1].call;
+    assert found is not None and found.bid == 4.1 and found.open_interest == 50.0 and rows[1].put is not None;
 }
 
 test "an invented chain is centered on the price, prices calls and puts sensibly, and repeats" {
@@ -38,7 +39,8 @@ test "an invented chain is centered on the price, prices calls and puts sensibly
         assert q.bid is not None and q.ask is not None and 0.0 <= q.bid <= q.ask;
     }
     deep_call = [c for c in listed if c.kind == CALL and c.expiry == expiries[0]][0];
-    assert quotes[deep_call.symbol].delta > 0.8;
+    delta = quotes[deep_call.symbol].delta;
+    assert delta is not None and delta > 0.8, delta;
     (again, _) = demo_chain("AAPL", 232.0, today);
     assert [c.symbol for c in again] == [c.symbol for c in listed];
 }
