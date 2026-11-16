@@ -21,8 +21,8 @@ def days_text(days: int | None) -> str {
 
 def HoldingRow(h: HoldingData) -> JsxElement {
     <tr className={ROW}>
-        <td className={TD + FROZEN_CELL + " min-w-[150px] max-w-[170px] whitespace-normal sm:max-w-none sm:whitespace-nowrap"}>
-            <Link to={"/app/stocks/" + h.underlying + "/options"} className="group/link flex min-w-0 flex-col">
+        <td className={TD + FROZEN_CELL + " min-w-[150px] max-w-[170px] sm:max-w-none"}>
+            <Link to={"/app/stocks/" + h.underlying + "/options"} className="group/link flex min-w-0 flex-col whitespace-normal sm:whitespace-nowrap">
                 <span className="font-semibold leading-5 text-text group-hover/link:text-accent">{h.label}</span>
                 <span className="num truncate text-[11px] text-faint">{h.contract}</span>
             </Link>

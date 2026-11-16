@@ -49,14 +49,14 @@ def HeldMark(side: SideData | None, kind: str) -> JsxElement {
     if side is None or side.held == 0 {
         return <></>;
     }
-    <span className={PILL_BASE + " " + TONE_ACCENT + " ml-1.5"} title={"Your agent holds " + num(side.held, 0) + " of " + side.symbol}>{"Held " + num(side.held, 0) + " " + kind}</span>
+    <span className={PILL_BASE + " " + TONE_ACCENT + " mx-auto mt-1 flex w-fit"} title={"Your agent holds " + num(side.held, 0) + " of " + side.symbol}>{"Held " + num(side.held, 0) + " " + kind}</span>
 }
 
 def StrikeRow(row: StrikeData, spot: float) -> JsxElement {
     <tr className="border-t border-line">
         <SideCells side={row.call} in_money={row.strike < spot} mirror={True}/>
         <th scope="row" className="whitespace-nowrap border-b border-line/60 bg-panel-2 px-3 py-1.5 text-center text-[13px] font-semibold text-text">
-            <span className="num">{price(row.strike)}</span>
+            <span className="num block">{price(row.strike)}</span>
             <HeldMark side={row.call} kind="call"/>
             <HeldMark side={row.put} kind="put"/>
         </th>
@@ -153,7 +153,7 @@ def:pub OptionChain(symbol: str) -> JsxElement {
                         {for name in CALL_COLUMNS {
                             <th key={"c" + name} scope="col" className={TH_NUM + wide(name)}>{name}</th>
                         }}
-                        <th scope="col" className={TH_NUM + " text-center"}>Strike</th>
+                        <th scope="col" className={TH_NUM.replace("text-right", "text-center")}>Strike</th>
                         {for name in SIDE_COLUMNS {
                             <th key={"p" + name} scope="col" className={TH_NUM + wide(name)}>{name}</th>
                         }}
