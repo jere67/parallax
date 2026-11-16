@@ -18,9 +18,12 @@ record of one (someone who signed up with that name) is left alone, and the sign
 import logging;
 import secrets;
 import threading;
+import time;
 import from datetime { date, datetime }
 import from jaclang.server.identity.user_manager { UserManager }
+import from jaclang.data.store { PgStore }
 import from accounts.store { DEMO_PORTFOLIO, DEMO_USERNAME, demo_login, demo_portfolio, forget_demo_root }
+import from accounts.transfer { JOBS, SETTLE_S, TransferError, hold_jobs, own_store, release_jobs }
 import from dashboard.cache { VIEWS }
 import from dashboard.demo { DEMO_VERSION, DemoSim, STARTING_CASH }
 import from models.accounts { DemoLogin, DemoSignIn }
@@ -33,6 +36,9 @@ import from run.switches { demo_mode }
 glob LOG: logging.Logger = logging.getLogger("trading_agent.demo_account");
 glob _SEEDING: threading.Lock = threading.Lock();
 glob NOT_READY: str = "The demo account is being set up. Try again in a minute.";
+glob SEED_JOB: str = "demo_history_job";
+# Whose hold the other jobs' leases are under while a seed writes, apart from a records move's.
+glob SEED_LEASE_OWNER: str = "parallax-demo-seed";
 
 """Make the demo user and record it, a step a minute: the record first, then the user. A user
 made between the two, by a job that stopped before it could record it, is the server's own."""
@@ -85,21 +91,61 @@ def made_after(found: dict[str, object], login: DemoLogin) -> bool {
     }
 }
 
-"""Seed the demo account's history once, outside a demo server. A seed takes about a minute and
-commits only when its job ends, so the next minute's job skips while one is running."""
+"""Seed the demo account's history once, outside a demo server. A seed takes about a minute (five
+on a JacHammer host) and commits only when its job ends, so the next minute's job skips while one
+is running. It holds the other scheduled jobs meanwhile, as a records move does: they write every
+minute, and a write to the graph the seed has read cancels its whole transaction (a serialization
+failure, Postgres 40001), so with them running a seed failed every minute and never finished."""
 @schedule(trigger=ScheduleTrigger.STATIC, cron="* * * * *")
 def demo_history_job {
     if demo_mode() or not _SEEDING.acquire(blocking=False) {
         return;
     }
+    store: PgStore | None = None;
+    held: list[str] = [];
     try {
+        try {
+            store = own_store();
+        } except TransferError {
+            store = None;
+        }
+        # Asked of the database directly, so this job's transaction reads the graph only once the
+        # other jobs are held.
+        if store is not None {
+            if not needs_seed(store) {
+                return;
+            }
+            held = hold_jobs(store, jobs=[j for j in JOBS if j != SEED_JOB], owner=SEED_LEASE_OWNER);
+            # A job that fired just before the hold is given time to finish.
+            time.sleep(SETTLE_S);
+        }
         done = seed_demo_account(datetime.now(NEW_YORK).date());
         if done {
             LOG.warning("%s", done);
         }
+    } except TransferError as e {
+        LOG.warning("demo account: not seeded this minute: %s", e);
     } finally {
+        if store is not None {
+            release_jobs(store, held, SEED_LEASE_OWNER);
+            store.close();
+        }
         _SEEDING.release();
     }
+}
+
+"""False when the portfolio named demo holds the current history, or holds no demo history at all
+(which `seed_demo_account` leaves alone)."""
+def needs_seed(store: PgStore) -> bool {
+    return int(store.rows(
+        """
+        SELECT count(*) FROM anchors
+        WHERE arch_type = 'Portfolio'
+          AND props->'archetype'->>'name' = :name
+          AND (props->'archetype'->>'demo_version' = :version OR props->'archetype'->>'demo' = 'false')
+        """,
+        {"name": DEMO_PORTFOLIO, "version": str(DEMO_VERSION)}
+    )[0][0]) == 0;
 }
 
 """Write the demo environment's history ending yesterday into the demo account's portfolio,

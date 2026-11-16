@@ -404,13 +404,13 @@ def write_moved(store: PgStore, moved: Moved) {
 
 """Take every scheduled job's lease, waiting for a job that just fired to let its own go.
 Returns the leases taken; raises when one stays held."""
-def hold_jobs(store: PgStore, wait_s: float = LEASE_WAIT_S, poll_s: float = LEASE_POLL_S) -> list[str] {
+def hold_jobs(store: PgStore, wait_s: float = LEASE_WAIT_S, poll_s: float = LEASE_POLL_S, jobs: list[str] = JOBS, owner: str = LEASE_OWNER) -> list[str] {
     held: list[str] = [];
-    waiting = ["sched:" + name for name in JOBS];
+    waiting = ["sched:" + name for name in jobs];
     deadline = time.monotonic() + wait_s;
     while waiting {
         for key in list(waiting) {
-            if store.kv_acquire_lease(key, LEASE_TTL_S, LEASE_OWNER) {
+            if store.kv_acquire_lease(key, LEASE_TTL_S, owner) {
                 held.append(key);
                 waiting.remove(key);
             }
@@ -419,7 +419,7 @@ def hold_jobs(store: PgStore, wait_s: float = LEASE_WAIT_S, poll_s: float = LEAS
             break;
         }
         if time.monotonic() >= deadline {
-            release_jobs(store, held);
+            release_jobs(store, held, owner);
             raise TransferError("A scheduled job kept running, so nothing was moved. Try again in a few minutes.");
         }
         time.sleep(poll_s);
@@ -427,10 +427,10 @@ def hold_jobs(store: PgStore, wait_s: float = LEASE_WAIT_S, poll_s: float = LEAS
     return held;
 }
 
-def release_jobs(store: PgStore, held: list[str]) {
+def release_jobs(store: PgStore, held: list[str], owner: str = LEASE_OWNER) {
     for key in held {
         try {
-            store.kv_release_lease(key, LEASE_OWNER);
+            store.kv_release_lease(key, owner);
         } except Exception as e {
             LOG.warning("transfer: could not release %s: %s", key, e);
         }

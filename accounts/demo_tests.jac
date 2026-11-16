@@ -1,7 +1,8 @@
 """Seeding the demo account's history (accounts/demo.jac): once per version, and a newer version
 replaces an older one without touching any other portfolio."""
 import from datetime { date }
-import from accounts.demo { clear_history, seed_demo_account }
+import from accounts.demo { clear_history, needs_seed, seed_demo_account }
+import from accounts.transfer { own_store }
 import from accounts.store { DEMO_PORTFOLIO, demo_portfolio }
 import from action.fixtures { team }
 import from dashboard.demo { DEMO_VERSION }
@@ -45,4 +46,25 @@ test "clearing a history stops at other portfolios" {
     neighbor +>:Ran:+> Run(run_date="2026-11-13", started_at="2026-11-13T12:30:00+00:00");
     assert clear_history(portfolio) == 1;
     assert [portfolio ->:Ran:->] == [] and len([neighbor ->:Ran:->]) == 1;
+}
+
+test "the seed job asks the database whether the demo history is due" {
+    store = own_store();
+    try {
+        assert needs_seed(store);
+        seed_demo_account(TODAY);
+        commit();
+        assert not needs_seed(store);
+        portfolio = demo_portfolio();
+        assert portfolio is not None;
+        portfolio.demo_version = DEMO_VERSION - 1;
+        commit();
+        assert needs_seed(store);
+        # A portfolio named demo that someone else made is left alone, so it is never due.
+        portfolio.demo = False;
+        commit();
+        assert not needs_seed(store);
+    } finally {
+        store.close();
+    }
 }
