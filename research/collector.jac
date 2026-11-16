@@ -37,6 +37,11 @@ import from research.sources { Dataset, SOURCES, Source }
 
 """Set to a directory to save every live response as a replayable fixture."""
 glob RECORD_DIR_ENV: str = "COLLECTOR_RECORD_DIR";
+glob RAW_CACHE_DIR_ENV: str = "RAW_CACHE_DIR";
+# Under `.jac/`, the one folder the dev server's hot reload does not watch. Under `storage/`,
+# each answer the cache wrote set off a reload of the whole app, several a minute while the
+# market pages refreshed, and a reload stops the scheduler's dynamic jobs (run/manual.jac).
+glob RAW_CACHE_DEFAULT_DIR: str = ".jac/storage";
 glob MAX_RETRY_AFTER_S: float = 60.0;
 
 def utc_now -> datetime {
@@ -186,13 +191,18 @@ obj CacheEntry {
         body: str;
 }
 
+"""The raw cache's folder: RAW_CACHE_DIR when set, else `.jac/storage`."""
+def raw_cache_dir -> str {
+    return os.environ.get(RAW_CACHE_DIR_ENV) or RAW_CACHE_DEFAULT_DIR;
+}
+
 """Raw responses in store(), keyed by source, dataset, symbol, and date (TDD §11)."""
 obj RawCache {
     has storage: Storage | None = None;
 
     def _storage -> Storage {
         if self.storage is None {
-            self.storage = store() as Storage;
+            self.storage = store(base_path=raw_cache_dir()) as Storage;
         }
         return self.storage;
     }
