@@ -222,6 +222,10 @@ test("crypto: a coin's page has its price, chart, stats, the agent's decision, a
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Crypto");
   await expect(page.locator("canvas").first()).toBeVisible();
   await expect(page.getByText("Beta vs. Bitcoin", { exact: true })).toBeVisible();
+  const ranges = page.getByRole("group", { name: "Chart range" });
+  await expect(ranges.getByRole("button", { name: /^1D/ })).toHaveCount(0);
+  await ranges.getByRole("button", { name: /^3M/ }).click();
+  await expect(page.locator("canvas").first()).toBeVisible();
   await expect(page.getByText("The committee", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Research notes" })).toBeVisible();
   const report = page.getByRole("link", { name: "Request a report" });
@@ -257,8 +261,8 @@ test("options: a stock's chain shows calls and puts by strike, with the price be
   await expect(page).toHaveURL(/\/app\/stocks\/AAPL\/options$/);
   const chain = page.getByRole("table", { name: /^Option chain for AAPL/ });
   await expect(chain).toBeVisible();
-  await expect(chain.getByRole("columnheader", { name: "Calls" })).toBeVisible();
-  await expect(chain.getByRole("columnheader", { name: "Puts" })).toBeVisible();
+  await expect(chain.getByRole("columnheader", { name: "Strike" })).toBeVisible();
+  await expect(chain.getByRole("rowheader").first()).toContainText("$");
   await expect(chain.getByText(/^Stock \$/)).toBeVisible();
   const expiry = page.getByLabel("Expiry");
   const options = await expiry.locator("option").allInnerTexts();

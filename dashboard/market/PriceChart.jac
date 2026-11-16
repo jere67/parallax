@@ -56,7 +56,9 @@ obj:pub CompareLine {
         intraday: list[Bar];
 }
 
-def:pub PriceChart(symbol: str, daily: list[Bar], intraday: list[Bar], compare: list[CompareLine] = [], height: int = 360) -> JsxElement {
+"""`ranges` are the range buttons offered: a coin's page has no intraday bars, so it leaves out a
+day and five."""
+def:pub PriceChart(symbol: str, daily: list[Bar], intraday: list[Bar], compare: list[CompareLine] = [], height: int = 360, ranges: list[str] = RANGES) -> JsxElement {
     has box: Ref[HTMLDivElement] = Ref(),
         range: str = "1Y",
         candles: bool = False,
@@ -236,7 +238,7 @@ def:pub PriceChart(symbol: str, daily: list[Bar], intraday: list[Bar], compare: 
             <div ref={box} role="img" aria-label={symbol + " price chart, " + range} style={{"height": str(height) + "px"}}></div>
         }}
         <div className="scroll-x flex gap-1 border-t border-line px-2 py-2" role="group" aria-label="Chart range">
-            {for name in RANGES {
+            {for name in ranges {
                 <button
                     key={name}
                     type="button"

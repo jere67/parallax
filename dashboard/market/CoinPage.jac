@@ -15,6 +15,8 @@ import from models.views { NewsItem as NoteData }
 
 glob NOTE_DESKS: dict[str, str] = {"market": "Market", "fundamentals": "Fundamentals", "news": "News", "macro": "Macro"};
 glob NOTE_LIMIT: int = 12;
+# Coins have daily bars only, kept for a little over a year.
+glob COIN_RANGES: list[str] = ["1M", "3M", "6M", "YTD", "1Y", "Max"];
 
 def number_of(coin: CoinData, key_: str) -> float | None {
     value = coin.values.get(key_);
@@ -208,7 +210,7 @@ def:pub CoinPage -> JsxElement {
             {if len(coin.daily) == 0 {
                 <p className="px-4 py-6 text-[13px] text-muted">No daily bars for this coin yet.</p>
             } else {
-                <PriceChart symbol={coin.symbol} daily={coin.daily} intraday={[]}/>
+                <PriceChart symbol={coin.symbol} daily={coin.daily} intraday={[]} ranges={COIN_RANGES}/>
             }}
         </Panel>
         <Panel title="Key stats" aside={"Daily bars through " + day_short(coin.stats_day) + " UTC" if coin.stats_day else ""} pad={False}>

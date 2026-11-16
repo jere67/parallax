@@ -11,6 +11,13 @@ glob CHAIN_RETRY_MS: int = 8000;
 glob SIDE_COLUMNS: list[str] = ["Bid", "Ask", "Last", "Vol", "OI", "IV", "Delta"];
 # The calls read outward from the strike, so their columns run the other way.
 glob CALL_COLUMNS: list[str] = ["Delta", "IV", "OI", "Vol", "Last", "Ask", "Bid"];
+# A phone shows the prices alone: these columns wait for a wider screen.
+glob WIDE_ONLY: list[str] = ["Vol", "OI", "IV", "Delta"];
+glob WIDE: str = " hidden sm:table-cell";
+
+def wide(name: str) -> str {
+    return WIDE if name in WIDE_ONLY else "";
+}
 
 def cell_values(side: SideData | None) -> list[str] {
     if side is None {
@@ -29,28 +36,29 @@ def cell_values(side: SideData | None) -> list[str] {
 
 def SideCells(side: SideData | None, in_money: bool, mirror: bool) -> JsxElement {
     values = cell_values(side);
+    names = CALL_COLUMNS if mirror else SIDE_COLUMNS;
     shown = [values[len(values) - 1 - i] for i in range(len(values))] if mirror else values;
     <>
         {for (i, text) in enumerate(shown) {
-            <td key={i} className={TD_NUM + (" bg-accent/5" if in_money else "")}>{text}</td>
+            <td key={i} className={TD_NUM + wide(names[i]) + (" bg-accent/10" if in_money else "")}>{text}</td>
         }}
     </>
 }
 
-def HeldMark(side: SideData | None) -> JsxElement {
+def HeldMark(side: SideData | None, kind: str) -> JsxElement {
     if side is None or side.held == 0 {
         return <></>;
     }
-    <span className={PILL_BASE + " " + TONE_ACCENT + " ml-1.5"} title={"Your agent holds " + num(side.held, 0) + " of " + side.symbol}>{"Held " + num(side.held, 0)}</span>
+    <span className={PILL_BASE + " " + TONE_ACCENT + " ml-1.5"} title={"Your agent holds " + num(side.held, 0) + " of " + side.symbol}>{"Held " + num(side.held, 0) + " " + kind}</span>
 }
 
 def StrikeRow(row: StrikeData, spot: float) -> JsxElement {
     <tr className="border-t border-line">
         <SideCells side={row.call} in_money={row.strike < spot} mirror={True}/>
-        <th scope="row" className="sticky left-0 whitespace-nowrap bg-panel-2 px-3 py-1.5 text-center text-[13px] font-semibold text-text">
+        <th scope="row" className="whitespace-nowrap border-b border-line/60 bg-panel-2 px-3 py-1.5 text-center text-[13px] font-semibold text-text">
             <span className="num">{price(row.strike)}</span>
-            <HeldMark side={row.call}/>
-            <HeldMark side={row.put}/>
+            <HeldMark side={row.call} kind="call"/>
+            <HeldMark side={row.put} kind="put"/>
         </th>
         <SideCells side={row.put} in_money={row.strike > spot} mirror={False}/>
     </tr>
@@ -134,21 +142,20 @@ def:pub OptionChain(symbol: str) -> JsxElement {
         }
         pad={False}
     >
+        <div className="flex items-center justify-between border-b border-line px-4 py-2 text-[12px] font-medium text-muted" aria-hidden="true">
+            <span>Calls</span>
+            <span>Puts</span>
+        </div>
         <div className="max-h-[70dvh] overflow-auto overscroll-x-contain">
             <table className="w-full border-separate border-spacing-0 text-[12px]" aria-label={"Option chain for " + symbol + ", " + day_short(chain.expiry)}>
-                <thead className="sticky top-0 z-10 bg-panel">
-                    <tr>
-                        <th scope="colgroup" colSpan={len(SIDE_COLUMNS)} className={TH_NUM + " text-center"}>Calls</th>
-                        <th scope="col" className={TH_NUM + " sticky left-0 bg-panel text-center"}>Strike</th>
-                        <th scope="colgroup" colSpan={len(SIDE_COLUMNS)} className={TH_NUM + " text-center"}>Puts</th>
-                    </tr>
+                <thead>
                     <tr>
                         {for name in CALL_COLUMNS {
-                            <th key={"c" + name} scope="col" className={TH_NUM}>{name}</th>
+                            <th key={"c" + name} scope="col" className={TH_NUM + wide(name)}>{name}</th>
                         }}
-                        <th scope="col" className={TH_NUM + " sticky left-0 bg-panel"}></th>
+                        <th scope="col" className={TH_NUM + " text-center"}>Strike</th>
                         {for name in SIDE_COLUMNS {
-                            <th key={"p" + name} scope="col" className={TH_NUM}>{name}</th>
+                            <th key={"p" + name} scope="col" className={TH_NUM + wide(name)}>{name}</th>
                         }}
                     </tr>
                 </thead>
