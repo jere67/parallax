@@ -95,8 +95,8 @@ async def:pub send_transfer_part(upload: str, index: int, part: str) -> Transfer
     return await call("accounts/transfer.jac", "send_transfer_part", {"upload": upload, "index": index, "part": part});
 }
 
-async def:pub start_transfer(upload: str, parts: int) -> TransferStatus | None {
-    return await call("accounts/transfer.jac", "start_transfer", {"upload": upload, "parts": parts});
+async def:pub start_transfer(upload: str, parts: int, replacing: int) -> TransferStatus | None {
+    return await call("accounts/transfer.jac", "start_transfer", {"upload": upload, "parts": parts, "replacing": replacing});
 }
 
 async def:pub start_export -> ExportReady | None {

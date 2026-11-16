@@ -459,8 +459,9 @@ def read_base64(file: any) -> any {
     });
 }
 
-"""Moving another server's records here: an admin's step on a server that has not run yet. The
-move replaces this server's accounts too, so once it lands the page signs out."""
+"""Moving another server's records here: an admin's step, best taken before this server's first
+run. On a server that has run, the move replaces its runs, which the admin confirms. The move
+replaces this server's accounts too, so once it lands the page signs out."""
 def MovePanel(moved: Callable[[], None]) -> JsxElement {
     has status: TransferStatus | None = None,
         file: any = None,
@@ -517,7 +518,7 @@ def MovePanel(moved: Callable[[], None]) -> JsxElement {
                 index += 1;
             }
             sending = "Starting the move";
-            reply = await start_transfer(upload, total);
+            reply = await start_transfer(upload, total, status.runs if status is not None else 0);
             if reply is not None {
                 status = reply;
                 confirming = False;
@@ -537,10 +538,12 @@ def MovePanel(moved: Callable[[], None]) -> JsxElement {
         return <></>;
     }
     state_words = status.message if status.state in ["running", "failed", "done"] else "";
+    own_runs: int = status.runs;
+    own_runs_words = "1 run" if own_runs == 1 else f"{own_runs} runs";
     <Panel title="Bring records from another server">
         <div className="flex flex-col gap-3">
             <p className="text-[13px] leading-5 text-muted">
-                {"This server has not run yet, so it can take another server's records: every run, decision, order, and agent, and the accounts that sign in to them. Export them on the old server with scripts/export-data.sh, then choose the file here. "}
+                {("This server has not run yet, so it can take another server's records: every run, decision, order, and agent, and the accounts that sign in to them. " if own_runs == 0 else f"Another server's records, every run, decision, order, and agent, and the accounts that sign in to them, replace this server's own, including its {own_runs_words}. Download this server's records first to keep a copy. ") + "Export them on the old server with scripts/export-data.sh, then choose the file here. "}
                 <a href={EXPORT_GUIDE_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-accent hover:underline">How to export</a>
             </p>
             {if state_words {
@@ -560,9 +563,9 @@ def MovePanel(moved: Callable[[], None]) -> JsxElement {
                     </label>
                     {if confirming {
                         <div className="flex flex-col gap-3 rounded-md border border-accent/40 bg-accent/10 p-3">
-                            <p className="text-[13px] leading-5 text-text">The file's records and accounts replace this server's. Afterwards you are signed out, and everyone signs in with their accounts from the old server.</p>
+                            <p className="text-[13px] leading-5 text-text">{("The file's records and accounts replace this server's. " if own_runs == 0 else f"The file's records and accounts replace this server's, and its {own_runs_words} of its own are not kept. ") + "Afterwards you are signed out, and everyone signs in with their accounts from the old server."}</p>
                             <div className="flex flex-wrap gap-2">
-                                <button type="button" disabled={busy} onClick={start} className={TAP_BUTTON}>{(sending or "Sending") + "…" if busy else "Move the records here"}</button>
+                                <button type="button" disabled={busy} onClick={start} className={TAP_BUTTON}>{(sending or "Sending") + "…" if busy else ("Move the records here" if own_runs == 0 else f"Replace this server's {own_runs_words}")}</button>
                                 <button type="button" disabled={busy} onClick={lambda { confirming = False; }} className={TAP_QUIET}>Cancel</button>
                             </div>
                         </div>

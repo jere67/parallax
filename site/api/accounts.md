@@ -23,7 +23,7 @@ Every endpoint that changes something refuses the demo account, and says so in i
 | `open_demo` | None; public, no token | A `DemoSignIn` |
 | `get_transfer_status` | None | A `TransferStatus`; admins only |
 | `send_transfer_part` | `upload`: a name for the upload, `index`, `part`: up to 524,288 base64 characters of the export file | A `TransferStatus`; admins only |
-| `start_transfer` | `upload`, `parts`: how many parts were sent | A `TransferStatus`; admins only |
+| `start_transfer` | `upload`, `parts`: how many parts were sent, `replacing`: how many of this server's own runs the admin confirmed the move replaces | A `TransferStatus`; admins only |
 
 ## AgentSettings
 
@@ -142,14 +142,14 @@ A non-admin caller gets an empty status, and `start_transfer` refuses them.
 The file from `scripts/export-data.sh` goes up as base64 in parts, since JacHammer's proxy refuses a request body over 1 MiB.
 `send_transfer_part` keeps each part for an hour; `start_transfer` joins them in order, checks the file, then moves it in the background and returns at once.
 `get_transfer_status` reports how the move went.
-It refuses a server with runs of its own, a file that is not a whole server's records, and a file with classes this server does not have.
+It refuses a `replacing` that is not this server's own run count, a move while the team's run is working, a file that is not a whole server's records, and a file with classes this server does not have.
 
 A `TransferStatus` has:
 
 - `state`: empty before any move, then `running`, `done`, or `failed`; `refused` answers an upload that was not taken.
 - `message`: what happened, in words.
-- `ready`: `true` for an admin of a server that can take a move now.
-- `runs`: how many runs this server has.
+- `ready`: `true` for an admin when no move is under way.
+- `runs`: how many runs of its own this server has, which a move replaces.
 
 Once a move is `done`, the accounts are the old server's, so the caller's session no longer names an account.
 

@@ -13,8 +13,10 @@ Two things differ between servers and are rewritten on the way in:
 - each row's `version` is raised past this server's highest. A job that read the old graph before
   the move then fails its write, instead of writing the old graph's rows over the new one.
 
-Only a server that has never run takes a move, so nothing a server did itself is lost: a fresh
-deployment, before its first morning. While the move runs it holds every scheduled job's lease,
+A move replaces everything, so a server that has run takes one only when its admin confirms how
+many of its own runs the move replaces (download them first to keep a copy); a fresh deployment,
+before its first morning, has none. No move starts while the team's run is working, and while the
+move runs it holds every scheduled job's lease,
 so no job starts on a graph about to be replaced. The sign-in accounts move with the graph, so
 afterwards everyone signs in with their accounts from the old server.
 """
@@ -36,6 +38,7 @@ import from jaclang.data.store { ConnInfo, PgStore, TxnIsolation }
 import accounts.sharing as sharing;
 import accounts.store as accounts_store;
 import dashboard.api as dashboard_api;
+import run.attempts as attempts;
 import from accounts.store { DEMO_PORTFOLIO, caller_is_admin }
 import from dashboard.cache { VIEWS }
 import from models.accounts { ExportPart, ExportReady, TransferStatus }
@@ -450,6 +453,7 @@ def forget_cached {
     accounts_store.forget_demo_root();
     sharing._SEEN.clear();
     dashboard_api._SPECIALISTS_BUILT_FROM.clear();
+    attempts.forget_all();
 }
 
 def now_iso -> str {
@@ -480,7 +484,7 @@ def is_stale(found: dict[str, object]) -> bool {
     return found.get("state") == "running" and time.time() - heard > STALE_S;
 }
 
-"""The number of runs on this server. A server that has run keeps its own records. The demo
+"""The number of runs on this server, which a move replaces. The demo
 account's invented history (accounts/demo.jac) is left out: every server seeds it at boot, and a move
 replaces it, after which the server seeds it again."""
 def run_count(store: PgStore) -> int {
@@ -500,8 +504,10 @@ def run_count(store: PgStore) -> int {
     )[0][0]);
 }
 
-"""Do the move: hold the jobs, let one that just fired finish, write, and let them go."""
-def carry_out(info: ConnInfo, moved: Moved, started_at: str, settle_s: float = SETTLE_S, wait_s: float = LEASE_WAIT_S) {
+"""Do the move: hold the jobs, let one that just fired finish, write, and let them go. `replacing`
+is how many of this server's own runs the admin confirmed the move replaces; a server that has
+more by then is left as it is."""
+def carry_out(info: ConnInfo, moved: Moved, started_at: str, settle_s: float = SETTLE_S, wait_s: float = LEASE_WAIT_S, replacing: int = 0) {
     store = PgStore(conninfo=info);
     held: list[str] = [];
     try {
@@ -511,9 +517,10 @@ def carry_out(info: ConnInfo, moved: Moved, started_at: str, settle_s: float = S
         for attempt in range(ATTEMPTS) {
             try {
                 store.begin(TxnIsolation.SERIALIZABLE);
-                if run_count(store) > 0 {
+                found = run_count(store);
+                if found > replacing {
                     store.rollback();
-                    raise TransferError("This server has runs of its own now, so nothing was moved.");
+                    raise TransferError(f"This server has {found} runs of its own now, more than the move was confirmed to replace, so nothing was moved.");
                 }
                 write_moved(store, moved);
                 store.commit();
@@ -548,8 +555,8 @@ def carry_out(info: ConnInfo, moved: Moved, started_at: str, settle_s: float = S
     }
 }
 
-"""The state of a move as the settings page shows it. `ready` is the admin of a server that has
-not run and has no move under way."""
+"""The state of a move as the settings page shows it. `ready` is an admin with no move under way;
+`runs` is how many of this server's own runs a move would replace."""
 def status_of(store: PgStore, admin: bool) -> TransferStatus {
     found = read_state(store);
     state = str(found.get("state", ""));
@@ -559,7 +566,7 @@ def status_of(store: PgStore, admin: bool) -> TransferStatus {
         message = "The last move stopped partway, when the server restarted. Nothing it did was kept; try again.";
     }
     runs = run_count(store);
-    return TransferStatus(state=state, message=message, ready=admin and runs == 0 and state != "running", runs=runs);
+    return TransferStatus(state=state, message=message, ready=admin and state != "running", runs=runs);
 }
 
 def own_store -> PgStore {
@@ -647,8 +654,10 @@ def:priv get_transfer_status -> TransferStatus {
 }
 
 """Start moving the records in the export file sent as `parts` parts of `upload`, replacing this
-server's graph and accounts. The move runs in the background; the page asks for its state."""
-def:priv start_transfer(upload: str, parts: int) -> TransferStatus {
+server's graph and accounts. `replacing` is how many of this server's own runs the admin confirmed
+the move replaces, which must match how many it has. The move runs in the background; the page
+asks for its state."""
+def:priv start_transfer(upload: str, parts: int, replacing: int) -> TransferStatus {
     if not caller_is_admin() {
         return TransferStatus(state="refused", message="Only an admin can move records onto this server.", ready=False, runs=0);
     }
@@ -659,17 +668,22 @@ def:priv start_transfer(upload: str, parts: int) -> TransferStatus {
             if current.state == "running" {
                 return current;
             }
-            if current.runs > 0 {
-                return TransferStatus(state="refused", message=f"This server has {current.runs} runs of its own, so it keeps its records. A move only goes to a server that has not run yet.", ready=False, runs=current.runs);
+            # An omitted or text argument arrives as text, so it is read as a number here.
+            confirmed = int(replacing or 0);
+            if current.runs != confirmed {
+                return TransferStatus(state="refused", message=f"This server has {current.runs} runs of its own now, which a move replaces. Reload the page and confirm again.", ready=True, runs=current.runs);
+            }
+            if attempts.any_working() {
+                return TransferStatus(state="refused", message="The team's run is working right now. Move the records once it ends.", ready=True, runs=current.runs);
             }
             try {
                 moved = prepare(decode(take_parts(store, upload, parts)), module_prefix());
             } except TransferError as e {
-                return TransferStatus(state="refused", message=str(e), ready=True, runs=0);
+                return TransferStatus(state="refused", message=str(e), ready=True, runs=current.runs);
             }
             started_at = now_iso();
             write_state(store, "running", f"Moving {moved.runs} runs and {len(moved.anchors)} records. This takes a minute or two.", started_at);
-            threading.Thread(target=carry_out, args=(store.conninfo, moved, started_at), name="parallax-transfer", daemon=True).start();
+            threading.Thread(target=carry_out, args=(store.conninfo, moved, started_at, SETTLE_S, LEASE_WAIT_S, confirmed), name="parallax-transfer", daemon=True).start();
             return status_of(store, True);
         }
     } finally {

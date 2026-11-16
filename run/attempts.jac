@@ -64,6 +64,20 @@ def forget(day: str) {
     }
 }
 
+"""True while any team run is still doing its work in this process."""
+def any_working -> bool {
+    with _LOCK {
+        return any(a.ended_at is None for a in _ATTEMPTS.values());
+    }
+}
+
+"""Forget every run this process noted, as when a move replaces the graph they were runs in."""
+def forget_all {
+    with _LOCK {
+        _ATTEMPTS.clear();
+    }
+}
+
 def attempt_for(day: str) -> Attempt | None {
     with _LOCK {
         return _ATTEMPTS.get(day);
