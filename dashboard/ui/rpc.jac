@@ -51,8 +51,8 @@ async def:pub get_run(run_date: str = "") -> RunView | None {
     return await call("dashboard/api.jac", "get_run", {"run_date": run_date});
 }
 
-async def:pub get_news_feed(q: str = "", ticker: str = "", desk: str = "", lean: str = "", day: str = "", held: bool = False, offset: int = 0, limit: int = 50) -> NewsFeed | None {
-    return await call("dashboard/news.jac", "get_news_feed", {"q": q, "ticker": ticker, "desk": desk, "lean": lean, "day": day, "held": held, "offset": offset, "limit": limit});
+async def:pub get_news_feed(q: str = "", ticker: str = "", desk: str = "", lean: str = "", day: str = "", held: bool = False, offset: int = 0, limit: int = 50, asset: str = "") -> NewsFeed | None {
+    return await call("dashboard/news.jac", "get_news_feed", {"q": q, "ticker": ticker, "desk": desk, "lean": lean, "day": day, "held": held, "offset": offset, "limit": limit, "asset": asset});
 }
 
 async def:pub get_news_story(day: str, ticker: str, desk: str, n: int = 0, requested: bool = False) -> NewsStory | None {

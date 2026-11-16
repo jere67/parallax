@@ -207,3 +207,20 @@ test "the macro brief is a story, and an address with no note finds none" {
     assert story_view(portfolio, "2026-11-06", "AAPL", "news", 7, False) is None;
     assert story_view(portfolio, "2026-11-06", "AAPL", "market", 0, False) is None;
 }
+
+test "the asset filter splits stocks, coins, and the market's notes, and its counts ignore only itself" {
+    entries = [
+        line_of("AAPL", "guidance raised", desk="news", lean="up"),
+        line_of("BTC/USD", "halving flows", desk="news", lean="up"),
+        line_of("ETH/USD", "moving averages", desk="market"),
+        line_of("", "treasury funds", desk="macro")
+    ];
+    everything = select(entries, NewsFilter(), set());
+    assert everything.assets == {"stocks": 1, "crypto": 2, "market": 1}, everything.assets;
+    coins = select(entries, NewsFilter(asset="crypto"), set());
+    assert [i.ticker for i in coins.items] == ["BTC/USD", "ETH/USD"] or [i.ticker for i in coins.items] == ["ETH/USD", "BTC/USD"];
+    assert coins.assets == everything.assets;
+    rising = select(entries, NewsFilter(asset="crypto", lean="up"), set());
+    assert [i.ticker for i in rising.items] == ["BTC/USD"] and rising.assets == {"stocks": 1, "crypto": 1, "market": 0};
+    assert [i.ticker for i in select(entries, NewsFilter(asset="market"), set()).items] == [""];
+}

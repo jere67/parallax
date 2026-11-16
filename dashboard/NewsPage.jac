@@ -41,7 +41,8 @@ glob DESK_NAMES: dict[str, str] = {"market": "Market", "fundamentals": "Fundamen
 glob VIEWS: dict[str, str] = {"STRONG_BUY": "Strong buy", "BUY": "Buy", "HOLD": "Hold", "SELL": "Sell", "STRONG_SELL": "Strong sell", "RISK_ON": "Risk on", "NEUTRAL": "Neutral", "RISK_OFF": "Risk off"};
 glob LEAN_TONES: dict[str, str] = {"up": TONE_UP, "down": TONE_DOWN, "flat": TONE_QUIET};
 glob LEANS: list[tuple[str, str]] = [("up", "Bullish"), ("flat", "Neutral"), ("down", "Bearish")];
-glob FILTER_KEYS: list[str] = ["q", "ticker", "desk", "lean", "day", "held"];
+glob FILTER_KEYS: list[str] = ["q", "asset", "ticker", "desk", "lean", "day", "held"];
+glob ASSETS: list[tuple[str, str]] = [("stocks", "Stocks"), ("crypto", "Crypto"), ("market", "Market")];
 # A filter's control: a thumb's height on a phone, the bar's on a wide screen.
 glob CONTROL: str = "min-h-11 md:min-h-8 md:text-[12px] rounded-md border bg-panel text-[16px] text-text transition-colors duration-150";
 
@@ -142,9 +143,15 @@ def Filters(feed: FeedData, filters: dict[str, str], text: str, type_text: Calla
                 }}
             </label>
             <div className="scroll-x -mx-4 flex gap-2 px-4 md:mx-0 md:overflow-visible md:px-0">
+            <Picker label="Asset class" value={filters["asset"]} pick={lambda (v: str) { set_filter("asset", v); }}>
+                <option value="">All asset classes</option>
+                {for (key, label) in ASSETS {
+                    <option key={key} value={key}>{label + " (" + str(feed.assets.get(key, 0)) + ")"}</option>
+                }}
+            </Picker>
             <Picker label="Instrument" value={filters["ticker"]} pick={lambda (v: str) { set_filter("ticker", v); }}>
                 <option value="">All instruments</option>
-                {for t in feed.tickers {
+                {for t in [x for x in feed.tickers if not filters["asset"] or (filters["asset"] == "crypto") == ("/" in x)] {
                     <option key={t} value={t}>{t}</option>
                 }}
             </Picker>
@@ -467,7 +474,7 @@ def:pub NewsPage -> JsxElement {
     }, []);
 
     async def load_page(offset: int) -> any {
-        return await get_news_feed(filters["q"], filters["ticker"], filters["desk"], filters["lean"], filters["day"], filters["held"] == "1", offset, PAGE);
+        return await get_news_feed(filters["q"], filters["ticker"], filters["desk"], filters["lean"], filters["day"], filters["held"] == "1", offset, PAGE, filters["asset"]);
     }
 
     useEffect(lambda {

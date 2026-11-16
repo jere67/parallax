@@ -84,7 +84,19 @@ obj NewsFilter {
         desk: str = "",
         lean: str = "",
         day: str = "",
-        held_only: bool = False;
+        held_only: bool = False,
+        asset: str = "";
+}
+
+glob ASSET_CLASSES: list[str] = ["stocks", "crypto", "market"];
+
+"""What a note is about: "crypto" for a coin, "market" for the market's own notes, which have no
+ticker, and "stocks" otherwise."""
+def asset_of(item: NewsItem) -> str {
+    if not item.ticker {
+        return "market";
+    }
+    return "crypto" if "/" in item.ticker else "stocks";
 }
 
 # --- Headlines -----------------------------------------------------------------------------
@@ -331,10 +343,11 @@ def held_tickers(team: Portfolio | None) -> set[str] {
 
 # --- Filters -------------------------------------------------------------------------------
 
-def matches(e: NewsEntry, f: NewsFilter, held: set[str], any_desk: bool = False) -> bool {
+def matches(e: NewsEntry, f: NewsFilter, held: set[str], any_desk: bool = False, any_asset: bool = False) -> bool {
     item = e.item;
     return (not f.ticker or item.ticker == f.ticker)
         and (any_desk or not f.desk or item.desk == f.desk)
+        and (any_asset or not f.asset or asset_of(item) == f.asset)
         and (not f.lean or item.lean == f.lean)
         and (not f.day or item.day == f.day)
         and (not f.held_only or item.ticker in held)
@@ -352,6 +365,12 @@ def select(entries: list[NewsEntry], f: NewsFilter, held: set[str], offset: int 
             desks[e.item.desk] += 1;
         }
     }
+    assets: dict[str, int] = {name: 0 for name in ASSET_CLASSES};
+    for e in entries {
+        if matches(e, f, held, any_asset=True) {
+            assets[asset_of(e.item)] += 1;
+        }
+    }
     known = set(e.item.ticker for e in entries);
     return NewsFeed(
         items=found[start:start + size],
@@ -360,7 +379,8 @@ def select(entries: list[NewsEntry], f: NewsFilter, held: set[str], offset: int 
         desks=desks,
         tickers=sorted(t for t in known if t),
         days=sorted(set(e.item.day for e in entries), reverse=True),
-        held=len(known & held)
+        held=len(known & held),
+        assets=assets
     );
 }
 
@@ -439,11 +459,12 @@ def:priv get_news_feed(
     day: str = "",
     held: bool = False,
     offset: int = 0,
-    limit: int = PAGE
+    limit: int = PAGE,
+    asset: str = ""
 ) -> NewsFeed {
     team = my_portfolio();
     entries: list[NewsEntry] = VIEWS.get(feed_key(), my_feed, team);
-    wanted = NewsFilter(words=q.lower().split(), ticker=ticker.upper(), desk=desk, lean=lean, day=day, held_only=as_flag(held));
+    wanted = NewsFilter(words=q.lower().split(), ticker=ticker.upper(), desk=desk, lean=lean, day=day, held_only=as_flag(held), asset=asset if asset in ASSET_CLASSES else "");
     return select(entries, wanted, held_tickers(team), int(offset), int(limit));
 }
 
