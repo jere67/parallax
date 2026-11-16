@@ -89,7 +89,7 @@ def refusal(work: Callable[[], object]) -> str {
 
 def own_store -> PgStore {
     current: any = Jac.get_context().mem.store;
-    return PgStore(conninfo=current.conninfo);
+    return PgStore(conninfo=current.conninfo, ensure_cb=current.ensure_cb);
 }
 
 test "an app module moves under this server's prefix, and the runtime's stays" {

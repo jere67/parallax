@@ -567,7 +567,9 @@ def own_store -> PgStore {
     if not isinstance(current, PgStore) {
         raise TransferError("This server keeps no Postgres database, so it cannot take a move.");
     }
-    return PgStore(conninfo=current.conninfo);
+    # The runtime starts an embedded Postgres on its store's first use; the callback lets this
+    # store start it too, rather than dial a socket that is not there yet.
+    return PgStore(conninfo=current.conninfo, ensure_cb=current.ensure_cb);
 }
 
 def part_key(upload: str, index: int) -> str {
