@@ -173,3 +173,78 @@ test("stock: an unknown symbol says so and leads back", async ({ page }) => {
   await page.getByRole("link", { name: "Back to the screener" }).click();
   await expect(page).toHaveURL(/\/app\/screener$/);
 });
+
+// --- Crypto ----------------------------------------------------------------------------------
+
+const coins = (page) => page.getByRole("region", { name: "Matching coins" });
+const firstCoin = (page) => coins(page).locator("tbody tr a").first();
+
+test("crypto: the switch leads to every coin, most traded first, and the table fits the screen", async ({ page }) => {
+  await page.goto("/app/screener");
+  await page.getByRole("navigation", { name: "Asset class" }).getByRole("link", { name: "Crypto" }).click();
+  await expect(page).toHaveURL(/\/app\/screener\/crypto$/);
+  await expect(page.getByRole("navigation", { name: "Asset class" }).getByRole("link", { name: "Crypto" })).toHaveAttribute("aria-current", "page");
+  await expect(firstCoin(page)).toContainText("BTC/USD");
+  await expect(coins(page).getByRole("columnheader", { name: "Avg vol 30D $" })).toHaveAttribute("aria-sort", "descending");
+  await expect(coins(page).locator("tbody tr")).toHaveCount(12);
+  await fitsWidth(page);
+});
+
+test("crypto: a filter, a search, and a tab go in the address", async ({ page }) => {
+  await page.goto("/app/screener/crypto");
+  await expect(firstCoin(page)).toContainText("BTC/USD");
+  const filters = page.getByRole("group", { name: "Filters" });
+  await filters.getByRole("button", { name: "Price" }).click();
+  await page.getByRole("region", { name: "Price filter" }).getByRole("button", { name: "Under $1" }).click();
+  await expect(page).toHaveURL(/f=price/);
+  await expect(coins(page).locator("tbody tr")).toHaveCount(1);
+  await expect(firstCoin(page)).toContainText("DOGE/USD");
+  await filters.getByRole("button", { name: "Reset" }).click();
+  await expect(page).toHaveURL(/\/app\/screener\/crypto$/);
+
+  await page.getByLabel("Search by pair or coin").fill("ether");
+  await expect(page).toHaveURL(/q=ether/);
+  await expect(coins(page).locator("tbody tr")).toHaveCount(1);
+  await expect(firstCoin(page)).toContainText("ETH/USD");
+  await page.getByLabel("Search by pair or coin").fill("");
+
+  await page.getByRole("tab", { name: "Performance" }).click();
+  await expect(page).toHaveURL(/tab=Performance/);
+  await expect(coins(page).getByRole("columnheader", { name: "Perf 1Y" })).toHaveAttribute("aria-sort", "descending");
+  await fitsWidth(page);
+});
+
+test("crypto: a coin's page has its price, chart, stats, the agent's decision, and its notes", async ({ page }) => {
+  await page.goto("/app/screener/crypto");
+  await firstCoin(page).click();
+  await expect(page).toHaveURL(/\/app\/coins\/BTC-USD$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Bitcoin" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Crypto");
+  await expect(page.locator("canvas").first()).toBeVisible();
+  await expect(page.getByText("Beta vs. Bitcoin", { exact: true })).toBeVisible();
+  await expect(page.getByText("The committee", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Research notes" })).toBeVisible();
+  const report = page.getByRole("link", { name: "Request a report" });
+  await expect(report).toHaveAttribute("href", "/app/reports?ticker=BTC%2FUSD");
+  await fitsWidth(page);
+  await report.click();
+  await expect(page.getByLabel("S&P 500 stock or coin")).toHaveValue("BTC/USD");
+});
+
+test("crypto: a coin the agent decided on links to that decision's trail", async ({ page }) => {
+  await page.goto("/app/screener/crypto");
+  const decision = coins(page).getByTestId("screener-decision").first();
+  await expect(decision).toBeVisible();
+  const href = await decision.getAttribute("href");
+  expect(href).toMatch(/^\/app\/runs\/\d{4}-\d{2}-\d{2}\/[A-Z]+-USD$/);
+  await decision.click();
+  await expect(page).toHaveURL(new RegExp(`${href}$`));
+  await expect(page.getByRole("navigation", { name: "Decision trail" })).toBeVisible();
+});
+
+test("crypto: an unknown pair says so and leads back", async ({ page }) => {
+  await page.goto("/app/coins/ZZZ-USD");
+  await expect(page.getByText("ZZZ/USD is not on the screener")).toBeVisible();
+  await page.getByRole("link", { name: "Back to the crypto screener" }).click();
+  await expect(page).toHaveURL(/\/app\/screener\/crypto$/);
+});
