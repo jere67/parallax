@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds release/parallax.jab, the sealed app a JacHammer host serves (see launch.jac), from the
 # committed HEAD. It builds in a fresh export because `jac build` also packs ignored files (.env,
-# storage/, .jac/cache) from the folder it runs in. Commit the result with the code it was built from.
+# storage/, .jac/cache) from the folder it runs in, and without release/, or each release would
+# carry the one before. Commit the result with the code it was built from.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -11,7 +12,7 @@ if [ -n "$(git status --porcelain -- . ':!release')" ]; then
 fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-git archive HEAD | tar -x -C "$WORK"
+git archive HEAD -- . ':!release' | tar -x -C "$WORK"
 mkdir -p "$WORK/.jac/client"
 # Reuse this folder's installed dependencies instead of installing them again.
 [ -d .jac/venv ] && ln -s "$ROOT/.jac/venv" "$WORK/.jac/venv"
