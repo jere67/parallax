@@ -132,3 +132,21 @@ obj TransferStatus {
         ready: bool,
         runs: int;
 }
+
+"""A copy of this server's records, the file a move takes (accounts/transfer.jac). `state` is
+"ready" with the file kept in `parts` parts under `copy`, or "refused" with why in `message`.
+`size` is the file's length in bytes and `name` the name to save it under."""
+obj ExportReady {
+    has state: str,
+        message: str = "",
+        copy: str = "",
+        parts: int = 0,
+        size: int = 0,
+        name: str = "";
+}
+
+"""One part of a kept copy: base64 of the file's bytes, or "" with why in `message`."""
+obj ExportPart {
+    has data: str,
+        message: str = "";
+}

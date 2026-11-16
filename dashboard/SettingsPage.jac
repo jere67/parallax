@@ -7,8 +7,8 @@ import from "lucide-react" { Check, ChevronDown, ExternalLink }
 import from dashboard.ui.brand { DOCS_URL }
 import from dashboard.ui.format { stamp_et }
 import from dashboard.ui.parts { ErrorBox, Loading, Panel, TAP_BUTTON, TAP_INPUT, TAP_QUIET }
-import from dashboard.ui.rpc { get_agent_settings, get_transfer_status, remove_agent_keys, save_agent_keys, send_transfer_part, set_asset_classes, set_paper_trading, start_my_run, start_transfer }
-import from models.accounts { AgentReply, AgentSettings as SettingsData, KeyStatus as KeyData, KeysReply, TransferStatus }
+import from dashboard.ui.rpc { get_agent_settings, get_export_part, get_transfer_status, remove_agent_keys, save_agent_keys, send_transfer_part, set_asset_classes, set_paper_trading, start_export, start_my_run, start_transfer }
+import from models.accounts { AgentReply, AgentSettings as SettingsData, ExportReady, KeyStatus as KeyData, KeysReply, TransferStatus }
 
 # Where each provider makes its keys. A page that needs an account sends a signed-out visitor to
 # sign in or sign up, then back to it.
@@ -575,6 +575,75 @@ def MovePanel(moved: Callable[[], None]) -> JsxElement {
     </Panel>
 }
 
+"""Save base64 `text` as the file `name`, the way a browser saves any download."""
+async def save_base64(text: str, name: str) {
+    browser: any = window;
+    found: any = await fetch("data:application/gzip;base64," + text);
+    url: str = browser.URL.createObjectURL(await found.blob());
+    link: any = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    page: any = document.body;
+    page.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(lambda { browser.URL.revokeObjectURL(url); }, 1000);
+}
+
+"""A copy of this server's records, the file a move takes: an admin's step before a redeploy that
+might land on a new server, or to keep a backup. The file comes in parts, as a move's goes up."""
+def DownloadPanel -> JsxElement {
+    has busy: bool = False,
+        progress: str = "",
+        saved: str = "",
+        problem: str = "";
+
+    async def download {
+        busy = True;
+        problem = "";
+        saved = "";
+        try {
+            progress = "Reading the records";
+            ready: ExportReady | None = await start_export();
+            if ready is None or ready.state != "ready" {
+                problem = ready.message if ready is not None else "The records could not be read. Sign in again and try once more.";
+                return;
+            }
+            pieces: list[str] = [];
+            index = 0;
+            while index < ready.parts {
+                progress = f"Downloading {int(index * 100 / ready.parts)}%";
+                part = await get_export_part(ready.copy, index);
+                if part is None or part.message {
+                    problem = part.message if part is not None else "The download stopped. Try again.";
+                    return;
+                }
+                pieces.append(part.data);
+                index += 1;
+            }
+            await save_base64("".join(pieces), ready.name);
+            saved = f"Saved {ready.name} ({round(ready.size / 1048576, 1)} MB).";
+        } except Exception {
+            problem = "The download stopped. Check your connection and try again.";
+        } finally {
+            busy = False;
+            progress = "";
+        }
+    }
+
+    <Panel title="Download records">
+        <div className="flex flex-col gap-3">
+            <p className="text-[13px] leading-5 text-muted">
+                {"A copy of every run, decision, order, and agent on this server, and the accounts that sign in to them: the file another server takes under \"Bring records from another server\". Download it before a redeploy. It holds password hashes and sealed keys, so keep it private. "}
+                <a href={EXPORT_GUIDE_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-accent hover:underline">How a move works</a>
+            </p>
+            {if saved { <p className="text-[13px] leading-5 text-text" role="status">{saved}</p> }}
+            {if problem { <p className="text-[13px] leading-5 text-down" role="alert">{problem}</p> }}
+            <button type="button" disabled={busy} onClick={download} className={TAP_BUTTON + " self-start"}>{progress + "…" if busy else "Download records"}</button>
+        </div>
+    </Panel>
+}
+
 """The runtime keeps its token out of reach, so this asks it through the same request it would
 send, with the stored token."""
 async def change_password(current: str, fresh: str) -> int {
@@ -691,6 +760,7 @@ def:pub SettingsPage -> JsxElement {
         {if not settings.managed { <TradingPanel settings={settings} done={update}/> }}
         {if settings.assets { <AssetsPanel settings={settings} done={update}/> }}
         {if settings.managed and not settings.demo { <MovePanel moved={leave}/> }}
+        {if settings.managed and not settings.demo { <DownloadPanel/> }}
         <AccountPanel leave={leave}/>
     </div>
 }

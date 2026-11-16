@@ -26,8 +26,10 @@ import logging;
 import re;
 import threading;
 import time;
+import uuid;
 import zlib;
 import from datetime { datetime, timezone }
+import from zoneinfo { ZoneInfo }
 import from jaclang { JacRuntime as Jac }
 import jaclang.runtime.runtime as jac_runtime;
 import from jaclang.data.store { ConnInfo, PgStore, TxnIsolation }
@@ -36,7 +38,7 @@ import accounts.store as accounts_store;
 import dashboard.api as dashboard_api;
 import from accounts.store { DEMO_PORTFOLIO, caller_is_admin }
 import from dashboard.cache { VIEWS }
-import from models.accounts { TransferStatus }
+import from models.accounts { ExportPart, ExportReady, TransferStatus }
 import from models.graph { Portfolio }
 
 glob LOG: logging.Logger = logging.getLogger("trading_agent.transfer");
@@ -64,6 +66,31 @@ glob MAX_PARTS: int = MAX_UPLOAD_CHARS // PART_CHARS + 1;
 glob PART_PREFIX: str = "parallax:transfer-part:";
 glob PART_TTL_S: int = 3600;
 glob UPLOAD_ID: re.Pattern[str] = re.compile(r"^[A-Za-z0-9-]{8,64}$");
+glob EXPORT_PREFIX: str = "parallax:transfer-export:";
+# The query `scripts/export-data.sh` runs, kept word for word in `scripts/export-data.sql`
+# (transfer_tests.jac checks the two match). One statement, so it reads one snapshot.
+glob EXPORT_SQL: str = """-- One JSON document with a server's whole record, read by scripts/export-data.sh and taken by
+-- accounts/transfer.jac. One statement, so every table is read from the same snapshot.
+SELECT json_build_object(
+    'format', 'parallax-data',
+    'version', 1,
+    'exported_at', now(),
+    'anchors', (
+        SELECT coalesce(json_agg(json_build_array(
+            id, kind, arch_type, arch_module, fingerprint, root_id, src, dst, undirected, props,
+            format_version, version, seq) ORDER BY seq), '[]')
+        FROM anchors),
+    'graph_types', (
+        SELECT coalesce(json_agg(json_build_array(type_name, ancestor)), '[]') FROM graph_types),
+    'identity_users', (
+        SELECT coalesce(json_agg(json_build_array(user_id, doc)), '[]') FROM identity_users),
+    'identity_lookups', (
+        SELECT coalesce(json_agg(json_build_array(value_normalized, user_id)), '[]')
+        FROM identity_lookups),
+    'sso_lookups', (
+        SELECT coalesce(json_agg(json_build_array(provider, external_id, user_id)), '[]')
+        FROM sso_lookups)
+)""";
 glob SUPER_ROOT: str = "00000000-0000-0000-0000-000000000000";
 glob ANCHOR_FIELDS: list[str] = ["id", "kind", "arch_type", "arch_module", "fingerprint", "root_id", "src", "dst", "undirected", "props", "format_version", "version", "seq"];
 # A stored class's module: the app's own (models/...), with or without a built app's prefix.
@@ -643,6 +670,78 @@ def:priv start_transfer(upload: str, parts: int) -> TransferStatus {
             threading.Thread(target=carry_out, args=(store.conninfo, moved, started_at), name="parallax-transfer", daemon=True).start();
             return status_of(store, True);
         }
+    } finally {
+        store.close();
+    }
+}
+
+"""This server's whole record, as the gzipped file `scripts/export-data.sh` writes. A server that
+nobody has signed up on yet has no account tables, so they are made first, empty."""
+def export_bytes(store: PgStore) -> bytes {
+    for statement in IDENTITY_TABLES {
+        store.rows(statement, {});
+    }
+    found = store.rows(EXPORT_SQL, {})[0][0];
+    text = found if isinstance(found, str) else json.dumps(found);
+    return gzip.compress(text.encode("utf-8"), compresslevel=9);
+}
+
+def export_key(copy: str, index: int) -> str {
+    return f"{EXPORT_PREFIX}{copy}:{index}";
+}
+
+"""Keep `data` for an hour in parts of at most PART_CHARS base64 characters, which each fit in
+one response under JacHammer's proxy limit. Returns the copy's name and how many parts it has."""
+def keep_export(store: PgStore, data: bytes) -> tuple[str, int] {
+    text = base64.b64encode(data).decode("ascii");
+    parts = [text[i:i + PART_CHARS] for i in range(0, len(text), PART_CHARS)] or [""];
+    copy = str(uuid.uuid4());
+    for (index, part) in enumerate(parts) {
+        store.kv_put_ttl(export_key(copy, index), part, PART_TTL_S);
+    }
+    return (copy, len(parts));
+}
+
+"""Part `index` of a kept copy, or None when there is no such part."""
+def export_part(store: PgStore, copy: str, index: int) -> str | None {
+    if not UPLOAD_ID.match(copy) or index < 0 or index >= MAX_PARTS {
+        return None;
+    }
+    return store.kv_get(export_key(copy, index));
+}
+
+"""Make a copy of this server's records, the file another server's move takes, and keep it for
+an hour for the page to fetch in parts. Admins only: it holds password hashes and sealed keys."""
+def:priv start_export -> ExportReady {
+    if not caller_is_admin() {
+        return ExportReady(state="refused", message="Only an admin can download this server's records.");
+    }
+    store = own_store();
+    try {
+        data = export_bytes(store);
+        (copy, parts) = keep_export(store, data);
+        day = datetime.now(ZoneInfo("America/New_York")).date().isoformat();
+        LOG.info("transfer: kept a copy of the records, %d bytes in %d parts", len(data), parts);
+        return ExportReady(state="ready", copy=copy, parts=parts, size=len(data), name=f"parallax-data-{day}.json.gz");
+    } except TransferError as e {
+        return ExportReady(state="refused", message=str(e));
+    } finally {
+        store.close();
+    }
+}
+
+"""Part `index` of the copy `start_export` kept. Admins only."""
+def:priv get_export_part(copy: str, index: int) -> ExportPart {
+    if not caller_is_admin() {
+        return ExportPart(data="", message="Only an admin can download this server's records.");
+    }
+    store = own_store();
+    try {
+        found = export_part(store, copy, index);
+        if found is None {
+            return ExportPart(data="", message="The copy is gone. Download the records again.");
+        }
+        return ExportPart(data=found);
     } finally {
         store.close();
     }

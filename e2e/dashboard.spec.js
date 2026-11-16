@@ -1,6 +1,8 @@
 // Each dashboard page in a real browser, on every device in the matrix (playwright.config.js):
 // it renders its data, logs no errors, and fits the screen's width.
 import { expect, test as base } from "@playwright/test";
+import fs from "node:fs";
+import zlib from "node:zlib";
 import { PASSWORD, logIn, makeAccount } from "./accounts.js";
 
 // Every test fails on a console error or an uncaught exception, and attaches a full-page shot.
@@ -904,6 +906,25 @@ test("policy: the admin's save is the team agent's next version", async ({ page 
   await expect(page.getByTestId("save-bar")).toHaveCount(0);
   await page.reload();
   await expect(slider).toHaveValue(next);
+});
+
+// The admin's download is the file a move takes, so it is checked as a move would read it.
+test("settings: an admin downloads the server's records as a move file", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop" || !process.env.E2E_ADMIN_PASSWORD, "the admin account is shared");
+  await page.goto("/login?next=/app/settings");
+  await page.getByLabel("Email", { exact: true }).fill("admin");
+  await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  const button = page.getByRole("button", { name: "Download records", exact: true });
+  await expect(button).toBeVisible();
+  const [download] = await Promise.all([page.waitForEvent("download"), button.click()]);
+  expect(download.suggestedFilename()).toMatch(/^parallax-data-\d{4}-\d{2}-\d{2}\.json\.gz$/);
+  const doc = JSON.parse(zlib.gunzipSync(fs.readFileSync(await download.path())).toString("utf8"));
+  expect(doc.format).toBe("parallax-data");
+  expect(doc.version).toBe(1);
+  expect(doc.anchors.length).toBeGreaterThan(0);
+  expect(doc.identity_lookups.map(([name]) => name)).toContain("admin");
+  await expect(page.getByRole("status").filter({ hasText: /^Saved parallax-data-/ })).toBeVisible();
 });
 
 // --- A phone ----------------------------------------------------------------------------------
